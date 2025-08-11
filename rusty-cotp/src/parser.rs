@@ -2,7 +2,7 @@ use crate::{
     error::CotpError,
     model::{
         connection_request::{CONNECTION_REQUEST_CODE, ConnectionOption, ConnectionRequest},
-        parameter::{CotpParameter, TpduLength},
+        parameter::{ConnectionClass, CotpParameter, TpduLength},
         payload::TransportProtocolDataUnit,
     },
 };
@@ -49,7 +49,7 @@ pub fn parse_create_request(header_data: &[u8], user_data: &[u8]) -> Result<Tran
 
     let destination_reference = parse_u16(&header_data[0..2])?;
     let source_reference = parse_u16(&header_data[2..4])?;
-    let preferred_class = header_data[4] & 0xF0 >> 4;
+    let preferred_class = (header_data[4] & 0xF0) >> 4;
     let request_options = header_data[4] & 0x0F;
     let variable_part = &header_data[5..];
 
@@ -84,14 +84,18 @@ pub fn parse_parameter(buffer: &[u8]) -> Result<(CotpParameter, usize), CotpErro
 
     let parameter_code = buffer[0];
     let parameter_value_length = buffer[1] as usize;
-    let parameter_length = 2 + parameter_value_length;
-    if buffer.len() < parameter_length {
-        return Err(CotpError::ProtocolError(format!("Insufficient data to parse parameter: {}", buffer.len())));
+    if buffer.len() < parameter_value_length + 2 {
+        return Err(CotpError::ProtocolError(format!(
+            "Insufficient data to parse parameter. The buffer has {} bytes but the header claims the parameter is {} bytes.",
+            buffer.len(),
+            parameter_value_length + 2
+        )));
     }
 
     match parameter_code {
-        0b11000000 => Ok((parse_tpdu_size_parameter(&buffer[2..parameter_length])?, parameter_length)),
-        _ => Ok((CotpParameter::UnknownParameter(parameter_code), parameter_length)),
+        0b11000000 => Ok((parse_tpdu_size_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
+        0b11000111 => Ok((parse_alternative_class_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
+        _ => Ok((CotpParameter::UnknownParameter(parameter_code, Vec::from(&buffer[2..(2 + parameter_value_length)])), 2 + parameter_value_length)),
     }
 }
 
@@ -102,27 +106,105 @@ pub fn parse_tpdu_size_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpErr
     Ok(CotpParameter::TpduLengthParameter(TpduLength::from(buffer[0])))
 }
 
+pub fn parse_alternative_class_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpError> {
+    Ok(CotpParameter::AlternativeClassParameter(buffer.iter().map(|x| ConnectionClass::from((x & 0xF0) >> 4)).collect()))
+}
+
 pub fn parse_u16(buffer: &[u8]) -> Result<u16, CotpError> {
-    Ok(u16::from_ne_bytes(buffer.try_into().map_err(|e: std::array::TryFromSliceError| CotpError::UnknownError(e.into()))?))
+    Ok(u16::from_be_bytes(
+        buffer
+            .try_into()
+            .map_err(|e: std::array::TryFromSliceError| CotpError::InternalError(format!("Failed to parse bytes to u16: {}", e.to_string())))?,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        model::{
-            connection_request::{ConnectionClass, ConnectionRequest},
-            payload::TransportProtocolDataUnit,
-        },
-        parser::TransportProtocolDataUnitParser,
-    };
+    use tracing_test::traced_test;
 
-    #[test]
-    fn parse_payloads_happy() -> Result<(), anyhow::Error> {
+    use super::*;
+
+    use crate::model::{connection_request::ConnectionRequest, payload::TransportProtocolDataUnit};
+
+    #[tokio::test]
+    #[traced_test]
+    async fn parse_payloads_happy() -> Result<(), anyhow::Error> {
         let mut subject = TransportProtocolDataUnitParser::new();
 
         assert_eq!(
             subject.parse(hex::decode("06E00000000000")?.as_slice())?,
             TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[]))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn parse_payloads_with_alternative_classes_happy() -> Result<(), anyhow::Error> {
+        let mut subject = TransportProtocolDataUnitParser::new();
+
+        assert_eq!(
+            subject.parse(hex::decode("06E00000000045")?.as_slice())?,
+            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class4, vec![ConnectionOption::Unknown(1), ConnectionOption::Unknown(3)], vec![], &[]))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn parse_payloads_with_parameters_happy() -> Result<(), anyhow::Error> {
+        let mut subject = TransportProtocolDataUnitParser::new();
+
+        assert_eq!(
+            subject.parse(hex::decode("0DE00000000000AB0548656C6C6F")?.as_slice())?,
+            TransportProtocolDataUnit::CR(ConnectionRequest::new(
+                0,
+                0,
+                ConnectionClass::Class0,
+                vec![],
+                vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])],
+                &[]
+            ))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn parse_payloads_with_multiple_parameters_with_userdata_happy() -> Result<(), anyhow::Error> {
+        let mut subject = TransportProtocolDataUnitParser::new();
+
+        assert_eq!(
+            subject.parse(hex::decode("15E00000000000C00108C703001030AB0548656C6C6F010203")?.as_slice())?,
+            TransportProtocolDataUnit::CR(ConnectionRequest::new(
+                0,
+                0,
+                ConnectionClass::Class0,
+                vec![],
+                vec![
+                    CotpParameter::TpduLengthParameter(TpduLength::Size256),
+                    CotpParameter::AlternativeClassParameter(vec![ConnectionClass::Class0, ConnectionClass::Class1, ConnectionClass::Class3]),
+                    CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])
+                ],
+                &[1, 2, 3]
+            ))
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn parse_payloads_with_userdata_happy() -> Result<(), anyhow::Error> {
+        let mut subject = TransportProtocolDataUnitParser::new();
+
+        assert_eq!(
+            // Not striclty legal having userdata on class 0, but eh.
+            subject.parse(hex::decode("06E00000000000010203")?.as_slice())?,
+            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))
         );
 
         Ok(())

@@ -355,8 +355,13 @@ name = "rusty-cotp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "hex",
+ "rusty-tpkt",
  "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-test",
 ]
 
 [[package]]

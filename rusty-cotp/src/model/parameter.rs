@@ -1,4 +1,27 @@
 #[derive(Debug, PartialEq)]
+pub enum ConnectionClass {
+    Class0,
+    Class1,
+    Class2,
+    Class3,
+    Class4,
+    Unknown(u8),
+}
+
+impl From<u8> for ConnectionClass {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => ConnectionClass::Class0,
+            1 => ConnectionClass::Class1,
+            2 => ConnectionClass::Class2,
+            3 => ConnectionClass::Class3,
+            4 => ConnectionClass::Class4,
+            x => Self::Unknown(x),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TpduLength {
     Size128,
     Size256,
@@ -27,6 +50,7 @@ impl From<u8> for TpduLength {
 
 #[derive(Debug, PartialEq)]
 pub enum CotpParameter {
+    AlternativeClassParameter(Vec<ConnectionClass>),
     TpduLengthParameter(TpduLength),
-    UnknownParameter(u8),
+    UnknownParameter(u8, Vec<u8>),
 }

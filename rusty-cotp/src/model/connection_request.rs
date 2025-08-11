@@ -1,4 +1,4 @@
-use crate::model::parameter::CotpParameter;
+use crate::model::parameter::{ConnectionClass, CotpParameter};
 
 pub const CONNECTION_REQUEST_CODE: u8 = 0xE0u8;
 
@@ -50,21 +50,6 @@ impl ConnectionRequest {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ConnectionClass {
-    Class0,
-    Unknown(u8),
-}
-
-impl From<u8> for ConnectionClass {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => ConnectionClass::Class0,
-            x => Self::Unknown(x),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
 pub enum ConnectionOption {
     Unknown(u8),
 }
@@ -73,7 +58,7 @@ impl ConnectionOption {
     pub fn from(connection_options: u8) -> Vec<Self> {
         (0..8)
             .filter_map(|i| match connection_options & (1 << i) {
-                x if x != 0 => Some(ConnectionOption::Unknown(i)),
+                x if x != 0 => Some(ConnectionOption::Unknown(i + 1)),
                 _ => None,
             })
             .collect()

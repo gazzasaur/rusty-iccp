@@ -3,9 +3,16 @@ name = "rusty-cotp"
 version = "0.1.0"
 edition = "2024"
 
+
 [dependencies]
-anyhow = "1.0.98"
+rusty-tpkt = { path = "../rusty-tpkt" }
+
+bytes = "1.10.1"
+tracing = "0.1.41"
 thiserror = "2.0.12"
+tokio = { version = "1.47.1", features = ["full"] }
 
 [dev-dependencies]
 hex = "0.4.3"
+anyhow = "1.0.98"
+tracing-test = "0.2.5"
