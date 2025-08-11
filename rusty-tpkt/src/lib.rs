@@ -33,28 +33,28 @@ mod tests {
 
         for _ in 0..10 {
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
                     client_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     client_connection.send(x.as_slice()).await?;
                 }
@@ -64,13 +64,13 @@ mod tests {
 
         // Drain connections so they can be gracefully shutdown.
         match server_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"World"));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
         }
         match client_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"Hello"));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
@@ -79,7 +79,7 @@ mod tests {
         drop(server_connection);
 
         match client_connection.recv().await? {
-            TktpRecvResult::Closed => (),
+            TpktRecvResult::Closed => (),
             _ => assert!(false, "Failed to close connection gracefully."),
         };
 
@@ -102,28 +102,28 @@ mod tests {
 
         for _ in 0..10 {
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
                     client_connection.send(x.as_slice()).await?;
                 }
                 _ => panic!("Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     client_connection.send(x.as_slice()).await?;
                 }
                 _ => panic!("Connection was unexpectedly closed"),
             }
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => panic!("Connection was unexpectedly closed"),
             }
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     server_connection.send(x.as_slice()).await?;
                 }
@@ -132,13 +132,13 @@ mod tests {
         }
 
         match client_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"Hello"));
             }
             _ => panic!("Connection was unexpectedly closed"),
         }
         match client_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"World"));
             }
             _ => panic!("Connection was unexpectedly closed"),
@@ -148,7 +148,7 @@ mod tests {
 
         // Drain connections so they can be gracefully shutdown.
         match server_connection.recv().await? {
-            TktpRecvResult::Closed => (),
+            TpktRecvResult::Closed => (),
             _ => assert!(false, "Failed to close connection gracefully."),
         };
 
@@ -171,28 +171,28 @@ mod tests {
 
         for _ in 0..10 {
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
                     client_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     client_connection.send(x.as_slice()).await?;
                 }
@@ -202,13 +202,13 @@ mod tests {
 
         // Drain connections so they can be gracefully shutdown.
         match server_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"World"));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
         }
         match client_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"Hello"));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
@@ -217,7 +217,7 @@ mod tests {
         drop(server_connection);
 
         match client_connection.recv().await? {
-            TktpRecvResult::Closed => (),
+            TpktRecvResult::Closed => (),
             _ => assert!(false, "Failed to close connection gracefully."),
         };
 
@@ -240,28 +240,28 @@ mod tests {
 
         for _ in 0..10 {
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b""));
                     client_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b""));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     client_connection.send(x.as_slice()).await?;
                 }
@@ -271,13 +271,13 @@ mod tests {
 
         // Drain connections so they can be gracefully shutdown.
         match server_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"World"));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
         }
         match client_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b""));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
@@ -286,7 +286,7 @@ mod tests {
         drop(server_connection);
 
         match client_connection.recv().await? {
-            TktpRecvResult::Closed => (),
+            TpktRecvResult::Closed => (),
             _ => assert!(false, "Failed to close connection gracefully."),
         };
 
@@ -312,28 +312,28 @@ mod tests {
 
         for _ in 0..10 {
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(buffer));
                     client_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(buffer));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     client_connection.send(x.as_slice()).await?;
                 }
@@ -343,13 +343,13 @@ mod tests {
 
         // Drain connections so they can be gracefully shutdown.
         match server_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"World"));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
         }
         match client_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(buffer));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
@@ -358,7 +358,7 @@ mod tests {
         drop(server_connection);
 
         match client_connection.recv().await? {
-            TktpRecvResult::Closed => (),
+            TpktRecvResult::Closed => (),
             _ => assert!(false, "Failed to close connection gracefully."),
         };
 
@@ -393,28 +393,28 @@ mod tests {
 
         for _ in 0..10 {
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(buffer));
                     client_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(buffer));
                     server_connection.send(x.as_slice()).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_connection.recv().await? {
-                TktpRecvResult::Data(x) => {
+                TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
                     client_connection.send(x.as_slice()).await?;
                 }
@@ -424,13 +424,13 @@ mod tests {
 
         // Drain connections so they can be gracefully shutdown.
         match server_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(b"World"));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
         }
         match client_connection.recv().await? {
-            TktpRecvResult::Data(x) => {
+            TpktRecvResult::Data(x) => {
                 assert_eq!(x, Vec::from(buffer));
             }
             _ => assert!(false, "Connection was unexpectedly closed"),
@@ -439,7 +439,7 @@ mod tests {
         drop(server_connection);
 
         match client_connection.recv().await? {
-            TktpRecvResult::Closed => (),
+            TpktRecvResult::Closed => (),
             _ => assert!(false, "Failed to close connection gracefully."),
         };
 

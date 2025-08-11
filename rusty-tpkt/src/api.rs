@@ -12,7 +12,7 @@ pub enum TpktError {
     InternalError(String),
 }
 
-pub enum TktpRecvResult {
+pub enum TpktRecvResult {
     Closed,
     Data(Vec<u8>),
 }
@@ -29,6 +29,6 @@ pub trait TkptServer<T> {
 pub trait TkptConnection<T> {
     fn remote_host(&self) -> T;
 
-    fn recv(&mut self) -> impl std::future::Future<Output = Result<TktpRecvResult, TpktError>> + Send;
+    fn recv(&mut self) -> impl std::future::Future<Output = Result<TpktRecvResult, TpktError>> + Send;
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
 }

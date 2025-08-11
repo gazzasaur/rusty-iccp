@@ -6,7 +6,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-use crate::{HEADER_LENGTH, MAX_PAYLOAD_LENGTH, TkptConnection, TkptParser, TkptParserResult, TkptServer, TkptService, TktpRecvResult, TpktError};
+use crate::{HEADER_LENGTH, MAX_PAYLOAD_LENGTH, TkptConnection, TkptParser, TkptParserResult, TkptServer, TkptService, TpktRecvResult, TpktError};
 
 pub struct TcpTkptService {}
 
@@ -66,19 +66,19 @@ impl TkptConnection<SocketAddr> for TcpTkptConnection {
         self.remote_host
     }
 
-    async fn recv(&mut self) -> Result<TktpRecvResult, TpktError> {
+    async fn recv(&mut self) -> Result<TpktRecvResult, TpktError> {
         loop {
             let buffer = &mut self.receive_buffer;
             match self.parser.parse(buffer) {
-                Ok(TkptParserResult::Data(x)) => return Ok(TktpRecvResult::Data(x)),
+                Ok(TkptParserResult::Data(x)) => return Ok(TpktRecvResult::Data(x)),
                 Ok(TkptParserResult::InProgress) => (),
                 Err(x) => return Err(x),
             };
             if self.stream.read_buf(buffer).await? == 0 {
-                return Ok(TktpRecvResult::Closed);
+                return Ok(TpktRecvResult::Closed);
             };
             match self.parser.parse(buffer) {
-                Ok(TkptParserResult::Data(x)) => return Ok(TktpRecvResult::Data(x)),
+                Ok(TkptParserResult::Data(x)) => return Ok(TpktRecvResult::Data(x)),
                 Ok(TkptParserResult::InProgress) => (),
                 Err(x) => return Err(x),
             }
