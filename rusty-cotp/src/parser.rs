@@ -1,37 +1,48 @@
-use crate::{error::CotpError, model::{parse_connection_options, ConnectionRequest, CotpParameter, TpduLength, TransportProtocolDataUnit, CONNECTION_REQUEST_CODE}};
+use crate::{
+    error::CotpError,
+    model::{
+        connection_request::{CONNECTION_REQUEST_CODE, ConnectionOption, ConnectionRequest},
+        parameter::{CotpParameter, TpduLength},
+        payload::TransportProtocolDataUnit,
+    },
+};
 
-pub struct TransportProtocolDataUnitParser {
-    buffer: Vec<u8>
-}
+pub struct TransportProtocolDataUnitParser {}
 
 impl TransportProtocolDataUnitParser {
-    pub fn append(&mut self, data: &[u8]) -> Result<Option<TransportProtocolDataUnit>, CotpError> {
-        self.buffer.extend_from_slice(data);
+    pub fn new() -> Self {
+        TransportProtocolDataUnitParser {}
+    }
 
-        let buffer_length = self.buffer.len();
-        if buffer_length == 0 {
-            return Ok(None)
+    pub fn parse(&mut self, data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
+        let buffer_length = data.len();
+        if buffer_length < 2 {
+            return Err(CotpError::ProtocolError(format!("Invalid payload data. Need at least 2 bytes but only {} bytes was received.", buffer_length)));
         }
 
-        let header_length = match (buffer_length, self.buffer[0]) {
-            (_, header_length) if header_length == 0 || header_length == 0xFFu8 => return Err(CotpError::ProtocolError(format!("Invalid header value. It cannot be greated than 2 but less than 255 but was {}", header_length))),
-            (buffer_length, header_length) if buffer_length < 2 || buffer_length - 1 < header_length as usize => return Ok(None),
-            (_, header_length) => header_length as usize,
-        };
+        let header_length = data[0] as usize;
+        if header_length < 2 || header_length > 254 {
+            return Err(CotpError::ProtocolError(format!("Invalid header length value. The value must be greater than 1 and less that 255 but was {}.", header_length)));
+        }
 
-        let class_code = self.buffer[1] & 0xF0u8;
-        let class_code_variable = self.buffer[1] & 0x0Fu8;
-        let (tpdu, consumed) = match (class_code, class_code_variable) {
-            (CONNECTION_REQUEST_CODE, 0x00u8) => parse_create_request(&self.buffer[2..(header_length - 1)], &self.buffer[(header_length - 1)..])?,
-            _ => return Err(CotpError::ProtocolError(format!("Unsupported class code was receiveed: {}", class_code).into()))
-        };
-        self.buffer.drain(..consumed);
+        if buffer_length < header_length + 1 {
+            return Err(CotpError::ProtocolError(format!(
+                "The buffer length {} cannot fit the required payload with a header length of {}",
+                buffer_length, header_length
+            )));
+        }
 
-        Ok(tpdu)
+        let class_code = data[1] & 0xF0u8;
+        let class_code_variable = data[1] & 0x0Fu8;
+
+        match (class_code, class_code_variable) {
+            (CONNECTION_REQUEST_CODE, 0x00u8) => parse_create_request(&data[2..(header_length + 1)], &data[(header_length + 1)..]),
+            _ => return Err(CotpError::ProtocolError(format!("Unsupported class code was receiveed: {}", class_code).into())),
+        }
     }
 }
 
-pub fn parse_create_request(header_data: &[u8], user_data: &[u8]) -> Result<(Option<TransportProtocolDataUnit>, usize), CotpError> {
+pub fn parse_create_request(header_data: &[u8], user_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
     if header_data.len() < 5 {
         return Err(CotpError::ProtocolError(format!("At least 5 bytes are required to parse the payload but got {}", header_data.len())).into());
     }
@@ -44,7 +55,14 @@ pub fn parse_create_request(header_data: &[u8], user_data: &[u8]) -> Result<(Opt
 
     let parameters = parse_parameters(variable_part)?;
 
-    Ok((Some(ConnectionRequest::new(source_reference, destination_reference, preferred_class.into(), parse_connection_options(request_options), parameters, user_data)), 1))
+    Ok(TransportProtocolDataUnit::CR(ConnectionRequest::new(
+        source_reference,
+        destination_reference,
+        preferred_class.into(),
+        ConnectionOption::from(request_options),
+        parameters,
+        &user_data,
+    )))
 }
 
 pub fn parse_parameters(buffer: &[u8]) -> Result<Vec<CotpParameter>, CotpError> {
@@ -86,4 +104,27 @@ pub fn parse_tpdu_size_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpErr
 
 pub fn parse_u16(buffer: &[u8]) -> Result<u16, CotpError> {
     Ok(u16::from_ne_bytes(buffer.try_into().map_err(|e: std::array::TryFromSliceError| CotpError::UnknownError(e.into()))?))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        model::{
+            connection_request::{ConnectionClass, ConnectionRequest},
+            payload::TransportProtocolDataUnit,
+        },
+        parser::TransportProtocolDataUnitParser,
+    };
+
+    #[test]
+    fn parse_payloads_happy() -> Result<(), anyhow::Error> {
+        let mut subject = TransportProtocolDataUnitParser::new();
+
+        assert_eq!(
+            subject.parse(hex::decode("06E00000000000")?.as_slice())?,
+            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[]))
+        );
+
+        Ok(())
+    }
 }

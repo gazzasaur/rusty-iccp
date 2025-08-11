@@ -19,7 +19,7 @@ mod tests {
         let e = { Err::<(), io::Error>(io::Error::from_raw_os_error(1)) }.map_err(|e| CotpError::IoError(e));
         match e {
             Err(e) => print!("{:?}", e),
-            _ => ()
+            _ => (),
         };
 
         let result = add(2, 2);
