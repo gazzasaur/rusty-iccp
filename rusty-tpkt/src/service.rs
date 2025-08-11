@@ -17,12 +17,12 @@ impl TcpTkptService {
 }
 
 impl TkptService<SocketAddr> for TcpTkptService {
-    async fn create_server(&self, address: SocketAddr) -> Result<impl TkptServer, TpktError> {
+    async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + TkptServer<SocketAddr>, TpktError> {
         Ok(TcpTkptServer::new(TcpListener::bind(address).await?))
     }
 
-    async fn connect(&self, address: SocketAddr) -> Result<impl TkptConnection, TpktError> {
-        return Ok(TcpTkptConnection::new(TcpStream::connect(address).await?));
+    async fn connect<'a>(address: SocketAddr) -> Result<impl 'a + TkptConnection<SocketAddr>, TpktError> {
+        return Ok(TcpTkptConnection::new(TcpStream::connect(address).await?, address));
     }
 }
 
@@ -36,30 +36,36 @@ impl TcpTkptServer {
     }
 }
 
-impl TkptServer for TcpTkptServer {
-    async fn accept(&self) -> Result<impl TkptConnection, TpktError> {
-        let (stream, _) = self.listener.accept().await?;
-        Ok(TcpTkptConnection::new(stream))
+impl TkptServer<SocketAddr> for TcpTkptServer {
+    async fn accept<'a>(&self) -> Result<impl 'a + TkptConnection<SocketAddr>, TpktError> {
+        let (stream, remote_host) = self.listener.accept().await?;
+        Ok(TcpTkptConnection::new(stream, remote_host))
     }
 }
 
 struct TcpTkptConnection {
     stream: TcpStream,
     parser: TkptParser,
+    remote_host: SocketAddr,
     receive_buffer: BytesMut,
 }
 
 impl TcpTkptConnection {
-    pub fn new(stream: TcpStream) -> Self {
+    pub fn new(stream: TcpStream, remote_host: SocketAddr) -> Self {
         TcpTkptConnection {
             stream,
+            remote_host,
             parser: TkptParser::new(),
             receive_buffer: BytesMut::new(),
         }
     }
 }
 
-impl TkptConnection for TcpTkptConnection {
+impl TkptConnection<SocketAddr> for TcpTkptConnection {
+    fn remote_host(&self) -> SocketAddr {
+        self.remote_host
+    }
+
     async fn recv(&mut self) -> Result<TktpRecvResult, TpktError> {
         loop {
             let buffer = &mut self.receive_buffer;

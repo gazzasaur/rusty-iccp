@@ -18,15 +18,17 @@ pub enum TktpRecvResult {
 }
 
 pub trait TkptService<T> {
-    fn create_server(&self, address: T) -> impl std::future::Future<Output = Result<impl TkptServer, TpktError>> + Send;
-    fn connect(&self, address: T) -> impl std::future::Future<Output = Result<impl TkptConnection, TpktError>> + Send;
+    fn create_server<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + TkptServer<T>, TpktError>> + Send;
+    fn connect<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + TkptConnection<T>, TpktError>> + Send;
 }
 
-pub trait TkptServer {
-    fn accept(&self) -> impl std::future::Future<Output = Result<impl TkptConnection, TpktError>> + Send;
+pub trait TkptServer<T> {
+    fn accept<'a>(&self) -> impl std::future::Future<Output = Result<impl 'a + TkptConnection<T>, TpktError>> + Send;
 }
 
-pub trait TkptConnection {
+pub trait TkptConnection<T> {
+    fn remote_host(&self) -> T;
+
     fn recv(&mut self) -> impl std::future::Future<Output = Result<TktpRecvResult, TpktError>> + Send;
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
 }
