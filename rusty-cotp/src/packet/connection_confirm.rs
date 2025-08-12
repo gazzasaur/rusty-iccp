@@ -1,9 +1,10 @@
-use crate::model::parameter::{ConnectionClass, CotpParameter};
+use crate::packet::parameter::{ConnectionClass, ConnectionOption, CotpParameter};
 
-pub const CONNECTION_REQUEST_CODE: u8 = 0xE0u8;
+pub const CONNECTION_CONFIRM_CODE: u8 = 0xD0u8;
 
 #[derive(Debug, PartialEq)]
-pub struct ConnectionRequest {
+pub struct ConnectionConfirm {
+    credit: u8,
     source_reference: u16,
     destination_reference: u16,
     preferred_class: ConnectionClass,
@@ -12,9 +13,10 @@ pub struct ConnectionRequest {
     user_data: Vec<u8>,
 }
 
-impl ConnectionRequest {
-    pub fn new(source_reference: u16, destination_reference: u16, preferred_class: ConnectionClass, options: Vec<ConnectionOption>, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
+impl ConnectionConfirm {
+    pub fn new(credit: u8, source_reference: u16, destination_reference: u16, preferred_class: ConnectionClass, options: Vec<ConnectionOption>, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
         Self {
+            credit,
             source_reference,
             destination_reference,
             preferred_class,
@@ -22,6 +24,10 @@ impl ConnectionRequest {
             parameters,
             user_data: user_data.into(),
         }
+    }
+
+    pub fn credit(&self) -> u8 {
+        self.credit
     }
 
     pub fn source_reference(&self) -> u16 {
@@ -46,21 +52,5 @@ impl ConnectionRequest {
 
     pub fn user_data(&self) -> &[u8] {
         &self.user_data
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ConnectionOption {
-    Unknown(u8),
-}
-
-impl ConnectionOption {
-    pub fn from(connection_options: u8) -> Vec<Self> {
-        (0..8)
-            .filter_map(|i| match connection_options & (1 << i) {
-                x if x != 0 => Some(ConnectionOption::Unknown(i + 1)),
-                _ => None,
-            })
-            .collect()
     }
 }

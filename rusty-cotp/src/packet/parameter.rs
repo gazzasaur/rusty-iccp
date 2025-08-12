@@ -1,4 +1,20 @@
 #[derive(Debug, PartialEq)]
+pub enum ConnectionOption {
+    Unknown(u8),
+}
+
+impl ConnectionOption {
+    pub fn from(connection_options: u8) -> Vec<Self> {
+        (0..8)
+            .filter_map(|i| match connection_options & (1 << i) {
+                x if x != 0 => Some(ConnectionOption::Unknown(i + 1)),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ConnectionClass {
     Class0,
     Class1,
