@@ -1,5 +1,5 @@
 use crate::{
-    error::CotpError,
+    api::CotpError,
     packet::{payload::TransportProtocolDataUnit, tpdu_error::TpduError},
     parser::{common::parse_u16, params::parse_parameters},
 };

@@ -1,5 +1,5 @@
 use crate::{
-    error::CotpError,
+    api::CotpError,
     packet::parameter::{ALTERNATIVE_CLASS_PARAMETER_CODE, ConnectionClass, CotpParameter, TPDU_SIZE_PARAMETER_CODE, TpduSize},
 };
 

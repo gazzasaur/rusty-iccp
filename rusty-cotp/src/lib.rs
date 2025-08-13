@@ -1,7 +1,8 @@
-pub mod error;
+pub mod api;
 pub mod packet;
 pub mod parser;
 pub mod serialiser;
+pub mod service;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
@@ -11,7 +12,7 @@ pub fn add(left: u64, right: u64) -> u64 {
 mod tests {
     use std::io;
 
-    use crate::error::CotpError;
+    use crate::api::CotpError;
 
     use super::*;
 

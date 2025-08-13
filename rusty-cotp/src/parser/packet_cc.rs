@@ -1,5 +1,5 @@
 use crate::{
-    error::CotpError,
+    api::CotpError,
     packet::{connection_confirm::ConnectionConfirm, parameter::ConnectionOption, payload::TransportProtocolDataUnit},
     parser::{common::parse_u16, params::parse_parameters},
 };
@@ -36,7 +36,6 @@ mod tests {
 
     use crate::{
         packet::{
-            connection_request::ConnectionRequest,
             parameter::{ConnectionClass, CotpParameter, TpduSize},
             payload::TransportProtocolDataUnit,
         },
@@ -123,7 +122,7 @@ mod tests {
         assert_eq!(
             // Not striclty legal having userdata on class 0, but eh.
             subject.parse(hex::decode("06D00000000000010203")?.as_slice())?,
-            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))
+            TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))
         );
 
         Ok(())

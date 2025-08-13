@@ -4,6 +4,7 @@ pub const CONNECTION_REQUEST_CODE: u8 = 0xE0u8;
 
 #[derive(Debug, PartialEq)]
 pub struct ConnectionRequest {
+    credit: u8,
     source_reference: u16,
     destination_reference: u16,
     preferred_class: ConnectionClass,
@@ -13,8 +14,9 @@ pub struct ConnectionRequest {
 }
 
 impl ConnectionRequest {
-    pub fn new(source_reference: u16, destination_reference: u16, preferred_class: ConnectionClass, options: Vec<ConnectionOption>, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
+    pub fn new(credit: u8, source_reference: u16, destination_reference: u16, preferred_class: ConnectionClass, options: Vec<ConnectionOption>, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
         Self {
+            credit,
             source_reference,
             destination_reference,
             preferred_class,
@@ -22,6 +24,10 @@ impl ConnectionRequest {
             parameters,
             user_data: user_data.into(),
         }
+    }
+
+    pub fn credit(&self) -> u8 {
+        self.credit
     }
 
     pub fn source_reference(&self) -> u16 {

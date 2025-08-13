@@ -6,62 +6,56 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-use crate::{HEADER_LENGTH, MAX_PAYLOAD_LENGTH, TkptConnection, TkptParser, TkptParserResult, TkptServer, TkptService, TpktError, TpktRecvResult};
+use crate::{HEADER_LENGTH, MAX_PAYLOAD_LENGTH, TpktConnection, TpktError, TpktParser, TpktParserResult, TpktRecvResult, TpktServer, TpktService};
 
-pub struct TcpTkptService {}
+pub struct TcpTpktService {}
 
-impl TcpTkptService {
-    pub fn new() -> Self {
-        TcpTkptService {}
+impl TpktService<SocketAddr> for TcpTpktService {
+    async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + TpktServer<SocketAddr>, TpktError> {
+        Ok(TcpTpktServer::new(TcpListener::bind(address).await?))
+    }
+
+    async fn connect<'a>(address: SocketAddr) -> Result<impl 'a + TpktConnection<SocketAddr>, TpktError> {
+        return Ok(TcpTpktConnection::new(TcpStream::connect(address).await?, address));
     }
 }
 
-impl TkptService<SocketAddr> for TcpTkptService {
-    async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + TkptServer<SocketAddr>, TpktError> {
-        Ok(TcpTkptServer::new(TcpListener::bind(address).await?))
-    }
-
-    async fn connect<'a>(address: SocketAddr) -> Result<impl 'a + TkptConnection<SocketAddr>, TpktError> {
-        return Ok(TcpTkptConnection::new(TcpStream::connect(address).await?, address));
-    }
-}
-
-struct TcpTkptServer {
+pub struct TcpTpktServer {
     listener: TcpListener,
 }
 
-impl TcpTkptServer {
+impl TcpTpktServer {
     pub fn new(listener: TcpListener) -> Self {
         Self { listener }
     }
 }
 
-impl TkptServer<SocketAddr> for TcpTkptServer {
-    async fn accept<'a>(&self) -> Result<impl 'a + TkptConnection<SocketAddr>, TpktError> {
+impl TpktServer<SocketAddr> for TcpTpktServer {
+    async fn accept<'a>(&self) -> Result<impl 'a + TpktConnection<SocketAddr>, TpktError> {
         let (stream, remote_host) = self.listener.accept().await?;
-        Ok(TcpTkptConnection::new(stream, remote_host))
+        Ok(TcpTpktConnection::new(stream, remote_host))
     }
 }
 
-struct TcpTkptConnection {
+pub struct TcpTpktConnection {
     stream: TcpStream,
-    parser: TkptParser,
+    parser: TpktParser,
     remote_host: SocketAddr,
     receive_buffer: BytesMut,
 }
 
-impl TcpTkptConnection {
+impl TcpTpktConnection {
     pub fn new(stream: TcpStream, remote_host: SocketAddr) -> Self {
-        TcpTkptConnection {
+        TcpTpktConnection {
             stream,
             remote_host,
-            parser: TkptParser::new(),
+            parser: TpktParser::new(),
             receive_buffer: BytesMut::new(),
         }
     }
 }
 
-impl TkptConnection<SocketAddr> for TcpTkptConnection {
+impl TpktConnection<SocketAddr> for TcpTpktConnection {
     fn remote_host(&self) -> SocketAddr {
         self.remote_host
     }
@@ -70,16 +64,16 @@ impl TkptConnection<SocketAddr> for TcpTkptConnection {
         loop {
             let buffer = &mut self.receive_buffer;
             match self.parser.parse(buffer) {
-                Ok(TkptParserResult::Data(x)) => return Ok(TpktRecvResult::Data(x)),
-                Ok(TkptParserResult::InProgress) => (),
+                Ok(TpktParserResult::Data(x)) => return Ok(TpktRecvResult::Data(x)),
+                Ok(TpktParserResult::InProgress) => (),
                 Err(x) => return Err(x),
             };
             if self.stream.read_buf(buffer).await? == 0 {
                 return Ok(TpktRecvResult::Closed);
             };
             match self.parser.parse(buffer) {
-                Ok(TkptParserResult::Data(x)) => return Ok(TpktRecvResult::Data(x)),
-                Ok(TkptParserResult::InProgress) => (),
+                Ok(TpktParserResult::Data(x)) => return Ok(TpktRecvResult::Data(x)),
+                Ok(TpktParserResult::InProgress) => (),
                 Err(x) => return Err(x),
             }
         }

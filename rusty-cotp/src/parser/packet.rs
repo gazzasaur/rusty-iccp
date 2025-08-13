@@ -1,5 +1,5 @@
 use crate::{
-    error::CotpError,
+    api::CotpError,
     packet::{
         connection_confirm::CONNECTION_CONFIRM_CODE, connection_request::CONNECTION_REQUEST_CODE, data_transfer::DATA_TRANSFER_CODE, disconnect_request::DISCONNECT_REQUEST_CODE, payload::TransportProtocolDataUnit,
         tpdu_error::TPDU_ERROR_CODE,
@@ -36,7 +36,7 @@ impl TransportProtocolDataUnitParser {
         let credit = data[1] & 0x0Fu8;
 
         match (data[1], class_code, credit) {
-            (_, CONNECTION_REQUEST_CODE, 0x00u8) => parse_connection_request(&data[2..(header_length + 1)], &data[(header_length + 1)..]),
+            (_, CONNECTION_REQUEST_CODE, 0x00u8) => parse_connection_request(credit, &data[2..(header_length + 1)], &data[(header_length + 1)..]),
             (_, CONNECTION_CONFIRM_CODE, _) => parse_create_confirm(credit, &data[2..(header_length + 1)], &data[(header_length + 1)..]),
             (DISCONNECT_REQUEST_CODE, _, _) => parse_disconnect_request(&data[2..(header_length + 1)], &data[(header_length + 1)..]),
             (DATA_TRANSFER_CODE, _, _) => parse_data_transfer(&data[2..(header_length + 1)], &data[(header_length + 1)..]),

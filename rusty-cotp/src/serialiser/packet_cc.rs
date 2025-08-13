@@ -1,18 +1,18 @@
 use crate::{
     api::CotpError,
     packet::{
-        connection_request::{CONNECTION_REQUEST_CODE, ConnectionRequest},
+        connection_confirm::{CONNECTION_CONFIRM_CODE, ConnectionConfirm},
         parameter::{ConnectionClass, ConnectionOption, CotpParameter, TpduSize},
     },
     serialiser::params::serialise_parameters,
 };
 
-pub fn serialise_connection_request(data: &ConnectionRequest) -> Result<Vec<u8>, CotpError> {
+pub fn serialise_connection_confirm(data: &ConnectionConfirm) -> Result<Vec<u8>, CotpError> {
     if data.preferred_class() != &ConnectionClass::Class0 {
         return Err(CotpError::ProtocolError(format!("Unsupported class {:?}. Only Class 0 is supported by this package.", data.preferred_class()).into()));
     }
     if data.user_data().len() != 0 {
-        return Err(CotpError::ProtocolError("User data is not supported on Class 0 connection requests.".into()));
+        return Err(CotpError::ProtocolError("User data is not supported on Class 0 connection confirms.".into()));
     }
     if data.parameters().len() > 1 {
         return Err(CotpError::ProtocolError("Only a single parameter specifying TPDU length is supported.".into()));
@@ -44,10 +44,9 @@ pub fn serialise_connection_request(data: &ConnectionRequest) -> Result<Vec<u8>,
 
     let mut buffer = Vec::new();
     buffer.push(header_field_length as u8);
-    buffer.push(CONNECTION_REQUEST_CODE);
+    buffer.push(CONNECTION_CONFIRM_CODE | data.credit());
     buffer.extend(data.destination_reference().to_be_bytes());
     buffer.extend(data.source_reference().to_be_bytes());
-    // Data options are meant to be 0 for class 0 but higher level logic can deal with that.
     buffer.push(data_class_field | data_options_field);
 
     Ok(buffer)
@@ -78,10 +77,9 @@ mod tests {
         let subject = TransportProtocolDataUnitSerialiser::new();
 
         assert_eq!(
-            subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[])))?,
-            hex::decode("06E00000000000")?.as_slice()
+            subject.serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[])))?,
+            hex::decode("06D00000000000")?.as_slice()
         );
-
         Ok(())
     }
 
@@ -91,8 +89,8 @@ mod tests {
         let subject = TransportProtocolDataUnitSerialiser::new();
 
         assert_eq!(
-            subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
-                0,
+            subject.serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
+                1,
                 0,
                 0,
                 ConnectionClass::Class0,
@@ -100,7 +98,7 @@ mod tests {
                 vec![],
                 &[],
             )))?,
-            hex::decode("06E00000000005")?.as_slice()
+            hex::decode("06D10000000005")?.as_slice()
         );
 
         Ok(())
@@ -111,7 +109,7 @@ mod tests {
     async fn parse_payloads_with_alternative_classes_sad() -> Result<(), anyhow::Error> {
         let subject = TransportProtocolDataUnitSerialiser::new();
 
-        match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
+        match subject.serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
             0,
             0,
             0,
@@ -132,7 +130,7 @@ mod tests {
     async fn parse_payloads_with_parameters_happy() -> Result<(), anyhow::Error> {
         let subject = TransportProtocolDataUnitSerialiser::new();
 
-        match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
+        match subject.serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
             0,
             0,
             0,
@@ -153,9 +151,9 @@ mod tests {
     async fn parse_payloads_with_userdata_sad() -> Result<(), anyhow::Error> {
         let subject = TransportProtocolDataUnitSerialiser::new();
 
-        match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))) {
+        match subject.serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))) {
             Ok(_) => assert!(false, "Expected this to result in an error"),
-            Err(CotpError::ProtocolError(message)) => assert_eq!("User data is not supported on Class 0 connection requests.", message),
+            Err(CotpError::ProtocolError(message)) => assert_eq!("User data is not supported on Class 0 connection confirms.", message),
             _ => assert!(false, "Unexpected failure result."),
         };
         Ok(())

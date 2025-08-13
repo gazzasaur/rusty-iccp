@@ -1,5 +1,5 @@
 use crate::{
-    error::CotpError,
+    api::CotpError,
     packet::{data_transfer::DataTransfer, payload::TransportProtocolDataUnit},
 };
 

@@ -1,4 +1,4 @@
-use crate::error::CotpError;
+use crate::api::CotpError;
 
 pub const TPDU_SIZE_PARAMETER_CODE: u8 = 0b11000000;
 pub const ALTERNATIVE_CLASS_PARAMETER_CODE: u8 = 0b11000111;

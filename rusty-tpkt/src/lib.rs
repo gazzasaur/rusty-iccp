@@ -21,9 +21,9 @@ mod tests {
     #[traced_test]
     async fn test_txrx_sequential_payloads() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTkptService::create_server(test_address).await?;
+        let server = TcpTpktService::create_server(test_address).await?;
 
-        let mut client_connection = TcpTkptService::connect(test_address).await?;
+        let mut client_connection = TcpTpktService::connect(test_address).await?;
         let mut server_connection = server.accept().await?;
 
         server_connection.send(b"Hello").await?;
@@ -90,9 +90,9 @@ mod tests {
     #[traced_test]
     async fn test_txrx_concurrent_payloads() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTkptService::create_server(test_address).await?;
+        let server = TcpTpktService::create_server(test_address).await?;
 
-        let mut client_connection = TcpTkptService::connect(test_address).await?;
+        let mut client_connection = TcpTpktService::connect(test_address).await?;
         let mut server_connection = server.accept().await?;
 
         server_connection.send(b"Hello").await?;
@@ -159,9 +159,9 @@ mod tests {
     #[traced_test]
     async fn test_txrx_sequential_ungraceful_shutdown() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTkptService::create_server(test_address).await?;
+        let server = TcpTpktService::create_server(test_address).await?;
 
-        let mut client_connection = TcpTkptService::connect(test_address).await?;
+        let mut client_connection = TcpTpktService::connect(test_address).await?;
         let mut server_connection = server.accept().await?;
 
         server_connection.send(b"Hello").await?;
@@ -228,9 +228,9 @@ mod tests {
     #[traced_test]
     async fn test_txrx_zero_byte_data() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTkptService::create_server(test_address).await?;
+        let server = TcpTpktService::create_server(test_address).await?;
 
-        let mut client_connection = TcpTkptService::connect(test_address).await?;
+        let mut client_connection = TcpTpktService::connect(test_address).await?;
         let mut server_connection = server.accept().await?;
 
         drop(server);
@@ -297,9 +297,9 @@ mod tests {
     #[traced_test]
     async fn test_txrx_max_byte_data() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTkptService::create_server(test_address).await?;
+        let server = TcpTpktService::create_server(test_address).await?;
 
-        let mut client_connection = TcpTkptService::connect(test_address).await?;
+        let mut client_connection = TcpTpktService::connect(test_address).await?;
         let mut server_connection = server.accept().await?;
 
         drop(server);
@@ -369,9 +369,9 @@ mod tests {
     #[traced_test]
     async fn test_txrx_over_max_byte_data() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTkptService::create_server(test_address).await?;
+        let server = TcpTpktService::create_server(test_address).await?;
 
-        let mut client_connection = TcpTkptService::connect(test_address).await?;
+        let mut client_connection = TcpTpktService::connect(test_address).await?;
         let mut server_connection = server.accept().await?;
 
         drop(server);
@@ -451,7 +451,7 @@ mod tests {
     async fn test_no_open_socket() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
 
-        match TcpTkptService::connect(test_address).await {
+        match TcpTpktService::connect(test_address).await {
             Ok(_) => assert!(false, "This was expected to fail as a socket was not opened."),
             Err(TpktError::IoError(x)) => assert_eq!(x.kind(), ErrorKind::ConnectionRefused),
             Err(x) => assert!(false, "Something unexpected happened: {:?}", x),
