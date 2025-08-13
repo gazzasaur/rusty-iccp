@@ -1,9 +1,4 @@
-use crate::{
-    error::CotpError,
-    packet::
-        payload::TransportProtocolDataUnit
-    , serialiser::packet_cr::serialise_connection_request,
-};
+use crate::{error::CotpError, packet::payload::TransportProtocolDataUnit, serialiser::packet_cr::serialise_connection_request};
 
 pub struct TransportProtocolDataUnitSerialiser {}
 
@@ -12,7 +7,7 @@ impl TransportProtocolDataUnitSerialiser {
         TransportProtocolDataUnitSerialiser {}
     }
 
-    pub fn serialise(&mut self, data: &TransportProtocolDataUnit) -> Result<Vec<u8>, CotpError> {
+    pub fn serialise(&self, data: &TransportProtocolDataUnit) -> Result<Vec<u8>, CotpError> {
         match data {
             TransportProtocolDataUnit::CR(x) => serialise_connection_request(&x),
             // (_, CONNECTION_CONFIRM_CODE, _) => parse_create_confirm(credit, &data[2..(header_length + 1)], &data[(header_length + 1)..]),

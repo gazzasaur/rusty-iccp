@@ -27,7 +27,7 @@ mod tests {
 
     use crate::{
         packet::{
-            parameter::{ConnectionClass, CotpParameter, TpduLength},
+            parameter::{ConnectionClass, CotpParameter, TpduSize},
             payload::TransportProtocolDataUnit,
         },
         parser::packet::TransportProtocolDataUnitParser,
@@ -78,7 +78,7 @@ mod tests {
                 0,
                 20.into(),
                 vec![
-                    CotpParameter::TpduLengthParameter(TpduLength::Size256),
+                    CotpParameter::TpduLengthParameter(TpduSize::Size256),
                     CotpParameter::AlternativeClassParameter(vec![ConnectionClass::Class0, ConnectionClass::Class1, ConnectionClass::Class3]),
                     CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])
                 ],

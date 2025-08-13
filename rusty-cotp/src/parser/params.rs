@@ -1,6 +1,6 @@
 use crate::{
     error::CotpError,
-    packet::parameter::{ConnectionClass, CotpParameter, TpduLength},
+    packet::parameter::{ALTERNATIVE_CLASS_PARAMETER_CODE, ConnectionClass, CotpParameter, TPDU_SIZE_PARAMETER_CODE, TpduSize},
 };
 
 pub fn parse_parameters(buffer: &[u8]) -> Result<Vec<CotpParameter>, CotpError> {
@@ -31,8 +31,8 @@ pub fn parse_parameter(buffer: &[u8]) -> Result<(CotpParameter, usize), CotpErro
     }
 
     match parameter_code {
-        0b11000000 => Ok((parse_tpdu_size_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
-        0b11000111 => Ok((parse_alternative_class_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
+        TPDU_SIZE_PARAMETER_CODE => Ok((parse_tpdu_size_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
+        ALTERNATIVE_CLASS_PARAMETER_CODE => Ok((parse_alternative_class_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
         _ => Ok((CotpParameter::UnknownParameter(parameter_code, Vec::from(&buffer[2..(2 + parameter_value_length)])), 2 + parameter_value_length)),
     }
 }
@@ -41,7 +41,7 @@ pub fn parse_tpdu_size_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpErr
     if buffer.len() != 1 {
         return Err(CotpError::ProtocolError(format!("Invalid TPDU length: {}", buffer.len())));
     }
-    Ok(CotpParameter::TpduLengthParameter(TpduLength::from(buffer[0])))
+    Ok(CotpParameter::TpduLengthParameter(TpduSize::from(buffer[0])))
 }
 
 pub fn parse_alternative_class_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpError> {
