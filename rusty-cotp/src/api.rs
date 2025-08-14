@@ -23,14 +23,14 @@ pub enum CotpRecvResult {
 
 pub trait CotpService<T> {
     fn create_server<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + CotpServer<T>, CotpError>> + Send;
-    // fn connect<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + CotpConnection<T>, CotpError>> + Send;
+    fn connect<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + CotpConnection<T>, CotpError>> + Send;
 }
 
 pub trait CotpServer<T> {
-    // fn accept<'a>(&self) -> impl std::future::Future<Output = Result<impl 'a + CotpConnection<R>, CotpError>> + Send;
+    fn accept<'a>(&self) -> impl std::future::Future<Output = Result<impl 'a + CotpConnection<T>, CotpError>> + Send;
 }
 
 pub trait CotpConnection<T> {
-//     fn recv(&mut self) -> impl std::future::Future<Output = Result<CotpRecvResult, CotpError>> + Send;
-//     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
+    fn recv(&mut self) -> impl std::future::Future<Output = Result<CotpRecvResult, CotpError>> + Send;
+    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
 }

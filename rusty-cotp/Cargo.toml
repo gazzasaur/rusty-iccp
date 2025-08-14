@@ -11,6 +11,7 @@ bytes = "1.10.1"
 tracing = "0.1.41"
 thiserror = "2.0.12"
 tokio = { version = "1.47.1", features = ["full"] }
+rand = "0.9.2"
 
 [dev-dependencies]
 hex = "0.4.3"
