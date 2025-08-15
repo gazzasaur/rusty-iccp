@@ -217,3 +217,25 @@ impl CotpConnection<SocketAddr> for TcpCotpConnection {
 
     // async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {}
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::ops::Range;
+    use tokio::join;
+    use tracing_test::traced_test;
+
+    #[tokio::test]
+    #[traced_test]
+    async fn perform_handshake() -> Result<(), anyhow::Error> {
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let subject = TcpCotpService::create_server(test_address).await?;
+
+        let (accept_result, connect_result) = join!(subject.accept(), TcpCotpService::connect(test_address));
+        let server_connection = accept_result?;
+        let client_connection = connect_result?;
+
+        Ok(())
+    }
+}

@@ -49,6 +49,7 @@ pub fn serialise_connection_request(data: &ConnectionRequest) -> Result<Vec<u8>,
     buffer.extend(data.source_reference().to_be_bytes());
     // Data options are meant to be 0 for class 0 but higher level logic can deal with that.
     buffer.push(data_class_field | data_options_field);
+    buffer.extend(params);
 
     Ok(buffer)
 }

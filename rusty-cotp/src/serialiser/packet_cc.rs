@@ -48,6 +48,7 @@ pub fn serialise_connection_confirm(data: &ConnectionConfirm) -> Result<Vec<u8>,
     buffer.extend(data.destination_reference().to_be_bytes());
     buffer.extend(data.source_reference().to_be_bytes());
     buffer.push(data_class_field | data_options_field);
+    buffer.extend(params);
 
     Ok(buffer)
 }
