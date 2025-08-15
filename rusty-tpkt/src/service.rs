@@ -12,10 +12,12 @@ pub struct TcpTpktService {}
 
 impl TpktService<SocketAddr> for TcpTpktService {
     async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + TpktServer<SocketAddr>, TpktError> {
-        Ok(TcpTpktServer::new(TcpListener::bind(address).await?))
+        Ok(TcpTpktServer::new(address).await?)
     }
 
-    async fn connect<'a>(address: SocketAddr) -> Result<impl 'a + TpktConnection<SocketAddr>, TpktError> {
+    // See Using lower layer services as traits
+    #[allow(refining_impl_trait)]
+    async fn connect<'a>(address: SocketAddr) -> Result<TcpTpktConnection, TpktError> {
         return Ok(TcpTpktConnection::new(TcpStream::connect(address).await?, address));
     }
 }
@@ -25,13 +27,15 @@ pub struct TcpTpktServer {
 }
 
 impl TcpTpktServer {
-    pub fn new(listener: TcpListener) -> Self {
-        Self { listener }
+    pub async fn new(address: SocketAddr) -> Result<Self, TpktError> {
+        Ok(Self { listener: TcpListener::bind(address).await? })
     }
 }
 
 impl TpktServer<SocketAddr> for TcpTpktServer {
-    async fn accept<'a>(&self) -> Result<impl 'a + TpktConnection<SocketAddr>, TpktError> {
+    // See Using lower layer services as traits
+    #[allow(refining_impl_trait)]
+    async fn accept<'a>(&self) -> Result<TcpTpktConnection, TpktError> {
         let (stream, remote_host) = self.listener.accept().await?;
         Ok(TcpTpktConnection::new(stream, remote_host))
     }

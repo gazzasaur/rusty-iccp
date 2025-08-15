@@ -357,6 +357,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "hex",
+ "rand",
  "rusty-tpkt",
  "thiserror",
  "tokio",
