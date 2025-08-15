@@ -1,16 +1,15 @@
 use std::net::SocketAddr;
 
 use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TcpTpktService, TpktConnection, TpktRecvResult, TpktServer, TpktService};
-use tokio::net::TcpListener;
 
 use crate::{
     api::{CotpConnection, CotpError, CotpServer, CotpService},
     packet::{
         connection_request::ConnectionRequest,
-        parameter::{ConnectionClass, ConnectionOption, CotpParameter},
+        parameter::{ConnectionClass, CotpParameter},
         payload::TransportProtocolDataUnit,
     },
-    parser::{self, packet::TransportProtocolDataUnitParser},
+    parser::packet::TransportProtocolDataUnitParser,
     serialiser::packet::TransportProtocolDataUnitSerialiser,
 };
 
@@ -45,6 +44,7 @@ impl CotpServer<SocketAddr> for TcpCotpServer {
 }
 
 struct TcpCotpConnection {
+    buffer: Vec<u8>,
     connection: TcpTpktConnection,
 }
 
@@ -67,7 +67,7 @@ impl TcpCotpConnection {
                     .as_slice(),
             )
             .await?;
-        Ok(TcpCotpConnection { connection })
+        Ok(TcpCotpConnection { connection, buffer: Vec::new() })
     }
 
     pub async fn receive(mut connection: TcpTpktConnection) -> Result<Self, CotpError> {
@@ -115,12 +115,13 @@ impl TcpCotpConnection {
             }
         };
 
-        Ok(TcpCotpConnection { connection })
+        Ok(TcpCotpConnection { connection, buffer: Vec::new() })
     }
 }
 
 impl CotpConnection<SocketAddr> for TcpCotpConnection {
     async fn recv(&mut self) -> Result<crate::api::CotpRecvResult, CotpError> {
+        let data = self.connection.recv().await?;
         todo!()
     }
 

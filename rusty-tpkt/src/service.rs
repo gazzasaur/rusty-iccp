@@ -12,10 +12,9 @@ pub struct TcpTpktService {}
 
 impl TpktService<SocketAddr> for TcpTpktService {
     async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + TpktServer<SocketAddr>, TpktError> {
-        Ok(TcpTpktServer::new(address).await?)
+        TcpTpktServer::new(address).await
     }
 
-    // See Using lower layer services as traits
     #[allow(refining_impl_trait)]
     async fn connect<'a>(address: SocketAddr) -> Result<TcpTpktConnection, TpktError> {
         return Ok(TcpTpktConnection::new(TcpStream::connect(address).await?, address));
@@ -33,7 +32,6 @@ impl TcpTpktServer {
 }
 
 impl TpktServer<SocketAddr> for TcpTpktServer {
-    // See Using lower layer services as traits
     #[allow(refining_impl_trait)]
     async fn accept<'a>(&self) -> Result<TcpTpktConnection, TpktError> {
         let (stream, remote_host) = self.listener.accept().await?;
@@ -75,11 +73,6 @@ impl TpktConnection<SocketAddr> for TcpTpktConnection {
             if self.stream.read_buf(buffer).await? == 0 {
                 return Ok(TpktRecvResult::Closed);
             };
-            match self.parser.parse(buffer) {
-                Ok(TpktParserResult::Data(x)) => return Ok(TpktRecvResult::Data(x)),
-                Ok(TpktParserResult::InProgress) => (),
-                Err(x) => return Err(x),
-            }
         }
     }
 
