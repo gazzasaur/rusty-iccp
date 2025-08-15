@@ -5,8 +5,9 @@ use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TcpTpktService, TpktConnectio
 use crate::{
     api::{CotpConnection, CotpError, CotpServer, CotpService},
     packet::{
+        connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
-        parameter::{ConnectionClass, CotpParameter},
+        parameter::{ConnectionClass, CotpParameter, TpduSize},
         payload::TransportProtocolDataUnit,
     },
     parser::packet::TransportProtocolDataUnitParser,
@@ -45,59 +46,150 @@ impl CotpServer<SocketAddr> for TcpCotpServer {
 
 struct TcpCotpConnection {
     buffer: Vec<u8>,
+    source_reference: u16,
+    max_payload_size: usize,
+    destination_reference: u16,
     connection: TcpTpktConnection,
+    parser: TransportProtocolDataUnitParser,
+    serialiser: TransportProtocolDataUnitSerialiser,
 }
 
 impl TcpCotpConnection {
     pub async fn initiate(mut connection: TcpTpktConnection) -> Result<Self, CotpError> {
         let source_reference: u16 = rand::random();
+        let parser = TransportProtocolDataUnitParser::new();
         let serialiser = TransportProtocolDataUnitSerialiser::new();
-        connection
-            .send(
-                serialiser
-                    .serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
-                        0,
-                        source_reference,
-                        0,
-                        ConnectionClass::Class0,
-                        vec![],
-                        vec![CotpParameter::TpduLengthParameter(crate::packet::parameter::TpduSize::Size1024)],
-                        &[],
-                    )))?
-                    .as_slice(),
-            )
-            .await?;
-        Ok(TcpCotpConnection { connection, buffer: Vec::new() })
+
+        TcpCotpConnection::send_connection_request(&mut connection, &serialiser, source_reference).await?;
+        let connection_confirm = TcpCotpConnection::receive_connection_confirm(&mut connection, &parser).await?;
+        let (_, max_payload_size) = TcpCotpConnection::calculate_remote_size_payload(connection_confirm.parameters()).await?;
+        let destination_reference = connection_confirm.destination_reference(); // I do not really care if it is 0.
+
+        Ok(TcpCotpConnection {
+            parser,
+            serialiser,
+            connection,
+            source_reference,
+            max_payload_size,
+            buffer: Vec::new(),
+            destination_reference,
+        })
     }
 
     pub async fn receive(mut connection: TcpTpktConnection) -> Result<Self, CotpError> {
         let destination_reference: u16 = rand::random();
         let parser = TransportProtocolDataUnitParser::new();
+        let serialiser = TransportProtocolDataUnitSerialiser::new();
 
-        // CC must be a single packet.
-        let payload = match connection.recv().await? {
-            TpktRecvResult::Data(data) => parser.parse(data.as_slice()),
-            TpktRecvResult::Closed => return Err(CotpError::ProtocolError("The connection is closed.".into())),
-        }?;
-        let connection_request = match payload {
-            TransportProtocolDataUnit::CR(connection_request) => connection_request,
-            _ => return Err(CotpError::ProtocolError(format!("Unexpected payload on session establishment: {:?}", payload))),
+        let connection_request = TcpCotpConnection::receive_connection_request(&mut connection, &parser).await?;
+        let (max_payload_indicator, max_payload_size) = TcpCotpConnection::calculate_remote_size_payload(connection_request.parameters()).await?;
+        TcpCotpConnection::verify_class_compatibility(&connection_request).await?;
+        let source_reference = connection_request.source_reference();
+        TcpCotpConnection::send_connection_confirm(&mut connection, &serialiser, source_reference, destination_reference, max_payload_indicator).await?;
+
+        Ok(TcpCotpConnection {
+            parser,
+            serialiser,
+            connection,
+            source_reference,
+            max_payload_size,
+            buffer: Vec::new(),
+            destination_reference,
+        })
+    }
+
+    async fn send_connection_request(connection: &mut TcpTpktConnection, serialiser: &TransportProtocolDataUnitSerialiser, source_reference: u16) -> Result<(), CotpError> {
+        let payload = serialiser.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
+            0,
+            source_reference,
+            0,
+            ConnectionClass::Class0,
+            vec![],
+            vec![CotpParameter::TpduLengthParameter(TpduSize::Size1024)],
+            &[],
+        )))?;
+        Ok(connection.send(&payload.as_slice()).await?)
+    }
+
+    async fn send_connection_confirm(connection: &mut TcpTpktConnection, serialiser: &TransportProtocolDataUnitSerialiser, source_reference: u16, destination_reference: u16, size: TpduSize) -> Result<(), CotpError> {
+        let payload = serialiser.serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
+            0,
+            source_reference,
+            destination_reference,
+            ConnectionClass::Class0,
+            vec![],
+            vec![CotpParameter::TpduLengthParameter(size)],
+            &[],
+        )))?;
+        Ok(connection.send(&payload.as_slice()).await?)
+    }
+
+    async fn receive_connection_confirm(connection: &mut TcpTpktConnection, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionConfirm, CotpError> {
+        let data = match connection.recv().await {
+            Ok(TpktRecvResult::Data(x)) => x,
+            Ok(TpktRecvResult::Closed) => return Err(CotpError::ProtocolError("The connection was closed before the COTP handshake was complete.".into())),
+            Err(e) => return Err(e.into()),
         };
-        // The standards says if there are multiple of the same parameter we must use the last.
-        let empty_vector = Vec::new();
-        let class_parameters: Vec<&ConnectionClass> = connection_request
-            .parameters()
+        return Ok(match parser.parse(data.as_slice())? {
+            TransportProtocolDataUnit::CC(x) if x.preferred_class() != &ConnectionClass::Class0 => return Err(CotpError::ProtocolError("Remote failed to select COTP Class 0.".into())),
+            TransportProtocolDataUnit::CC(x) => x,
+            TransportProtocolDataUnit::CR(_) => return Err(CotpError::ProtocolError("Expected connection confirmed on handshake but got a connection request".into())),
+            TransportProtocolDataUnit::DR(_) => return Err(CotpError::ProtocolError("Expected connection confirmed on handshake but got a disconnect reqeust".into())),
+            TransportProtocolDataUnit::DT(_) => return Err(CotpError::ProtocolError("Expected connection confirmed on handshake but got a data transfer".into())),
+            TransportProtocolDataUnit::ER(_) => return Err(CotpError::ProtocolError("Expected connection confirmed on handshake but got a error response".into())),
+        });
+    }
+
+    async fn receive_connection_request(connection: &mut TcpTpktConnection, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionRequest, CotpError> {
+        let data = match connection.recv().await {
+            Ok(TpktRecvResult::Data(x)) => x,
+            Ok(TpktRecvResult::Closed) => return Err(CotpError::ProtocolError("The connection was closed before the COTP handshake was complete.".into())),
+            Err(e) => return Err(e.into()),
+        };
+        return Ok(match parser.parse(data.as_slice())? {
+            TransportProtocolDataUnit::CR(x) => x,
+            TransportProtocolDataUnit::CC(_) => return Err(CotpError::ProtocolError("Expected connection request on handshake but got a connextion confirm".into())),
+            TransportProtocolDataUnit::DR(_) => return Err(CotpError::ProtocolError("Expected connection request on handshake but got a disconnect reqeust".into())),
+            TransportProtocolDataUnit::DT(_) => return Err(CotpError::ProtocolError("Expected connection request on handshake but got a data transfer".into())),
+            TransportProtocolDataUnit::ER(_) => return Err(CotpError::ProtocolError("Expected connection request on handshake but got a error response".into())),
+        });
+    }
+
+    async fn calculate_remote_size_payload(parameters: &[CotpParameter]) -> Result<(TpduSize, usize), CotpError> {
+        let parameter: &TpduSize = parameters
             .iter()
             .filter_map(|p| match p {
-                CotpParameter::AlternativeClassParameter(items) => Some(items),
+                CotpParameter::TpduLengthParameter(x) => Some(x),
                 _ => None,
             })
             .last()
-            .unwrap_or(&empty_vector)
-            .iter()
-            .collect();
+            .unwrap_or(&TpduSize::Size128);
 
-        // Verofy we can downgrade to Class 0
+        Ok(match parameter {
+            TpduSize::Size8192 => return Err(CotpError::ProtocolError("The remote side selected an 8192 bytes COTP payload but Class 0 support a maximum for 2048 bytes.".into())),
+            TpduSize::Size4096 => return Err(CotpError::ProtocolError("The remote side selected an 4096 bytes COTP payload but Class 0 support a maximum for 2048 bytes.".into())),
+            TpduSize::Unknown(x) => return Err(CotpError::ProtocolError(format!("The requested TPDU size is unknown {:?}.", x).into())),
+            TpduSize::Size128 => (TpduSize::Size128, 128),
+            TpduSize::Size256 => (TpduSize::Size256, 256),
+            TpduSize::Size512 => (TpduSize::Size512, 512),
+            TpduSize::Size1024 => (TpduSize::Size1024, 1024),
+            TpduSize::Size2048 => (TpduSize::Size2048, 2048),
+        })
+    }
+
+    async fn verify_class_compatibility(connection_request: &ConnectionRequest) -> Result<(), CotpError> {
+        let empty_set = Vec::new();
+        let class_parameters = connection_request
+            .parameters()
+            .iter()
+            .filter_map(|p| match p {
+                CotpParameter::AlternativeClassParameter(x) => Some(x),
+                _ => None,
+            })
+            .last()
+            .unwrap_or(&empty_set);
+
+        // Verify we can downgrade to Class 0
         match connection_request.preferred_class() {
             ConnectionClass::Class0 => (),
             ConnectionClass::Class1 => (),
@@ -114,47 +206,14 @@ impl TcpCotpConnection {
                 )));
             }
         };
-
-        Ok(TcpCotpConnection { connection, buffer: Vec::new() })
+        Ok(())
     }
 }
 
 impl CotpConnection<SocketAddr> for TcpCotpConnection {
-    async fn recv(&mut self) -> Result<crate::api::CotpRecvResult, CotpError> {
-        let data = self.connection.recv().await?;
-        todo!()
-    }
+    // async fn recv(&mut self) -> Result<crate::api::CotpRecvResult, CotpError> {
+    //     let data = self.connection.recv().await?;
+    // }
 
-    async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {
-        todo!()
-    }
-
-    //     async fn recv(&mut self) -> Result<CotpRecvResult, CotpError> {
-    //         loop {
-    //             let buffer = &mut self.receive_buffer;
-    //             match self.parser.parse(buffer) {
-    //                 Ok(CotpParserResult::Data(x)) => return Ok(CotpRecvResult::Data(x)),
-    //                 Ok(CotpParserResult::InProgress) => (),
-    //                 Err(x) => return Err(x),
-    //             };
-    //             if self.stream.read_buf(buffer).await? == 0 {
-    //                 return Ok(CotpRecvResult::Closed);
-    //             };
-    //             match self.parser.parse(buffer) {
-    //                 Ok(CotpParserResult::Data(x)) => return Ok(CotpRecvResult::Data(x)),
-    //                 Ok(CotpParserResult::InProgress) => (),
-    //                 Err(x) => return Err(x),
-    //             }
-    //         }
-    //     }
-
-    //     async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {
-    //         if data.len() > MAX_PAYLOAD_LENGTH {
-    //             return Err(CotpError::ProtocolError(format!("Cotp user data must be less than or equal to {} but was {}", MAX_PAYLOAD_LENGTH, data.len())));
-    //         }
-    //         let packet_length = ((data.len() + HEADER_LENGTH) as u16).to_be_bytes();
-    //         self.stream.write_all(&[0x03u8, 0x00u8]).await?;
-    //         self.stream.write_all(&packet_length).await?;
-    //         Ok(self.stream.write_all(data).await?)
-    //     }
+    // async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {}
 }
