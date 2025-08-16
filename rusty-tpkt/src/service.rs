@@ -122,4 +122,11 @@ impl TpktWriter<SocketAddr> for TcpTpktWriter {
         }
         Ok(())
     }
+
+    async fn continue_send(&mut self) -> Result<(), TpktError> {
+        while self.write_buffer.has_remaining() {
+            self.writer.write_buf(&mut self.write_buffer).await?;
+        }
+        Ok(())
+    }
 }

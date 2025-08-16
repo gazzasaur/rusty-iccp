@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{collections::VecDeque, net::SocketAddr};
 
 use bytes::BytesMut;
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktService, TcpTpktWriter, TpktConnection, TpktReader, TpktRecvResult, TpktServer, TpktService, TpktWriter};
@@ -271,12 +271,13 @@ impl CotpReader<SocketAddr> for TcpCotpReader {
 pub struct TcpCotpWriter {
     writer: TcpTpktWriter,
     max_payload_size: usize,
+    chunks: VecDeque<Vec<u8>>,
     serialiser: TransportProtocolDataUnitSerialiser,
 }
 
 impl TcpCotpWriter {
     pub fn new(writer: TcpTpktWriter, max_payload_size: usize, serialiser: TransportProtocolDataUnitSerialiser) -> Self {
-        Self { writer, max_payload_size, serialiser }
+        Self { writer, max_payload_size, serialiser, chunks: VecDeque::new() }
     }
 }
 
@@ -288,7 +289,14 @@ impl CotpWriter<SocketAddr> for TcpCotpWriter {
             let end_of_transmission = chunk_index + 1 >= chunk_count;
             let tpdu = DataTransfer::new(end_of_transmission, chunk_data);
             let tpdu_data = self.serialiser.serialise(&TransportProtocolDataUnit::DT(tpdu))?;
-            self.writer.send(&tpdu_data).await?;
+            self.chunks.push_back(tpdu_data);
+        }
+        self.continue_send().await
+    }
+
+    async fn continue_send(&mut self) -> Result<(), CotpError> {
+        while let Some(data) = self.chunks.pop_front() {
+            self.writer.send(data.as_slice()).await?;
         }
         Ok(())
     }

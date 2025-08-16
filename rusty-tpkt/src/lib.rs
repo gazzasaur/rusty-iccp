@@ -414,7 +414,7 @@ mod tests {
         server_writer.send(&buffer).await?;
         client_writer.send(b"World").await?;
 
-        for _ in 0..1000 {
+        for _ in 0..100 {
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));

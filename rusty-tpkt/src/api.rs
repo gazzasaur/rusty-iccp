@@ -37,4 +37,5 @@ pub trait TpktReader<T> {
 
 pub trait TpktWriter<T> {
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
+    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
 }

@@ -40,4 +40,5 @@ pub trait CotpReader<T> {
 
 pub trait CotpWriter<T> {
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
+    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
 }
