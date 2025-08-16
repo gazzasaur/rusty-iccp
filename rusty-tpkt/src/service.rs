@@ -6,7 +6,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-use crate::{TpktConnection, TpktReader, TpktWriter, TpktError, TpktParser, TpktParserResult, TpktRecvResult, TpktServer, TpktService, serialiser::TpktSerialiser};
+use crate::{TpktConnection, TpktError, TpktParser, TpktParserResult, TpktReader, TpktRecvResult, TpktServer, TpktService, TpktWriter, serialiser::TpktSerialiser};
 
 pub struct TcpTpktService {}
 

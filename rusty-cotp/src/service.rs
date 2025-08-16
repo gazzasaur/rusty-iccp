@@ -1,12 +1,14 @@
 use std::net::SocketAddr;
 
-use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter, TcpTpktServer, TcpTpktService, TpktConnection, TpktReader, TpktWriter, TpktRecvResult, TpktServer, TpktService};
+use bytes::BytesMut;
+use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktService, TcpTpktWriter, TpktConnection, TpktReader, TpktRecvResult, TpktServer, TpktService, TpktWriter};
 
 use crate::{
-    api::{CotpConnection, CotpError, CotpReader, CotpServer, CotpService, CotpWriter},
+    api::{CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpServer, CotpService, CotpWriter},
     packet::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
+        data_transfer::DataTransfer,
         parameter::{ConnectionClass, CotpParameter, TpduSize},
         payload::TransportProtocolDataUnit,
     },
@@ -41,18 +43,17 @@ impl TcpCotpServer {
 }
 
 impl CotpServer<SocketAddr> for TcpCotpServer {
-    async fn accept<'a>(&self) -> Result<impl 'a + CotpConnection<SocketAddr>, CotpError> {
+    #[allow(refining_impl_trait)]
+    async fn accept<'a>(&self) -> Result<TcpCotpConnection, CotpError> {
         TcpCotpConnection::receive(self.listener.accept().await?).await
     }
 }
 
 pub struct TcpCotpConnection {
-    buffer: Vec<u8>,
-    source_reference: u16,
-    max_payload_size: usize,
-    destination_reference: u16,
     reader: TcpTpktReader,
     writer: TcpTpktWriter,
+
+    max_payload_size: usize,
     parser: TransportProtocolDataUnitParser,
     serialiser: TransportProtocolDataUnitSerialiser,
 }
@@ -67,22 +68,18 @@ impl TcpCotpConnection {
         TcpCotpConnection::send_connection_request(&mut writer, &serialiser, source_reference).await?;
         let connection_confirm = TcpCotpConnection::receive_connection_confirm(&mut reader, &parser).await?;
         let (_, max_payload_size) = TcpCotpConnection::calculate_remote_size_payload(connection_confirm.parameters()).await?;
-        let destination_reference = connection_confirm.destination_reference(); // I do not really care if it is 0.
 
         Ok(TcpCotpConnection {
             parser,
             serialiser,
             reader,
             writer,
-            source_reference,
             max_payload_size,
-            buffer: Vec::new(),
-            destination_reference,
         })
     }
 
     pub async fn receive(connection: TcpTpktConnection) -> Result<Self, CotpError> {
-        let destination_reference: u16 = rand::random();
+        let source_reference: u16 = rand::random();
         let parser = TransportProtocolDataUnitParser::new();
         let serialiser = TransportProtocolDataUnitSerialiser::new();
         let (mut reader, mut writer) = TcpTpktConnection::split(connection).await?;
@@ -90,7 +87,8 @@ impl TcpCotpConnection {
         let connection_request = TcpCotpConnection::receive_connection_request(&mut reader, &parser).await?;
         let (max_payload_indicator, max_payload_size) = TcpCotpConnection::calculate_remote_size_payload(connection_request.parameters()).await?;
         TcpCotpConnection::verify_class_compatibility(&connection_request).await?;
-        let source_reference = connection_request.source_reference();
+        // Swapping source and destination for the reply.
+        let destination_reference = connection_request.source_reference();
         TcpCotpConnection::send_connection_confirm(&mut writer, &serialiser, source_reference, destination_reference, max_payload_indicator).await?;
 
         Ok(TcpCotpConnection {
@@ -98,10 +96,7 @@ impl TcpCotpConnection {
             serialiser,
             reader,
             writer,
-            source_reference,
             max_payload_size,
-            buffer: Vec::new(),
-            destination_reference,
         })
     }
 
@@ -220,54 +215,81 @@ impl TcpCotpConnection {
 impl CotpConnection<SocketAddr> for TcpCotpConnection {
     #[allow(refining_impl_trait)]
     async fn split<'a>(connection: Self) -> Result<(TcpCotpReader, TcpCotpWriter), CotpError> {
-        todo!()
+        Ok((
+            TcpCotpReader::new(connection.reader, connection.parser),
+            TcpCotpWriter::new(connection.writer, connection.max_payload_size, connection.serialiser),
+        ))
     }
-    // async fn recv(&mut self) -> Result<crate::api::CotpRecvResult, CotpError> {
-    //     let data = self.connection.recv().await?;
-    // }
-
-    // async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {}
 }
 
-pub struct TcpCotpReader {}
+pub struct TcpCotpReader {
+    // Not caring about the size of the payload we receive.
+    reader: TcpTpktReader,
+    parser: TransportProtocolDataUnitParser,
+
+    data_buffer: BytesMut,
+}
+
+impl TcpCotpReader {
+    pub fn new(reader: TcpTpktReader, parser: TransportProtocolDataUnitParser) -> Self {
+        Self {
+            reader,
+            parser,
+            data_buffer: BytesMut::new(),
+        }
+    }
+}
 
 impl CotpReader<SocketAddr> for TcpCotpReader {
-    async fn recv(&mut self) -> Result<crate::api::CotpRecvResult, CotpError> {
-        todo!()
+    async fn recv(&mut self) -> Result<CotpRecvResult, CotpError> {
+        loop {
+            // I don't really care to check max size. It is 2025.
+            let raw_data = match self.reader.recv().await? {
+                TpktRecvResult::Closed => return Ok(CotpRecvResult::Closed),
+                TpktRecvResult::Data(raw_data) => raw_data,
+            };
+            let data_transfer = match self.parser.parse(raw_data.as_slice())? {
+                // Choosing the standards based option of reporting the TPDU error locally but not sending an error.
+                TransportProtocolDataUnit::ER(tpdu_error) => return Err(CotpError::ProtocolError(format!("Received an error from the remote host: {:?}", tpdu_error.reason()).into())),
+                TransportProtocolDataUnit::CR(_) => return Err(CotpError::ProtocolError("Received a Connection Request when expecting data.".into())),
+                TransportProtocolDataUnit::CC(_) => return Err(CotpError::ProtocolError("Received a Connection Config when expecting data.".into())),
+                TransportProtocolDataUnit::DR(_) => return Ok(CotpRecvResult::Closed),
+                TransportProtocolDataUnit::DT(data_transfer) => data_transfer,
+            };
+            // I do not really care about the source and destination reference here. It is over a TCP stream. I'd rather keep it relaxed and avoid interop issues.
+
+            self.data_buffer.extend_from_slice(data_transfer.user_data());
+            if data_transfer.end_of_transmission() {
+                let data = self.data_buffer.to_vec();
+                self.data_buffer.clear();
+                return Ok(CotpRecvResult::Data(data));
+            }
+        }
     }
 }
 
-pub struct TcpCotpWriter {}
+pub struct TcpCotpWriter {
+    writer: TcpTpktWriter,
+    max_payload_size: usize,
+    serialiser: TransportProtocolDataUnitSerialiser,
+}
+
+impl TcpCotpWriter {
+    pub fn new(writer: TcpTpktWriter, max_payload_size: usize, serialiser: TransportProtocolDataUnitSerialiser) -> Self {
+        Self { writer, max_payload_size, serialiser }
+    }
+}
 
 impl CotpWriter<SocketAddr> for TcpCotpWriter {
     async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {
-        todo!()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::ops::Range;
-    use tokio::{join, select};
-    use tracing_test::traced_test;
-
-    #[tokio::test]
-    #[traced_test]
-    async fn perform_handshake() -> Result<(), anyhow::Error> {
-        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let subject = TcpCotpService::create_server(test_address).await?;
-
-        let mut accept_task = subject.accept();
-        let mut connect_task = TcpCotpService::connect(test_address);
-
-        // select! {}
-
-        let (accept_result, connect_result) = join!(subject.accept(), TcpCotpService::connect(test_address));
-        let server_connection = accept_result?;
-        let client_connection = connect_result?;
-
+        let chunks = data.chunks(self.max_payload_size);
+        let chunk_count = chunks.len();
+        for (chunk_index, chunk_data) in chunks.enumerate() {
+            let end_of_transmission = chunk_index + 1 >= chunk_count;
+            let tpdu = DataTransfer::new(end_of_transmission, chunk_data);
+            let tpdu_data = self.serialiser.serialise(&TransportProtocolDataUnit::DT(tpdu))?;
+            self.writer.send(&tpdu_data).await?;
+        }
         Ok(())
     }
 }
