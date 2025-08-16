@@ -10,15 +10,15 @@ pub fn add(left: u64, right: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::{io, ops::Range};
+    use std::ops::Range;
 
     use rand::RngCore;
     use tokio::join;
     use tracing_test::traced_test;
 
     use crate::{
-        api::{CotpConnection, CotpError, CotpReader, CotpServer, CotpService, CotpWriter},
-        service::{TcpCotpConnection, TcpCotpReader, TcpCotpServer, TcpCotpService, TcpCotpWriter},
+        api::{CotpConnection, CotpReader, CotpServer, CotpService, CotpWriter},
+        service::{TcpCotpConnection, TcpCotpService},
     };
 
     use super::*;
@@ -51,7 +51,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_transfers_data_over_multiple_segments() -> Result<(), anyhow::Error> {
-        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..20001)).parse()?;
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let listener = TcpCotpService::create_server(test_address).await?;
         let (client, server) = join!(TcpCotpService::connect(test_address), listener.accept());
 
@@ -61,16 +61,18 @@ mod tests {
         let mut over_buffer = [0u8; 100000];
         rand::rng().fill_bytes(&mut over_buffer[..]);
 
-        client_writer.send(over_buffer.as_slice()).await?;
-        match server_read.recv().await? {
-            api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
-            api::CotpRecvResult::Data(items) => assert_eq!(items, over_buffer.to_vec()),
-        }
+        for _ in 0..10 {
+            client_writer.send(over_buffer.as_slice()).await?;
+            match server_read.recv().await? {
+                api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
+                api::CotpRecvResult::Data(items) => assert_eq!(items, over_buffer.to_vec()),
+            }
 
-        server_writer.send(over_buffer.as_slice()).await?;
-        match client_read.recv().await? {
-            api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
-            api::CotpRecvResult::Data(items) => assert_eq!(items, over_buffer.to_vec()),
+            server_writer.send(over_buffer.as_slice()).await?;
+            match client_read.recv().await? {
+                api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
+                api::CotpRecvResult::Data(items) => assert_eq!(items, over_buffer.to_vec()),
+            }
         }
 
         Ok(())

@@ -1,11 +1,6 @@
 use crate::{
     api::CotpError,
-    packet::{
-        connection_request::{CONNECTION_REQUEST_CODE, ConnectionRequest},
-        data_transfer::{DATA_TRANSFER_CODE, DataTransfer},
-        parameter::{ConnectionClass, ConnectionOption, CotpParameter, TpduSize},
-    },
-    serialiser::params::serialise_parameters,
+    packet::data_transfer::{DATA_TRANSFER_CODE, DataTransfer},
 };
 
 pub fn serialise_data_transfer(data: &DataTransfer) -> Result<Vec<u8>, CotpError> {
@@ -26,10 +21,7 @@ mod tests {
 
     use tracing_test::traced_test;
 
-    use crate::{
-        packet::{parameter::ConnectionClass, payload::TransportProtocolDataUnit},
-        serialiser::packet::TransportProtocolDataUnitSerialiser,
-    };
+    use crate::{packet::payload::TransportProtocolDataUnit, serialiser::packet::TransportProtocolDataUnitSerialiser};
 
     #[tokio::test]
     #[traced_test]

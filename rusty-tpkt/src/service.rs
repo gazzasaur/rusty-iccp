@@ -99,21 +99,26 @@ impl TpktReader<SocketAddr> for TcpTpktReader {
 }
 
 pub struct TcpTpktWriter {
+    write_buffer: BytesMut,
     serialiser: TpktSerialiser,
     writer: WriteHalf<TcpStream>,
 }
 
 impl TcpTpktWriter {
     pub fn new(writer: WriteHalf<TcpStream>) -> Self {
-        Self { serialiser: TpktSerialiser::new(), writer }
+        Self {
+            serialiser: TpktSerialiser::new(),
+            writer,
+            write_buffer: BytesMut::new(),
+        }
     }
 }
 
 impl TpktWriter<SocketAddr> for TcpTpktWriter {
     async fn send(&mut self, data: &[u8]) -> Result<(), TpktError> {
-        let mut send_buffer = self.serialiser.serialise(data)?;
-        while send_buffer.has_remaining() {
-            self.writer.write_buf(&mut send_buffer).await?;
+        self.write_buffer.extend(self.serialiser.serialise(data)?);
+        while self.write_buffer.has_remaining() {
+            self.writer.write_buf(&mut self.write_buffer).await?;
         }
         Ok(())
     }
