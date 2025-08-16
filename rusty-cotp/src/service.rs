@@ -1,9 +1,9 @@
 use std::net::SocketAddr;
 
-use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TcpTpktService, TpktConnection, TpktRecvResult, TpktServer, TpktService};
+use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter, TcpTpktServer, TcpTpktService, TpktConnection, TpktReader, TpktWriter, TpktRecvResult, TpktServer, TpktService};
 
 use crate::{
-    api::{CotpConnection, CotpError, CotpServer, CotpService},
+    api::{CotpConnection, CotpError, CotpReader, CotpServer, CotpService, CotpWriter},
     packet::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
@@ -17,16 +17,18 @@ use crate::{
 pub struct TcpCotpService {}
 
 impl CotpService<SocketAddr> for TcpCotpService {
-    async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + CotpServer<SocketAddr>, CotpError> {
+    #[allow(refining_impl_trait)]
+    async fn create_server<'a>(address: SocketAddr) -> Result<TcpCotpServer, CotpError> {
         Ok(TcpCotpServer::new(address).await?)
     }
 
-    async fn connect<'a>(address: SocketAddr) -> Result<impl 'a + CotpConnection<SocketAddr>, CotpError> {
+    #[allow(refining_impl_trait)]
+    async fn connect<'a>(address: SocketAddr) -> Result<TcpCotpConnection, CotpError> {
         TcpCotpConnection::initiate(TcpTpktService::connect(address).await?).await
     }
 }
 
-struct TcpCotpServer {
+pub struct TcpCotpServer {
     listener: TcpTpktServer,
 }
 
@@ -44,31 +46,34 @@ impl CotpServer<SocketAddr> for TcpCotpServer {
     }
 }
 
-struct TcpCotpConnection {
+pub struct TcpCotpConnection {
     buffer: Vec<u8>,
     source_reference: u16,
     max_payload_size: usize,
     destination_reference: u16,
-    connection: TcpTpktConnection,
+    reader: TcpTpktReader,
+    writer: TcpTpktWriter,
     parser: TransportProtocolDataUnitParser,
     serialiser: TransportProtocolDataUnitSerialiser,
 }
 
 impl TcpCotpConnection {
-    pub async fn initiate(mut connection: TcpTpktConnection) -> Result<Self, CotpError> {
+    pub async fn initiate(connection: TcpTpktConnection) -> Result<Self, CotpError> {
         let source_reference: u16 = rand::random();
         let parser = TransportProtocolDataUnitParser::new();
         let serialiser = TransportProtocolDataUnitSerialiser::new();
+        let (mut reader, mut writer) = TcpTpktConnection::split(connection).await?;
 
-        TcpCotpConnection::send_connection_request(&mut connection, &serialiser, source_reference).await?;
-        let connection_confirm = TcpCotpConnection::receive_connection_confirm(&mut connection, &parser).await?;
+        TcpCotpConnection::send_connection_request(&mut writer, &serialiser, source_reference).await?;
+        let connection_confirm = TcpCotpConnection::receive_connection_confirm(&mut reader, &parser).await?;
         let (_, max_payload_size) = TcpCotpConnection::calculate_remote_size_payload(connection_confirm.parameters()).await?;
         let destination_reference = connection_confirm.destination_reference(); // I do not really care if it is 0.
 
         Ok(TcpCotpConnection {
             parser,
             serialiser,
-            connection,
+            reader,
+            writer,
             source_reference,
             max_payload_size,
             buffer: Vec::new(),
@@ -76,21 +81,23 @@ impl TcpCotpConnection {
         })
     }
 
-    pub async fn receive(mut connection: TcpTpktConnection) -> Result<Self, CotpError> {
+    pub async fn receive(connection: TcpTpktConnection) -> Result<Self, CotpError> {
         let destination_reference: u16 = rand::random();
         let parser = TransportProtocolDataUnitParser::new();
         let serialiser = TransportProtocolDataUnitSerialiser::new();
+        let (mut reader, mut writer) = TcpTpktConnection::split(connection).await?;
 
-        let connection_request = TcpCotpConnection::receive_connection_request(&mut connection, &parser).await?;
+        let connection_request = TcpCotpConnection::receive_connection_request(&mut reader, &parser).await?;
         let (max_payload_indicator, max_payload_size) = TcpCotpConnection::calculate_remote_size_payload(connection_request.parameters()).await?;
         TcpCotpConnection::verify_class_compatibility(&connection_request).await?;
         let source_reference = connection_request.source_reference();
-        TcpCotpConnection::send_connection_confirm(&mut connection, &serialiser, source_reference, destination_reference, max_payload_indicator).await?;
+        TcpCotpConnection::send_connection_confirm(&mut writer, &serialiser, source_reference, destination_reference, max_payload_indicator).await?;
 
         Ok(TcpCotpConnection {
             parser,
             serialiser,
-            connection,
+            reader,
+            writer,
             source_reference,
             max_payload_size,
             buffer: Vec::new(),
@@ -98,7 +105,7 @@ impl TcpCotpConnection {
         })
     }
 
-    async fn send_connection_request(connection: &mut TcpTpktConnection, serialiser: &TransportProtocolDataUnitSerialiser, source_reference: u16) -> Result<(), CotpError> {
+    async fn send_connection_request(writer: &mut TcpTpktWriter, serialiser: &TransportProtocolDataUnitSerialiser, source_reference: u16) -> Result<(), CotpError> {
         let payload = serialiser.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
             0,
             source_reference,
@@ -108,10 +115,10 @@ impl TcpCotpConnection {
             vec![CotpParameter::TpduLengthParameter(TpduSize::Size1024)],
             &[],
         )))?;
-        Ok(connection.send(&payload.as_slice()).await?)
+        Ok(writer.send(&payload.as_slice()).await?)
     }
 
-    async fn send_connection_confirm(connection: &mut TcpTpktConnection, serialiser: &TransportProtocolDataUnitSerialiser, source_reference: u16, destination_reference: u16, size: TpduSize) -> Result<(), CotpError> {
+    async fn send_connection_confirm(writer: &mut TcpTpktWriter, serialiser: &TransportProtocolDataUnitSerialiser, source_reference: u16, destination_reference: u16, size: TpduSize) -> Result<(), CotpError> {
         let payload = serialiser.serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
             0,
             source_reference,
@@ -121,11 +128,11 @@ impl TcpCotpConnection {
             vec![CotpParameter::TpduLengthParameter(size)],
             &[],
         )))?;
-        Ok(connection.send(&payload.as_slice()).await?)
+        Ok(writer.send(&payload.as_slice()).await?)
     }
 
-    async fn receive_connection_confirm(connection: &mut TcpTpktConnection, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionConfirm, CotpError> {
-        let data = match connection.recv().await {
+    async fn receive_connection_confirm(reader: &mut TcpTpktReader, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionConfirm, CotpError> {
+        let data = match reader.recv().await {
             Ok(TpktRecvResult::Data(x)) => x,
             Ok(TpktRecvResult::Closed) => return Err(CotpError::ProtocolError("The connection was closed before the COTP handshake was complete.".into())),
             Err(e) => return Err(e.into()),
@@ -140,8 +147,8 @@ impl TcpCotpConnection {
         });
     }
 
-    async fn receive_connection_request(connection: &mut TcpTpktConnection, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionRequest, CotpError> {
-        let data = match connection.recv().await {
+    async fn receive_connection_request(reader: &mut TcpTpktReader, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionRequest, CotpError> {
+        let data = match reader.recv().await {
             Ok(TpktRecvResult::Data(x)) => x,
             Ok(TpktRecvResult::Closed) => return Err(CotpError::ProtocolError("The connection was closed before the COTP handshake was complete.".into())),
             Err(e) => return Err(e.into()),
@@ -211,6 +218,10 @@ impl TcpCotpConnection {
 }
 
 impl CotpConnection<SocketAddr> for TcpCotpConnection {
+    #[allow(refining_impl_trait)]
+    async fn split<'a>(connection: Self) -> Result<(TcpCotpReader, TcpCotpWriter), CotpError> {
+        todo!()
+    }
     // async fn recv(&mut self) -> Result<crate::api::CotpRecvResult, CotpError> {
     //     let data = self.connection.recv().await?;
     // }
@@ -218,12 +229,28 @@ impl CotpConnection<SocketAddr> for TcpCotpConnection {
     // async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {}
 }
 
+pub struct TcpCotpReader {}
+
+impl CotpReader<SocketAddr> for TcpCotpReader {
+    async fn recv(&mut self) -> Result<crate::api::CotpRecvResult, CotpError> {
+        todo!()
+    }
+}
+
+pub struct TcpCotpWriter {}
+
+impl CotpWriter<SocketAddr> for TcpCotpWriter {
+    async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use std::ops::Range;
-    use tokio::join;
+    use tokio::{join, select};
     use tracing_test::traced_test;
 
     #[tokio::test]
@@ -231,6 +258,11 @@ mod tests {
     async fn perform_handshake() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let subject = TcpCotpService::create_server(test_address).await?;
+
+        let mut accept_task = subject.accept();
+        let mut connect_task = TcpCotpService::connect(test_address);
+
+        // select! {}
 
         let (accept_result, connect_result) = join!(subject.accept(), TcpCotpService::connect(test_address));
         let server_connection = accept_result?;

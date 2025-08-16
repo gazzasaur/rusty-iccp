@@ -1,23 +1,26 @@
 use std::net::SocketAddr;
 
-use bytes::BytesMut;
+use bytes::{Buf, BytesMut};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf, split},
     net::{TcpListener, TcpStream},
 };
 
-use crate::{HEADER_LENGTH, MAX_PAYLOAD_LENGTH, TpktConnection, TpktError, TpktParser, TpktParserResult, TpktRecvResult, TpktServer, TpktService};
+use crate::{TpktConnection, TpktReader, TpktWriter, TpktError, TpktParser, TpktParserResult, TpktRecvResult, TpktServer, TpktService, serialiser::TpktSerialiser};
 
 pub struct TcpTpktService {}
 
 impl TpktService<SocketAddr> for TcpTpktService {
-    async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + TpktServer<SocketAddr>, TpktError> {
+    #[allow(refining_impl_trait)]
+    async fn create_server<'a>(address: SocketAddr) -> Result<TcpTpktServer, TpktError> {
         TcpTpktServer::new(address).await
     }
 
     #[allow(refining_impl_trait)]
     async fn connect<'a>(address: SocketAddr) -> Result<TcpTpktConnection, TpktError> {
-        return Ok(TcpTpktConnection::new(TcpStream::connect(address).await?, address));
+        let stream = TcpStream::connect(address).await?;
+        let (reader, writer) = split(stream);
+        return Ok(TcpTpktConnection::new(address, TcpTpktReader::new(reader), TcpTpktWriter::new(writer)));
     }
 }
 
@@ -35,25 +38,20 @@ impl TpktServer<SocketAddr> for TcpTpktServer {
     #[allow(refining_impl_trait)]
     async fn accept<'a>(&self) -> Result<TcpTpktConnection, TpktError> {
         let (stream, remote_host) = self.listener.accept().await?;
-        Ok(TcpTpktConnection::new(stream, remote_host))
+        let (reader, writer) = split(stream);
+        Ok(TcpTpktConnection::new(remote_host, TcpTpktReader::new(reader), TcpTpktWriter::new(writer)))
     }
 }
 
 pub struct TcpTpktConnection {
-    stream: TcpStream,
-    parser: TpktParser,
     remote_host: SocketAddr,
-    receive_buffer: BytesMut,
+    reader: TcpTpktReader,
+    writer: TcpTpktWriter,
 }
 
-impl TcpTpktConnection {
-    pub fn new(stream: TcpStream, remote_host: SocketAddr) -> Self {
-        TcpTpktConnection {
-            stream,
-            remote_host,
-            parser: TpktParser::new(),
-            receive_buffer: BytesMut::new(),
-        }
+impl<'a> TcpTpktConnection {
+    pub fn new(remote_host: SocketAddr, reader: TcpTpktReader, writer: TcpTpktWriter) -> Self {
+        TcpTpktConnection { remote_host, reader, writer }
     }
 }
 
@@ -62,6 +60,29 @@ impl TpktConnection<SocketAddr> for TcpTpktConnection {
         self.remote_host
     }
 
+    #[allow(refining_impl_trait)]
+    async fn split<'a>(connection: TcpTpktConnection) -> Result<(TcpTpktReader, TcpTpktWriter), TpktError> {
+        Ok((connection.reader, connection.writer))
+    }
+}
+
+pub struct TcpTpktReader {
+    parser: TpktParser,
+    receive_buffer: BytesMut,
+    reader: ReadHalf<TcpStream>,
+}
+
+impl TcpTpktReader {
+    pub fn new(reader: ReadHalf<TcpStream>) -> Self {
+        Self {
+            reader,
+            parser: TpktParser::new(),
+            receive_buffer: BytesMut::new(),
+        }
+    }
+}
+
+impl TpktReader<SocketAddr> for TcpTpktReader {
     async fn recv(&mut self) -> Result<TpktRecvResult, TpktError> {
         loop {
             let buffer = &mut self.receive_buffer;
@@ -70,19 +91,30 @@ impl TpktConnection<SocketAddr> for TcpTpktConnection {
                 Ok(TpktParserResult::InProgress) => (),
                 Err(x) => return Err(x),
             };
-            if self.stream.read_buf(buffer).await? == 0 {
+            if self.reader.read_buf(buffer).await? == 0 {
                 return Ok(TpktRecvResult::Closed);
             };
         }
     }
+}
 
+pub struct TcpTpktWriter {
+    serialiser: TpktSerialiser,
+    writer: WriteHalf<TcpStream>,
+}
+
+impl TcpTpktWriter {
+    pub fn new(writer: WriteHalf<TcpStream>) -> Self {
+        Self { serialiser: TpktSerialiser::new(), writer }
+    }
+}
+
+impl TpktWriter<SocketAddr> for TcpTpktWriter {
     async fn send(&mut self, data: &[u8]) -> Result<(), TpktError> {
-        if data.len() > MAX_PAYLOAD_LENGTH {
-            return Err(TpktError::ProtocolError(format!("TPKT user data must be less than or equal to {} but was {}", MAX_PAYLOAD_LENGTH, data.len())));
+        let mut send_buffer = self.serialiser.serialise(data)?;
+        while send_buffer.has_remaining() {
+            self.writer.write_buf(&mut send_buffer).await?;
         }
-        let packet_length = ((data.len() + HEADER_LENGTH) as u16).to_be_bytes();
-        self.stream.write_all(&[0x03u8, 0x00u8]).await?;
-        self.stream.write_all(&packet_length).await?;
-        Ok(self.stream.write_all(data).await?)
+        Ok(())
     }
 }
