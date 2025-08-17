@@ -8,6 +8,22 @@ Using async rust as it is much easier for IO bound operations like the vast majo
 
 This implementation binds the networking stack to TCP Sockets. If a session is disconnected at the ICCP/MMS/Presentation/Session layer, all the lower layers will be disconnected. 
 
+### Not actively closing sockets
+
+COTP does not actively close the socket on disconnect.
+It is left to the higher layer to push the reader and writer out of scope.
+The reader and writer could be re-used which might have undersired results.
+This might change at a later point.
+
+### Cancel Safety
+
+All read/write operations are cancel safe.
+Use the continue read and continue write operations to ensure the operation was complete.
+These are very similar to what one would expect a flush operation to do on a socket.
+In the case od continue write, it only ensures the data was sent to the IO buffer before returning.
+
+The continue operations are also cancel safe.
+
 ## Roadmap
 This is a rough roadmap based on what I know so far. I am using the open version of the standards where possible (X. and RFC) instead of the ISO standards which are generally locked behind a paywall.
 
