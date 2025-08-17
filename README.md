@@ -14,8 +14,8 @@ This is a rough roadmap based on what I know so far. I am using the open version
 I am going to implement the mandatory minimum of the transport, session and presentation standards as we are running this over TCP.
 
 * [COMPLETE] ITOT / TPKT / RFC2126 - ISO Transport Service on top of TCP
-* [IN PROGRESS] COTP / RFC905 / ISO 8073 - Connection Orientated Transport Protocol (Class 0 only)
-* [NOT STARTED] COSP / X.225 / ISO 8327 - Connection Orientated Session Protocol (Kernel Only)
+* [COMPLETE] COTP / RFC905 / ISO 8073 - Connection Orientated Transport Protocol (Class 0 only)
+* [IN PROGRESS] COSP / X.225 / ISO 8327 - Connection Orientated Session Protocol (Kernel Only)
 * [NOT STARTED] COPP / X.226 / ISO 8823 - Connection Orientated Presentation Protocol
 * [NOT STARTED] ACSE / X.227 / ISO 8650 - Association Control Service Element
 * [NOT STARTED] MMS / ISO 9506 - Manufacturing Message Specification
