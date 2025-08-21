@@ -1,12 +1,18 @@
 use bitfield::bitfield;
-use rusty_cotp::packet::parameter;
 
 use crate::api::IsoSpError;
 
 pub const CONNECT_SERVICE_PDU_CODE: u8 = 13;
 
-pub const CONNECT_ACCEPT_PARAMETER_CODE: u8 = 5;
+pub const CONNECT_ACCEPT_ITEM_PARAMETER_CODE: u8 = 5;
+pub const USER_DATA_PARAMETER_CODE: u8 = 193;
+pub const EXTENDED_USER_DATA_PARAMETER_CODE: u8 = 194;
+
+pub const SESSION_USER_REQUIREMENTS_PARAMETER_CODE: u8 = 20;
+pub const DATA_OVERFLOW_PARAMETER_CODE: u8 = 60;
+
 pub const PROTOCOL_OPTIONS_PARAMETER_CODE: u8 = 19;
+pub const TSDU_MAXIMUM_SIZE_PARAMETER_CODE: u8 = 21;
 pub const VERSION_NUMBER_PARAMETER_CODE: u8 = 22;
 
 pub enum SessionPdu {
@@ -39,7 +45,11 @@ fn into_parameters(data: &[u8]) -> Result<Vec<SessionPduParameter>, IsoSpError> 
 
     for (parameter_tag, parameter_value) in raw_parameters {
         parameters.push(match parameter_tag {
-            // CONNECT_ACCEPT_PARAMETER_CODE => SessionPduParameter::ConnectAcceptItem(())
+            CONNECT_ACCEPT_ITEM_PARAMETER_CODE => SessionPduParameter::ConnectAcceptItem(into_sub_parameters(parameter_value)?),
+            SESSION_USER_REQUIREMENTS_PARAMETER_CODE => SessionPduParameter::SessionUserRequirementsItem(parse_session_user_requirements(parameter_value)?),
+            USER_DATA_PARAMETER_CODE => SessionPduParameter::UserData(parameter_value.to_vec()),
+            DATA_OVERFLOW_PARAMETER_CODE => SessionPduParameter::DataOverflowItem(parse_data_overflow(data)?),
+            EXTENDED_USER_DATA_PARAMETER_CODE => SessionPduParameter::ExtendedUserData(parameter_value.to_vec()),
             _ => SessionPduParameter::Unknown(parameter_tag, parameter_value.to_vec()),
         });
     }
@@ -47,35 +57,26 @@ fn into_parameters(data: &[u8]) -> Result<Vec<SessionPduParameter>, IsoSpError> 
 }
 
 fn into_sub_parameters(data: &[u8]) -> Result<Vec<SessionPduSubParameter>, IsoSpError> {
-    let mut offset = 0;
+    let raw_parameters = slice_data(data)?;
     let mut parameters = Vec::new();
 
-    while offset < data.len() {
-        let (parameter_tag, parameter_offset, parameter_length) = if (data.len() - offset) < 2 {
-            return Err(IsoSpError::ProtocolError(format!("Not enough data to form an SPDU sub parameter group. Needed at least 2 bytes but {} found", data.len())));
-        } else if data[offset + 1] == 0xFF && (data.len() - offset) < 4 {
-            return Err(IsoSpError::ProtocolError(format!("Not enough data to form an SPDU sub parameter group. Needed at least 4 bytes but {} found", data.len())));
-        } else if data[offset + 1] == 0xFF {
-            (
-                data[offset],
-                offset + 4,
-                u16::from_be_bytes(data[(offset + 1)..(offset + 3)].try_into().map_err(|e: std::array::TryFromSliceError| IsoSpError::InternalError(e.to_string()))?) as usize,
-            )
-        } else {
-            (data[offset], offset + 2, data[offset + 1] as usize)
-        };
-
+    for (parameter_tag, parameter_value) in raw_parameters {
         parameters.push(match parameter_tag {
-            // CONNECT_ACCEPT_PARAMETER_CODE => SessionPduSubParameter::ProtocolOptionsParameter(())
-            _ => SessionPduSubParameter::Unknown(parameter_tag, Vec::new()),
+            PROTOCOL_OPTIONS_PARAMETER_CODE => SessionPduSubParameter::ProtocolOptionsParameter(parse_protocol_options(parameter_value)?),
+            VERSION_NUMBER_PARAMETER_CODE => SessionPduSubParameter::VersionNumberParameter(parse_version_number(parameter_value)?),
+            TSDU_MAXIMUM_SIZE_PARAMETER_CODE => SessionPduSubParameter::TsduMaximumSizeParameter(parse_tsdu_maximum_size(data)?),
+            _ => SessionPduSubParameter::Unknown(parameter_tag, parameter_value.to_vec()),
         });
     }
-
     Ok(parameters)
 }
 
 pub enum SessionPduParameter {
     ConnectAcceptItem(Vec<SessionPduSubParameter>),
+    SessionUserRequirementsItem(SessionUserRequirements),
+    UserData(Vec<u8>),
+    DataOverflowItem(DataOverflow),
+    ExtendedUserData(Vec<u8>),
     Unknown(u8, Vec<u8>),
 }
 
@@ -84,10 +85,41 @@ pub enum SessionPduSubParameter {
     VersionNumberParameter(SupportedVersions),
     TsduMaximumSizeParameter(TsduMaximumSize),
     SessionUserRequirements(SessionUserRequirements),
-    UserData(Vec<u8>),         // Techincally a parameter group. But it parses like a parameter.
-    ExtendedUserData(Vec<u8>), // Techincally a parameter group. But it parses like a parameter.
-    DataOverflow(u8),
     Unknown(u8, Vec<u8>),
+}
+
+fn parse_protocol_options(data: &[u8]) -> Result<ProtocolOptions, IsoSpError> {
+    verify_length("Protocol Parameters", 1, data)?;
+    Ok(ProtocolOptions(data[0]))
+}
+
+fn parse_version_number(data: &[u8]) -> Result<SupportedVersions, IsoSpError> {
+    verify_length("Version Number", 1, data)?;
+    Ok(SupportedVersions(data[0]))
+}
+
+fn parse_tsdu_maximum_size(data: &[u8]) -> Result<TsduMaximumSize, IsoSpError> {
+    verify_length("TSDU Maximum Size", 4, data)?;
+    Ok(TsduMaximumSize(u32::from_be_bytes(data.try_into().map_err(|e: std::array::TryFromSliceError| IsoSpError::ProtocolError(e.to_string()))?)))
+}
+
+fn parse_session_user_requirements(data: &[u8]) -> Result<SessionUserRequirements, IsoSpError> {
+    verify_length("Session User Requirements", 2, data)?;
+    Ok(SessionUserRequirements(u16::from_be_bytes(
+        data.try_into().map_err(|e: std::array::TryFromSliceError| IsoSpError::ProtocolError(e.to_string()))?,
+    )))
+}
+
+fn parse_data_overflow(data: &[u8]) -> Result<DataOverflow, IsoSpError> {
+    verify_length("Data Overflow", 1, data)?;
+    Ok(DataOverflow(data[0]))
+}
+
+fn verify_length(label: &str, expected_length: usize, data: &[u8]) -> Result<(), IsoSpError> {
+    if expected_length != data.len() {
+        return Err(IsoSpError::ProtocolError(format!("Invalid Length: {} - Expected {}, Got {}", label, expected_length, data.len())));
+    }
+    Ok(())
 }
 
 bitfield! {
@@ -141,6 +173,19 @@ impl Default for SessionUserRequirements {
     }
 }
 
+bitfield! {
+    pub struct DataOverflow(u8);
+
+    more_data, _ : 0; // The only valid value is true
+    reserved, _ : 1, 7;
+}
+
+impl Default for DataOverflow {
+    fn default() -> Self {
+        Self(0x01)
+    }
+}
+
 fn slice_data(data: &[u8]) -> Result<Vec<(u8, &[u8])>, IsoSpError> {
     let mut offset = 0;
     let mut slices = Vec::new();
@@ -154,15 +199,81 @@ fn slice_data(data: &[u8]) -> Result<Vec<(u8, &[u8])>, IsoSpError> {
             (
                 data[offset],
                 offset + 4,
-                u16::from_be_bytes(data[(offset + 1)..(offset + 3)].try_into().map_err(|e: std::array::TryFromSliceError| IsoSpError::InternalError(e.to_string()))?) as usize,
+                u16::from_be_bytes(data[(offset + 2)..(offset + 4)].try_into().map_err(|e: std::array::TryFromSliceError| IsoSpError::InternalError(e.to_string()))?) as usize,
             )
         } else {
             (data[offset], offset + 2, data[offset + 1] as usize)
         };
 
-        slices.push((data[offset], &data[data_offset..(data_offset + data_length)]));
+        if data.len() < data_offset + data_length {
+            return Err(IsoSpError::ProtocolError(format!(
+                "Not enough data to form an SPDU. Needed at least {} bytes but {} found",
+                data_offset + data_length,
+                data.len()
+            )));
+        }
+
+        slices.push((tag, &data[data_offset..(data_offset + data_length)]));
         offset = data_offset + data_length
     }
 
     Ok(slices)
+}
+
+#[cfg(test)]
+mod tests {
+    use tracing_test::traced_test;
+
+    use super::*;
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_split_data() -> Result<(), anyhow::Error> {
+        let mut payload_data = vec![0u8; 0x32];
+        rand::fill(payload_data.as_mut_slice());
+
+        let mut payload: Vec<u8> = vec![0x12, 0x32];
+        payload.extend_from_slice(payload_data.as_slice());
+        let data_items = slice_data(&payload)?;
+        assert_eq!(1, data_items.len());
+        assert_eq!(0x12, data_items[0].0);
+        assert_eq!(payload_data, data_items[0].1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_split_long_data() -> Result<(), anyhow::Error> {
+        let mut payload_data = vec![0u8; 61234];
+        rand::fill(payload_data.as_mut_slice());
+
+        let mut payload: Vec<u8> = vec![0xab, 0xff, 0xef, 0x32];
+        payload.extend_from_slice(payload_data.as_slice());
+        let data_items = slice_data(&payload)?;
+        assert_eq!(1, data_items.len());
+        assert_eq!(0xab, data_items[0].0);
+        assert_eq!(payload_data, data_items[0].1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_split_composite_data() -> Result<(), anyhow::Error> {
+        let mut payload: Vec<u8> = vec![0xab, 0x03, 0xfe, 0xdc, 0xba];
+        payload.extend_from_slice(&[0x98, 0x00]);
+        payload.extend_from_slice(&[0x76, 0x01, 0x54]);
+
+        let data_items = slice_data(&payload)?;
+        assert_eq!(3, data_items.len());
+        assert_eq!(0xab, data_items[0].0);
+        assert_eq!(&[0xfe, 0xdc, 0xba], data_items[0].1.iter().as_slice());
+        assert_eq!(0x98, data_items[1].0);
+        assert_eq!(0, data_items[1].1.len());
+        assert_eq!(0x76, data_items[2].0);
+        assert_eq!(&[0x54], data_items[2].1.iter().as_slice());
+
+        Ok(())
+    }
 }
