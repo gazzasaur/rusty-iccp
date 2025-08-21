@@ -3,13 +3,25 @@ use bitfield::bitfield;
 use crate::api::IsoSpError;
 
 pub const CONNECT_SERVICE_PDU_CODE: u8 = 13;
+pub const OVERFLOW_ACCEPT_SERVICE_PDU_CODE: u8 = 16;
+pub const CONNECT_DATA_OVERFLOW_SERVICE_PDU_CODE: u8 = 15;
+pub const ACCEPT_SERVICE_PDU_CODE: u8 = 14;
+pub const REFUSE_SERVICE_PDU_CODE: u8 = 12;
+pub const FINISH_SERVICE_PDU_CODE: u8 = 9;
+pub const DISCONNECT_SERVICE_PDU_CODE: u8 = 10;
+pub const ABORT_SERVICE_PDU_CODE: u8 = 25;
+pub const DATA_TRANSFER_SERVICE_PDU_CODE: u8 = 26;
 
 pub const CONNECT_ACCEPT_ITEM_PARAMETER_CODE: u8 = 5;
 pub const USER_DATA_PARAMETER_CODE: u8 = 193;
 pub const EXTENDED_USER_DATA_PARAMETER_CODE: u8 = 194;
+pub const TRANSPORT_DISCONNECT_PARAMETER_CODE: u8 = 17;
 
 pub const SESSION_USER_REQUIREMENTS_PARAMETER_CODE: u8 = 20;
 pub const DATA_OVERFLOW_PARAMETER_CODE: u8 = 60;
+pub const ENCLOSURE_ITEM_PARAMETER_CODE: u8 = 25;
+pub const REASON_CODE_PARAMETER_CODE: u8 = 50;
+pub const REFLECT_PARAMETER_VALUES_PARAMETER_CODE: u8 = 49;
 
 pub const PROTOCOL_OPTIONS_PARAMETER_CODE: u8 = 19;
 pub const TSDU_MAXIMUM_SIZE_PARAMETER_CODE: u8 = 21;
@@ -17,25 +29,46 @@ pub const VERSION_NUMBER_PARAMETER_CODE: u8 = 22;
 
 pub enum SessionPdu {
     Connect(Vec<SessionPduParameter>),
+    OverflowAccept(Vec<SessionPduParameter>),
+    ConnectDataOverflow(Vec<SessionPduParameter>),
+    Accept(Vec<SessionPduParameter>),
+    Refuse(Vec<SessionPduParameter>),
+    Finish(Vec<SessionPduParameter>),
+    Disconnect(Vec<SessionPduParameter>),
+    Abort(Vec<SessionPduParameter>),
+    DataTransfer(Vec<SessionPduParameter>),
+
+    AbortAccept(Vec<SessionPduParameter>),
+    GiveTokens(Vec<SessionPduParameter>),
+
     Unknown(u8, Vec<u8>),
 }
 
-impl TryFrom<&[u8]> for SessionPdu {
+pub struct SessionPduList(pub Vec<SessionPdu>);
+
+impl TryFrom<&[u8]> for SessionPduList {
     type Error = IsoSpError;
 
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         let pdus = slice_data(data)?;
+        let mut session_pdus = Vec::new();
 
-        if pdus.len() > 1 {
-            return Err(IsoSpError::ProtocolError("Concatenated pdus were detected but it is not supported.".into()));
-        } else if pdus.len() == 0 {
-            return Err(IsoSpError::ProtocolError("No data detected.".into()));
+        for (tag, pdu_data) in pdus {
+            session_pdus.push(match tag {
+                CONNECT_SERVICE_PDU_CODE => SessionPdu::Connect(into_parameters(pdu_data)?),
+                OVERFLOW_ACCEPT_SERVICE_PDU_CODE => SessionPdu::OverflowAccept(into_parameters(pdu_data)?),
+                ACCEPT_SERVICE_PDU_CODE => SessionPdu::Accept(into_parameters(pdu_data)?),
+                CONNECT_DATA_OVERFLOW_SERVICE_PDU_CODE => SessionPdu::ConnectDataOverflow(into_parameters(pdu_data)?),
+                REFUSE_SERVICE_PDU_CODE => SessionPdu::Refuse(into_parameters(pdu_data)?),
+                FINISH_SERVICE_PDU_CODE => SessionPdu::Finish(into_parameters(pdu_data)?),
+                DISCONNECT_SERVICE_PDU_CODE => SessionPdu::Disconnect(into_parameters(pdu_data)?),
+                ABORT_SERVICE_PDU_CODE => SessionPdu::Abort(into_parameters(pdu_data)?),
+                DATA_TRANSFER_SERVICE_PDU_CODE => SessionPdu::DataTransfer(into_parameters(pdu_data)?),
+                _ => SessionPdu::Unknown(tag, pdu_data.to_vec()),
+            });
         }
 
-        Ok(match pdus[0].0 {
-            CONNECT_SERVICE_PDU_CODE => SessionPdu::Connect(into_parameters(pdus[0].1)?),
-            _ => SessionPdu::Unknown(pdus[0].0, pdus[0].1.to_vec()),
-        })
+        Ok(SessionPduList(session_pdus))
     }
 }
 
@@ -50,6 +83,10 @@ fn into_parameters(data: &[u8]) -> Result<Vec<SessionPduParameter>, IsoSpError> 
             USER_DATA_PARAMETER_CODE => SessionPduParameter::UserData(parameter_value.to_vec()),
             DATA_OVERFLOW_PARAMETER_CODE => SessionPduParameter::DataOverflowItem(parse_data_overflow(data)?),
             EXTENDED_USER_DATA_PARAMETER_CODE => SessionPduParameter::ExtendedUserData(parameter_value.to_vec()),
+            ENCLOSURE_ITEM_PARAMETER_CODE => SessionPduParameter::EnclosureItem(parse_enclosure_item(data)?),
+            TRANSPORT_DISCONNECT_PARAMETER_CODE => SessionPduParameter::TransportDisconnectItem(parse_transport_disconnect(data)?),
+            REASON_CODE_PARAMETER_CODE => parse_reason_code(data)?,
+            REFLECT_PARAMETER_VALUES_PARAMETER_CODE => SessionPduParameter::ReflectParameterValues(data.to_vec()),
             _ => SessionPduParameter::Unknown(parameter_tag, parameter_value.to_vec()),
         });
     }
@@ -76,7 +113,11 @@ pub enum SessionPduParameter {
     SessionUserRequirementsItem(SessionUserRequirements),
     UserData(Vec<u8>),
     DataOverflowItem(DataOverflow),
+    EnclosureItem(Enclosure),
     ExtendedUserData(Vec<u8>),
+    TransportDisconnectItem(TransportDisconnect),
+    ReasonCodeItem(ReasonCode, Vec<u8>),
+    ReflectParameterValues(Vec<u8>),
     Unknown(u8, Vec<u8>),
 }
 
@@ -115,9 +156,31 @@ fn parse_data_overflow(data: &[u8]) -> Result<DataOverflow, IsoSpError> {
     Ok(DataOverflow(data[0]))
 }
 
+fn parse_enclosure_item(data: &[u8]) -> Result<Enclosure, IsoSpError> {
+    verify_length("Enclosure Item", 1, data)?;
+    Ok(Enclosure(data[0]))
+}
+
+fn parse_transport_disconnect(data: &[u8]) -> Result<TransportDisconnect, IsoSpError> {
+    verify_length("Transport Disconnect", 1, data)?;
+    Ok(TransportDisconnect(data[0]))
+}
+
+fn parse_reason_code(data: &[u8]) -> Result<SessionPduParameter, IsoSpError> {
+    verify_length_greater("Reason Code", 0, data)?;
+    Ok(SessionPduParameter::ReasonCodeItem(data[0].into(), data[1..].to_vec()))
+}
+
 fn verify_length(label: &str, expected_length: usize, data: &[u8]) -> Result<(), IsoSpError> {
     if expected_length != data.len() {
         return Err(IsoSpError::ProtocolError(format!("Invalid Length: {} - Expected {}, Got {}", label, expected_length, data.len())));
+    }
+    Ok(())
+}
+
+fn verify_length_greater(label: &str, expected_length: usize, data: &[u8]) -> Result<(), IsoSpError> {
+    if expected_length >= data.len() {
+        return Err(IsoSpError::ProtocolError(format!("Invalid Length: {} - Expected to be greater than {}, Got {}", label, expected_length, data.len())));
     }
     Ok(())
 }
@@ -183,6 +246,61 @@ bitfield! {
 impl Default for DataOverflow {
     fn default() -> Self {
         Self(0x01)
+    }
+}
+
+bitfield! {
+    pub struct Enclosure(u8);
+
+    begining, _ : 0; // The only valid value is false
+    end, _ : 1;
+    reserved, _ : 2, 7;
+}
+
+impl Default for Enclosure {
+    fn default() -> Self {
+        Self(0x00)
+    }
+}
+
+bitfield! {
+    pub struct TransportDisconnect(u8);
+
+    keep_connection, _ : 0;
+    user_abort, _ : 1;
+    protocol_error, _ : 2;
+    no_reason, _ : 3;
+    implementation_restriction, _ : 4;
+    reserved, _ : 5, 7;
+}
+
+pub enum ReasonCode {
+    RejectionByCalledSsUser,
+    RejectionByCalledSsUserDueToTemporaryCongestion,
+    RejectionByCalledSsUserWithData,
+    SessionSelectorUnknown,
+    SsUserNotAttachedToSsap,
+    SpmCongestionAtConnectTime,
+    ProposedProtocolVersionsNotSupported,
+    RejectionByTheSpm,
+    RejectionByTheSpm2,
+    Unknown(u8),
+}
+
+impl From<u8> for ReasonCode {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => ReasonCode::RejectionByCalledSsUser,
+            1 => ReasonCode::RejectionByCalledSsUserDueToTemporaryCongestion,
+            2 => ReasonCode::RejectionByCalledSsUserWithData,
+            129 => ReasonCode::SessionSelectorUnknown,
+            130 => ReasonCode::SsUserNotAttachedToSsap,
+            131 => ReasonCode::SpmCongestionAtConnectTime,
+            132 => ReasonCode::ProposedProtocolVersionsNotSupported,
+            133 => ReasonCode::RejectionByTheSpm,
+            134 => ReasonCode::RejectionByTheSpm2,
+            x => ReasonCode::Unknown(x),
+        }
     }
 }
 
