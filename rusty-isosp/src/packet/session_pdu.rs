@@ -2,6 +2,10 @@ use bitfield::bitfield;
 
 use crate::api::IsoSpError;
 
+pub const TSDU_UNLIMIED_SIZE: usize = 0;
+
+pub const REMAINING_DATA_VIRTUAL_PDU_CODE: u8 = 0;
+
 pub const CONNECT_SERVICE_PDU_CODE: u8 = 13;
 pub const OVERFLOW_ACCEPT_SERVICE_PDU_CODE: u8 = 16;
 pub const CONNECT_DATA_OVERFLOW_SERVICE_PDU_CODE: u8 = 15;
@@ -10,7 +14,9 @@ pub const REFUSE_SERVICE_PDU_CODE: u8 = 12;
 pub const FINISH_SERVICE_PDU_CODE: u8 = 9;
 pub const DISCONNECT_SERVICE_PDU_CODE: u8 = 10;
 pub const ABORT_SERVICE_PDU_CODE: u8 = 25;
-pub const DATA_TRANSFER_SERVICE_PDU_CODE: u8 = 26;
+pub const DATA_TRANSFER_SERVICE_PDU_CODE: u8 = 1;
+pub const ABORT_ACCEEPT_SERVICE_PDU_CODE: u8 = 26;
+pub const GIVE_TOKENS_SERVICE_PDU_CODE: u8 = 1;
 
 pub const CONNECT_ACCEPT_ITEM_PARAMETER_CODE: u8 = 5;
 pub const USER_DATA_PARAMETER_CODE: u8 = 193;
@@ -36,8 +42,7 @@ pub enum SessionPdu {
     Finish(Vec<SessionPduParameter>),
     Disconnect(Vec<SessionPduParameter>),
     Abort(Vec<SessionPduParameter>),
-    DataTransfer(Vec<SessionPduParameter>),
-
+    DataTransfer(Vec<SessionPduParameter>), // Data Transfer and Give Tokens has the same SI.
     AbortAccept(Vec<SessionPduParameter>),
     GiveTokens(Vec<SessionPduParameter>),
 
@@ -46,12 +51,15 @@ pub enum SessionPdu {
 
 pub struct SessionPduList(pub Vec<SessionPdu>);
 
-impl TryFrom<&[u8]> for SessionPduList {
-    type Error = IsoSpError;
-
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        let pdus = slice_data(data)?;
+impl SessionPduList {
+    fn try_from(tsdu_size: usize, data: &[u8]) -> Result<Self, IsoSpError> {
+        let pdus = slice_data(data, 0)?;
         let mut session_pdus = Vec::new();
+
+        let slice_limit = match tsdu_size {
+            TSDU_UNLIMIED_SIZE => 1,
+            _ => 0,
+        };
 
         for (tag, pdu_data) in pdus {
             session_pdus.push(match tag {
@@ -63,7 +71,12 @@ impl TryFrom<&[u8]> for SessionPduList {
                 FINISH_SERVICE_PDU_CODE => SessionPdu::Finish(into_parameters(pdu_data)?),
                 DISCONNECT_SERVICE_PDU_CODE => SessionPdu::Disconnect(into_parameters(pdu_data)?),
                 ABORT_SERVICE_PDU_CODE => SessionPdu::Abort(into_parameters(pdu_data)?),
-                DATA_TRANSFER_SERVICE_PDU_CODE => SessionPdu::DataTransfer(into_parameters(pdu_data)?),
+                ABORT_ACCEEPT_SERVICE_PDU_CODE => SessionPdu::AbortAccept(into_parameters(pdu_data)?),
+
+                // Give token and data transfer are the same, but give token is always first.
+                GIVE_TOKENS_SERVICE_PDU_CODE if session_pdus.len() == 0 => SessionPdu::DataTransfer(into_parameters(pdu_data)?),
+                DATA_TRANSFER_SERVICE_PDU_CODE => SessionPdu::DataTransfer(into_sized_parameters(pdu_data, slice_limit)?),
+
                 _ => SessionPdu::Unknown(tag, pdu_data.to_vec()),
             });
         }
@@ -73,7 +86,11 @@ impl TryFrom<&[u8]> for SessionPduList {
 }
 
 fn into_parameters(data: &[u8]) -> Result<Vec<SessionPduParameter>, IsoSpError> {
-    let raw_parameters = slice_data(data)?;
+    into_sized_parameters(data, 0)
+}
+
+fn into_sized_parameters(data: &[u8], slice_limit: usize) -> Result<Vec<SessionPduParameter>, IsoSpError> {
+    let raw_parameters = slice_data(data, slice_limit)?;
     let mut parameters = Vec::new();
 
     for (parameter_tag, parameter_value) in raw_parameters {
@@ -87,6 +104,7 @@ fn into_parameters(data: &[u8]) -> Result<Vec<SessionPduParameter>, IsoSpError> 
             TRANSPORT_DISCONNECT_PARAMETER_CODE => SessionPduParameter::TransportDisconnectItem(parse_transport_disconnect(data)?),
             REASON_CODE_PARAMETER_CODE => parse_reason_code(data)?,
             REFLECT_PARAMETER_VALUES_PARAMETER_CODE => SessionPduParameter::ReflectParameterValues(data.to_vec()),
+            0 => SessionPduParameter::UserData(parameter_value.to_vec()),
             _ => SessionPduParameter::Unknown(parameter_tag, parameter_value.to_vec()),
         });
     }
@@ -94,7 +112,7 @@ fn into_parameters(data: &[u8]) -> Result<Vec<SessionPduParameter>, IsoSpError> 
 }
 
 fn into_sub_parameters(data: &[u8]) -> Result<Vec<SessionPduSubParameter>, IsoSpError> {
-    let raw_parameters = slice_data(data)?;
+    let raw_parameters = slice_data(data, 0)?;
     let mut parameters = Vec::new();
 
     for (parameter_tag, parameter_value) in raw_parameters {
@@ -207,6 +225,7 @@ impl Default for SupportedVersions {
 }
 
 bitfield! {
+    // Zero means unlimited
     pub struct TsduMaximumSize(u32);
 
     initiator, _ : 15, 0;
@@ -304,11 +323,12 @@ impl From<u8> for ReasonCode {
     }
 }
 
-fn slice_data(data: &[u8]) -> Result<Vec<(u8, &[u8])>, IsoSpError> {
+fn slice_data(data: &[u8], slice_limit: usize) -> Result<Vec<(u8, &[u8])>, IsoSpError> {
     let mut offset = 0;
+    let mut slice_count: usize = 0;
     let mut slices = Vec::new();
 
-    while offset < data.len() {
+    while offset < data.len() && (slice_limit == 0 || slice_count < slice_limit) {
         let (tag, data_offset, data_length) = if (data.len() - offset) < 2 {
             return Err(IsoSpError::ProtocolError(format!("Not enough data to form an SPDU. Needed at least 2 bytes but {} found", data.len())));
         } else if data[offset + 1] == 0xFF && data.len() < 4 {
@@ -334,6 +354,9 @@ fn slice_data(data: &[u8]) -> Result<Vec<(u8, &[u8])>, IsoSpError> {
         slices.push((tag, &data[data_offset..(data_offset + data_length)]));
         offset = data_offset + data_length
     }
+    if offset < data.len() {
+        slices.push((0, &data[offset..]));
+    }
 
     Ok(slices)
 }
@@ -352,7 +375,7 @@ mod tests {
 
         let mut payload: Vec<u8> = vec![0x12, 0x32];
         payload.extend_from_slice(payload_data.as_slice());
-        let data_items = slice_data(&payload)?;
+        let data_items = slice_data(&payload, 0)?;
         assert_eq!(1, data_items.len());
         assert_eq!(0x12, data_items[0].0);
         assert_eq!(payload_data, data_items[0].1);
@@ -368,7 +391,7 @@ mod tests {
 
         let mut payload: Vec<u8> = vec![0xab, 0xff, 0xef, 0x32];
         payload.extend_from_slice(payload_data.as_slice());
-        let data_items = slice_data(&payload)?;
+        let data_items = slice_data(&payload, 0)?;
         assert_eq!(1, data_items.len());
         assert_eq!(0xab, data_items[0].0);
         assert_eq!(payload_data, data_items[0].1);
@@ -383,7 +406,7 @@ mod tests {
         payload.extend_from_slice(&[0x98, 0x00]);
         payload.extend_from_slice(&[0x76, 0x01, 0x54]);
 
-        let data_items = slice_data(&payload)?;
+        let data_items = slice_data(&payload, 0)?;
         assert_eq!(3, data_items.len());
         assert_eq!(0xab, data_items[0].0);
         assert_eq!(&[0xfe, 0xdc, 0xba], data_items[0].1.iter().as_slice());
