@@ -1,8 +1,8 @@
+use std::collections::VecDeque;
+
 use bitfield::bitfield;
 
 use crate::api::IsoSpError;
-
-pub const TSDU_UNLIMIED_SIZE: usize = 0;
 
 pub const REMAINING_DATA_VIRTUAL_PDU_CODE: u8 = 0;
 
@@ -49,16 +49,21 @@ pub enum SessionPdu {
     Unknown(u8, Vec<u8>),
 }
 
+pub enum TsduMaximumSizeSelected {
+    Unlimited,
+    Size(usize),
+}
+
 pub struct SessionPduList(pub Vec<SessionPdu>);
 
 impl SessionPduList {
-    fn try_from(tsdu_size: usize, data: &[u8]) -> Result<Self, IsoSpError> {
+    fn try_from(tsdu_size: TsduMaximumSizeSelected, data: &[u8]) -> Result<Self, IsoSpError> {
         let pdus = slice_data(data, 0)?;
         let mut session_pdus = Vec::new();
 
         let slice_limit = match tsdu_size {
-            TSDU_UNLIMIED_SIZE => 1,
-            _ => 0,
+            TsduMaximumSizeSelected::Unlimited => 1,
+            _ => usize::MAX,
         };
 
         for (tag, pdu_data) in pdus {
@@ -83,6 +88,90 @@ impl SessionPduList {
 
         Ok(SessionPduList(session_pdus))
     }
+
+    pub fn serialise(&self) -> Result<Vec<u8>, IsoSpError> {
+        let mut data: VecDeque<u8> = VecDeque::new();
+
+        for pdu in self.0.as_slice() {
+            match pdu {
+                SessionPdu::Connect(session_pdu_parameters) => {
+                    let parameter_data = encode_parameters(session_pdu_parameters)?;
+                    data.push_back(CONNECT_SERVICE_PDU_CODE);
+                    data.extend(encode_length(parameter_data.len())?);
+                    data.extend(parameter_data);
+                }
+                SessionPdu::OverflowAccept(session_pdu_parameters) => todo!(),
+                SessionPdu::ConnectDataOverflow(session_pdu_parameters) => todo!(),
+                SessionPdu::Accept(session_pdu_parameters) => todo!(),
+                SessionPdu::Refuse(session_pdu_parameters) => todo!(),
+                SessionPdu::Finish(session_pdu_parameters) => todo!(),
+                SessionPdu::Disconnect(session_pdu_parameters) => todo!(),
+                SessionPdu::Abort(session_pdu_parameters) => todo!(),
+                SessionPdu::DataTransfer(session_pdu_parameters) => todo!(),
+                SessionPdu::AbortAccept(session_pdu_parameters) => todo!(),
+                SessionPdu::GiveTokens(session_pdu_parameters) => todo!(),
+                SessionPdu::Unknown(_, items) => todo!(),
+            }
+        }
+
+        Ok(data.into())
+    }
+}
+
+fn encode_parameters(parameters: &Vec<SessionPduParameter>) -> Result<Vec<u8>, IsoSpError> {
+    let mut data: VecDeque<u8> = VecDeque::new();
+
+    for parameter in parameters {
+        match parameter {
+            SessionPduParameter::ConnectAcceptItem(session_pdu_sub_parameters) => {
+                let parameter_data = encode_sub_parameters(session_pdu_sub_parameters);
+                data.push_back(CONNECT_ACCEPT_ITEM_PARAMETER_CODE);
+                data.extend(encode_length(parameter_data.len())?);
+                data.extend(parameter_data);
+            }
+            SessionPduParameter::SessionUserRequirementsItem(session_user_requirements) => todo!(),
+            SessionPduParameter::UserData(items) => todo!(),
+            SessionPduParameter::DataOverflowItem(data_overflow) => todo!(),
+            SessionPduParameter::EnclosureItem(enclosure) => todo!(),
+            SessionPduParameter::ExtendedUserData(items) => todo!(),
+            SessionPduParameter::TransportDisconnectItem(transport_disconnect) => todo!(),
+            SessionPduParameter::ReasonCodeItem(reason_code, items) => todo!(),
+            SessionPduParameter::ReflectParameterValues(items) => todo!(),
+            SessionPduParameter::Unknown(_, items) => todo!(),
+        }
+    }
+
+    Ok(data.into())
+}
+
+fn encode_length(length: usize) -> Result<Vec<u8>, IsoSpError> {
+    if length > u16::MAX as usize {
+        Err(IsoSpError::InternalError(format!("Parameter length is greater than max length {}", length)).into())
+    } else if length < 255 {
+        Ok(vec![length as u8])
+    } else {
+        let length_bytes = length.to_be_bytes();
+        Ok(vec![0xFF, length_bytes[0], length_bytes[1]])
+    }
+}
+
+fn encode_sub_parameters(parameters: &Vec<SessionPduSubParameter>) -> Vec<u8> {
+    let mut data: VecDeque<u8> = VecDeque::new();
+
+    for parameter in parameters {
+        match parameter {
+            SessionPduSubParameter::ProtocolOptionsParameter(protocol_options) => data.extend(vec![PROTOCOL_OPTIONS_PARAMETER_CODE, 0x01, protocol_options.0]),
+            SessionPduSubParameter::VersionNumberParameter(supported_versions) => data.extend(vec![VERSION_NUMBER_PARAMETER_CODE, 0x01, supported_versions.0]),
+            SessionPduSubParameter::TsduMaximumSizeParameter(tsdu_maximum_size) => todo!(),
+            SessionPduSubParameter::SessionUserRequirements(session_user_requirements) => {
+                data.extend(vec![SESSION_USER_REQUIREMENTS_PARAMETER_CODE, 0x02]);
+                data.extend(session_user_requirements.0.to_be_bytes());
+            }
+            SessionPduSubParameter::Unknown(_, items) => todo!(),
+        }
+    }
+
+    data.into()
 }
 
 fn into_parameters(data: &[u8]) -> Result<Vec<SessionPduParameter>, IsoSpError> {
@@ -104,7 +193,7 @@ fn into_sized_parameters(data: &[u8], slice_limit: usize) -> Result<Vec<SessionP
             TRANSPORT_DISCONNECT_PARAMETER_CODE => SessionPduParameter::TransportDisconnectItem(parse_transport_disconnect(data)?),
             REASON_CODE_PARAMETER_CODE => parse_reason_code(data)?,
             REFLECT_PARAMETER_VALUES_PARAMETER_CODE => SessionPduParameter::ReflectParameterValues(data.to_vec()),
-            0 => SessionPduParameter::UserData(parameter_value.to_vec()),
+            REMAINING_DATA_VIRTUAL_PDU_CODE => SessionPduParameter::UserData(parameter_value.to_vec()),
             _ => SessionPduParameter::Unknown(parameter_tag, parameter_value.to_vec()),
         });
     }

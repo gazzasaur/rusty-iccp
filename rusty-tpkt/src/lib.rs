@@ -23,11 +23,15 @@ mod tests {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let server = TcpTpktService::create_server(test_address).await?;
 
-        let client_connection = TcpTpktService::connect(test_address).await?;
-        let server_connection = server.accept().await?;
+        // This proves we can drop the connection after the split takes place.
+        let (mut client_reader, mut client_writer, mut server_reader, mut server_writer) = {
+            let client_connection = TcpTpktService::connect(test_address).await?;
+            let server_connection = server.accept().await?;
 
-        let (mut client_reader, mut client_writer) = TcpTpktConnection::split(client_connection).await?;
-        let (mut server_reader, mut server_writer) = TcpTpktConnection::split(server_connection).await?;
+            let (client_reader, client_writer) = TcpTpktConnection::split(client_connection).await?;
+            let (server_reader, server_writer) = TcpTpktConnection::split(server_connection).await?;
+            (client_reader, client_writer, server_reader, server_writer)
+        };
 
         server_writer.send(b"Hello").await?;
         client_writer.send(b"World").await?;
