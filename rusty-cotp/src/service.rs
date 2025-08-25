@@ -107,7 +107,7 @@ impl TcpCotpConnection {
             0,
             ConnectionClass::Class0,
             vec![],
-            vec![CotpParameter::TpduLengthParameter(TpduSize::Size1024)],
+            vec![CotpParameter::TpduLengthParameter(TpduSize::Size2048)],
             &[],
         )))?;
         Ok(writer.send(&payload.as_slice()).await?)
@@ -214,11 +214,8 @@ impl TcpCotpConnection {
 
 impl CotpConnection<SocketAddr> for TcpCotpConnection {
     #[allow(refining_impl_trait)]
-    async fn split<'a>(connection: Self) -> Result<(TcpCotpReader, TcpCotpWriter), CotpError> {
-        Ok((
-            TcpCotpReader::new(connection.reader, connection.parser),
-            TcpCotpWriter::new(connection.writer, connection.max_payload_size, connection.serialiser),
-        ))
+    async fn split<'a>(self) -> Result<(TcpCotpReader, TcpCotpWriter), CotpError> {
+        Ok((TcpCotpReader::new(self.reader, self.parser), TcpCotpWriter::new(self.writer, self.max_payload_size, self.serialiser)))
     }
 }
 
@@ -277,7 +274,12 @@ pub struct TcpCotpWriter {
 
 impl TcpCotpWriter {
     pub fn new(writer: TcpTpktWriter, max_payload_size: usize, serialiser: TransportProtocolDataUnitSerialiser) -> Self {
-        Self { writer, max_payload_size, serialiser, chunks: VecDeque::new() }
+        Self {
+            writer,
+            max_payload_size,
+            serialiser,
+            chunks: VecDeque::new(),
+        }
     }
 }
 

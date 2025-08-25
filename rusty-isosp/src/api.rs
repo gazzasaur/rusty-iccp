@@ -1,7 +1,11 @@
 use rusty_cotp::api::CotpError;
 use thiserror::Error;
 
- #[derive(Error, Debug)]
+// Do not allow any more than 1G or data to be buffered.
+// This is to help protect us against malicious clients and servers.
+pub const MAX_DATA_SIZE: usize = 2_000_000_000;
+
+#[derive(Error, Debug)]
 pub enum IsoSpError {
     #[error("Protocol Error - {}", .0)]
     ProtocolError(String),
@@ -23,7 +27,7 @@ pub enum IsoSpRecvResult {
 
 pub trait IsoSpService<T> {
     fn create_server<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + IsoSpServer<T>, IsoSpError>> + Send;
-    fn connect<'a>(address: T, connect_data: &[u8]) -> impl std::future::Future<Output = Result<impl 'a + IsoSpConnection<T>, IsoSpError>> + Send;
+    fn connect<'a>(address: T, connect_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl 'a + IsoSpConnection<T>, IsoSpError>> + Send;
 }
 
 pub trait IsoSpServer<T> {
@@ -31,11 +35,11 @@ pub trait IsoSpServer<T> {
 }
 
 pub trait IsoSpAcceptor<T> {
-    fn accept<'a>(acceptpr: Self, accept_data: &[u8]) -> impl std::future::Future<Output = Result<impl 'a + IsoSpConnection<T>, IsoSpError>> + Send;
+    fn accept<'a>(self, accept_data: &[u8]) -> impl std::future::Future<Output = Result<impl 'a + IsoSpConnection<T>, IsoSpError>> + Send;
 }
 
 pub trait IsoSpConnection<T> {
-    fn split<'a>(connection: Self) -> impl std::future::Future<Output = Result<(impl 'a + IsoSpReader<T> + Send, impl 'a + IsoSpWriter<T> + Send), IsoSpError>> + Send;
+    fn split<'a>(self) -> impl std::future::Future<Output = Result<(impl 'a + IsoSpReader<T> + Send, impl 'a + IsoSpWriter<T> + Send), IsoSpError>> + Send;
 }
 
 pub trait IsoSpReader<T> {

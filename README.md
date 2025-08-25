@@ -8,6 +8,16 @@ Using async rust as it is much easier for IO bound operations like the vast majo
 
 This implementation binds the networking stack to TCP Sockets. If a session is disconnected at the ICCP/MMS/Presentation/Session layer, all the lower layers will be disconnected. 
 
+### Size limits
+
+This stack imposes a size limit of 2G on all data.
+This is an attempt to prvent bad actors from overloading a system.
+However, this limit is likely to be far too large for embedded systems to handle.
+Embedded systems should still be constrainted to a secure environment and be connected by secure means.
+Most of this is out of scope of this package.
+
+TLS is not currently supported but will be.
+
 ### Not actively closing sockets
 
 COTP does not actively close the socket on disconnect.

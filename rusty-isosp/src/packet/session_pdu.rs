@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use bitfield::bitfield;
+use strum::IntoStaticStr;
 
 use crate::api::IsoSpError;
 
@@ -33,6 +34,7 @@ pub const PROTOCOL_OPTIONS_PARAMETER_CODE: u8 = 19;
 pub const TSDU_MAXIMUM_SIZE_PARAMETER_CODE: u8 = 21;
 pub const VERSION_NUMBER_PARAMETER_CODE: u8 = 22;
 
+#[derive(Debug, IntoStaticStr)]
 pub enum SessionPdu {
     Connect(Vec<SessionPduParameter>),
     OverflowAccept(Vec<SessionPduParameter>),
@@ -51,13 +53,14 @@ pub enum SessionPdu {
 
 pub enum TsduMaximumSizeSelected {
     Unlimited,
-    Size(usize),
+    Size(u16),
 }
 
+#[derive(Debug)]
 pub struct SessionPduList(pub Vec<SessionPdu>);
 
 impl SessionPduList {
-    fn try_from(tsdu_size: TsduMaximumSizeSelected, data: &[u8]) -> Result<Self, IsoSpError> {
+    pub fn deserialise(tsdu_size: TsduMaximumSizeSelected, data: &[u8]) -> Result<Self, IsoSpError> {
         let pdus = slice_data(data, 0)?;
         let mut session_pdus = Vec::new();
 
@@ -80,7 +83,7 @@ impl SessionPduList {
 
                 // Give token and data transfer are the same, but give token is always first.
                 GIVE_TOKENS_SERVICE_PDU_CODE if session_pdus.len() == 0 => SessionPdu::DataTransfer(into_parameters(pdu_data)?),
-                DATA_TRANSFER_SERVICE_PDU_CODE => SessionPdu::DataTransfer(into_sized_parameters(pdu_data, slice_limit)?),
+                DATA_TRANSFER_SERVICE_PDU_CODE => SessionPdu::DataTransfer(into_parameters_with_limit(pdu_data, slice_limit)?),
 
                 _ => SessionPdu::Unknown(tag, pdu_data.to_vec()),
             });
@@ -102,7 +105,12 @@ impl SessionPduList {
                 }
                 SessionPdu::OverflowAccept(session_pdu_parameters) => todo!(),
                 SessionPdu::ConnectDataOverflow(session_pdu_parameters) => todo!(),
-                SessionPdu::Accept(session_pdu_parameters) => todo!(),
+                SessionPdu::Accept(session_pdu_parameters) => {
+                    let parameter_data = encode_parameters(session_pdu_parameters)?;
+                    data.push_back(ACCEPT_SERVICE_PDU_CODE);
+                    data.extend(encode_length(parameter_data.len())?);
+                    data.extend(parameter_data);
+                }
                 SessionPdu::Refuse(session_pdu_parameters) => todo!(),
                 SessionPdu::Finish(session_pdu_parameters) => todo!(),
                 SessionPdu::Disconnect(session_pdu_parameters) => todo!(),
@@ -124,12 +132,15 @@ fn encode_parameters(parameters: &Vec<SessionPduParameter>) -> Result<Vec<u8>, I
     for parameter in parameters {
         match parameter {
             SessionPduParameter::ConnectAcceptItem(session_pdu_sub_parameters) => {
-                let parameter_data = encode_sub_parameters(session_pdu_sub_parameters);
-                data.push_back(CONNECT_ACCEPT_ITEM_PARAMETER_CODE);
-                data.extend(encode_length(parameter_data.len())?);
-                data.extend(parameter_data);
-            }
-            SessionPduParameter::SessionUserRequirementsItem(session_user_requirements) => todo!(),
+                        let parameter_data = encode_sub_parameters(session_pdu_sub_parameters);
+                        data.push_back(CONNECT_ACCEPT_ITEM_PARAMETER_CODE);
+                        data.extend(encode_length(parameter_data.len())?);
+                        data.extend(parameter_data);
+                    }
+            SessionPduParameter::SessionUserRequirementsItem(session_user_requirements) => {
+                        data.extend(vec![SESSION_USER_REQUIREMENTS_PARAMETER_CODE, 0x02]);
+                        data.extend(session_user_requirements.0.to_be_bytes());
+                    }
             SessionPduParameter::UserData(items) => todo!(),
             SessionPduParameter::DataOverflowItem(data_overflow) => todo!(),
             SessionPduParameter::EnclosureItem(enclosure) => todo!(),
@@ -138,6 +149,8 @@ fn encode_parameters(parameters: &Vec<SessionPduParameter>) -> Result<Vec<u8>, I
             SessionPduParameter::ReasonCodeItem(reason_code, items) => todo!(),
             SessionPduParameter::ReflectParameterValues(items) => todo!(),
             SessionPduParameter::Unknown(_, items) => todo!(),
+            SessionPduParameter::VersionNumberParameter(supported_versions) => todo!(),
+            SessionPduParameter::TsduMaximumSizeParameter(tsdu_maximum_size) => todo!(),
         }
     }
 
@@ -175,10 +188,10 @@ fn encode_sub_parameters(parameters: &Vec<SessionPduSubParameter>) -> Vec<u8> {
 }
 
 fn into_parameters(data: &[u8]) -> Result<Vec<SessionPduParameter>, IsoSpError> {
-    into_sized_parameters(data, 0)
+    into_parameters_with_limit(data, usize::MAX)
 }
 
-fn into_sized_parameters(data: &[u8], slice_limit: usize) -> Result<Vec<SessionPduParameter>, IsoSpError> {
+fn into_parameters_with_limit(data: &[u8], slice_limit: usize) -> Result<Vec<SessionPduParameter>, IsoSpError> {
     let raw_parameters = slice_data(data, slice_limit)?;
     let mut parameters = Vec::new();
 
@@ -215,6 +228,7 @@ fn into_sub_parameters(data: &[u8]) -> Result<Vec<SessionPduSubParameter>, IsoSp
     Ok(parameters)
 }
 
+#[derive(Debug)]
 pub enum SessionPduParameter {
     ConnectAcceptItem(Vec<SessionPduSubParameter>),
     SessionUserRequirementsItem(SessionUserRequirements),
@@ -225,9 +239,14 @@ pub enum SessionPduParameter {
     TransportDisconnectItem(TransportDisconnect),
     ReasonCodeItem(ReasonCode, Vec<u8>),
     ReflectParameterValues(Vec<u8>),
+
+    VersionNumberParameter(SupportedVersions),
+    TsduMaximumSizeParameter(TsduMaximumSize),
+
     Unknown(u8, Vec<u8>),
 }
 
+#[derive(Debug)]
 pub enum SessionPduSubParameter {
     ProtocolOptionsParameter(ProtocolOptions),
     VersionNumberParameter(SupportedVersions),
@@ -293,17 +312,19 @@ fn verify_length_greater(label: &str, expected_length: usize, data: &[u8]) -> Re
 }
 
 bitfield! {
+    #[derive(Debug)]
     pub struct ProtocolOptions(u8);
 
-    extended_concatenated_spdu_support, _ : 0;
+    pub extended_concatenated_spdu_support, _ : 0;
     reserved, _ : 7, 1;
 }
 
 bitfield! {
+    #[derive(Debug)]
     pub struct SupportedVersions(u8);
 
-    version1, _ : 0;
-    version2, _ : 1;
+    pub version1, _ : 0;
+    pub version2, _ : 1;
     reserved2, _ : 7, 2;
 }
 
@@ -315,27 +336,29 @@ impl Default for SupportedVersions {
 
 bitfield! {
     // Zero means unlimited
+    #[derive(Debug)]
     pub struct TsduMaximumSize(u32);
 
-    initiator, _ : 15, 0;
-    responder, _ : 16, 31;
+    pub u16, responder, _ : 0, 15;
+    pub u16, initiator, _ : 16, 31;
 }
 
 bitfield! {
+    #[derive(Debug)]
     pub struct SessionUserRequirements(u16);
 
-    half_duplex, _ : 0;
-    full_duplex, _ : 1;
-    expedited, _ : 2;
-    minor_synchronize, _ : 3;
-    major_synchronize, _ : 4;
-    resynchronize, _ : 5;
-    activity_management, _ : 6;
-    negotiated_release, _ : 7;
-    capability_data, _ : 8;
-    exceptions, _ : 9;
-    typed_data, _ : 10;
-    reserved, _ : 15, 11;
+    pub half_duplex, _ : 0;
+    pub full_duplex, _ : 1;
+    pub expedited, _ : 2;
+    pub minor_synchronize, _ : 3;
+    pub major_synchronize, _ : 4;
+    pub resynchronize, _ : 5;
+    pub activity_management, _ : 6;
+    pub negotiated_release, _ : 7;
+    pub capability_data, _ : 8;
+    pub exceptions, _ : 9;
+    pub typed_data, _ : 10;
+    pub reserved, _ : 15, 11;
 }
 
 impl Default for SessionUserRequirements {
@@ -345,9 +368,10 @@ impl Default for SessionUserRequirements {
 }
 
 bitfield! {
+    #[derive(Debug)]
     pub struct DataOverflow(u8);
 
-    more_data, _ : 0; // The only valid value is true
+    pub more_data, _ : 0; // The only valid value is true
     reserved, _ : 1, 7;
 }
 
@@ -358,6 +382,7 @@ impl Default for DataOverflow {
 }
 
 bitfield! {
+    #[derive(Debug)]
     pub struct Enclosure(u8);
 
     begining, _ : 0; // The only valid value is false
@@ -372,6 +397,7 @@ impl Default for Enclosure {
 }
 
 bitfield! {
+    #[derive(Debug)]
     pub struct TransportDisconnect(u8);
 
     keep_connection, _ : 0;
@@ -382,6 +408,7 @@ bitfield! {
     reserved, _ : 5, 7;
 }
 
+#[derive(Debug)]
 pub enum ReasonCode {
     RejectionByCalledSsUser,
     RejectionByCalledSsUserDueToTemporaryCongestion,

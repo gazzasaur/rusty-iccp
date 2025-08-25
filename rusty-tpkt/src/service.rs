@@ -61,8 +61,8 @@ impl TpktConnection<SocketAddr> for TcpTpktConnection {
     }
 
     #[allow(refining_impl_trait)]
-    async fn split<'a>(connection: TcpTpktConnection) -> Result<(TcpTpktReader, TcpTpktWriter), TpktError> {
-        Ok((connection.reader, connection.writer))
+    async fn split<'a>(self) -> Result<(TcpTpktReader, TcpTpktWriter), TpktError> {
+        Ok((self.reader, self.writer))
     }
 }
 

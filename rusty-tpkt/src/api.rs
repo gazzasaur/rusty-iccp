@@ -28,7 +28,7 @@ pub trait TpktServer<T> {
 
 pub trait TpktConnection<T> {
     fn remote_host(&self) -> T;
-    fn split<'a>(connection: Self) -> impl std::future::Future<Output = Result<(impl 'a + TpktReader<T> + Send, impl 'a + TpktWriter<T> + Send), TpktError>> + Send;
+    fn split<'a>(self) -> impl std::future::Future<Output = Result<(impl 'a + TpktReader<T> + Send, impl 'a + TpktWriter<T> + Send), TpktError>> + Send;
 }
 
 pub trait TpktReader<T> {

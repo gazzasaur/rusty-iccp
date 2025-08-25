@@ -28,8 +28,8 @@ mod tests {
             let client_connection = TcpTpktService::connect(test_address).await?;
             let server_connection = server.accept().await?;
 
-            let (client_reader, client_writer) = TcpTpktConnection::split(client_connection).await?;
-            let (server_reader, server_writer) = TcpTpktConnection::split(server_connection).await?;
+            let (client_reader, client_writer) = client_connection.split().await?;
+            let (server_reader, server_writer) = server_connection.split().await?;
             (client_reader, client_writer, server_reader, server_writer)
         };
 
@@ -103,8 +103,8 @@ mod tests {
         let client_connection = TcpTpktService::connect(test_address).await?;
         let server_connection = server.accept().await?;
 
-        let (mut client_reader, mut client_writer) = TcpTpktConnection::split(client_connection).await?;
-        let (mut server_reader, mut server_writer) = TcpTpktConnection::split(server_connection).await?;
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
         server_writer.send(b"Hello").await?;
         server_writer.send(b"World").await?;
@@ -176,8 +176,8 @@ mod tests {
         let client_connection = TcpTpktService::connect(test_address).await?;
         let server_connection = server.accept().await?;
 
-        let (mut client_reader, mut client_writer) = TcpTpktConnection::split(client_connection).await?;
-        let (mut server_reader, mut server_writer) = TcpTpktConnection::split(server_connection).await?;
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
         server_writer.send(b"Hello").await?;
         client_writer.send(b"World").await?;
@@ -251,8 +251,8 @@ mod tests {
 
         drop(server);
 
-        let (mut client_reader, mut client_writer) = TcpTpktConnection::split(client_connection).await?;
-        let (mut server_reader, mut server_writer) = TcpTpktConnection::split(server_connection).await?;
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
         server_writer.send(b"").await?;
         client_writer.send(b"World").await?;
@@ -327,8 +327,8 @@ mod tests {
         let mut buffer = [0u8; 65531];
         rand::rng().fill_bytes(&mut buffer[..]);
 
-        let (mut client_reader, mut client_writer) = TcpTpktConnection::split(client_connection).await?;
-        let (mut server_reader, mut server_writer) = TcpTpktConnection::split(server_connection).await?;
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
         server_writer.send(&buffer).await?;
         client_writer.send(b"World").await?;
@@ -403,8 +403,8 @@ mod tests {
         let mut over_buffer = [0u8; 65532];
         rand::rng().fill_bytes(&mut over_buffer[..]);
 
-        let (mut client_reader, mut client_writer) = TcpTpktConnection::split(client_connection).await?;
-        let (mut server_reader, mut server_writer) = TcpTpktConnection::split(server_connection).await?;
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
         match server_writer.send(&over_buffer).await {
             Ok(_) => assert!(false, "This was expected to fail as it is over the max payload limit"),

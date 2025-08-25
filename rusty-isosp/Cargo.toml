@@ -13,6 +13,7 @@ thiserror = "2.0.12"
 tokio = { version = "1.47.1", features = ["full"] }
 num-derive = "0.4.2"
 bitfield = "0.19.1"
+strum = { version = "0.27.2", features = ["derive"] }
 
 [dev-dependencies]
 hex = "0.4.3"

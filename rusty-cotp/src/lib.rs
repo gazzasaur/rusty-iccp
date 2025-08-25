@@ -14,7 +14,7 @@ mod tests {
 
     use crate::{
         api::{CotpConnection, CotpReader, CotpServer, CotpService, CotpWriter},
-        service::{TcpCotpConnection, TcpCotpService},
+        service::TcpCotpService,
     };
 
     use super::*;
@@ -29,8 +29,8 @@ mod tests {
             let listener = TcpCotpService::create_server(test_address).await?;
             let (client, server) = join!(TcpCotpService::connect(test_address), listener.accept());
 
-            let (client_read, client_writer) = TcpCotpConnection::split(client?).await?;
-            let (server_read, server_writer) = TcpCotpConnection::split(server?).await?;
+            let (client_read, client_writer) = client?.split().await?;
+            let (server_read, server_writer) = server?.split().await?;
 
             (client_read, client_writer, server_read, server_writer)
         };
@@ -57,8 +57,8 @@ mod tests {
         let listener = TcpCotpService::create_server(test_address).await?;
         let (client, server) = join!(TcpCotpService::connect(test_address), listener.accept());
 
-        let (mut client_read, mut client_writer) = TcpCotpConnection::split(client?).await?;
-        let (mut server_read, mut server_writer) = TcpCotpConnection::split(server?).await?;
+        let (mut client_read, mut client_writer) = client?.split().await?;
+        let (mut server_read, mut server_writer) = server?.split().await?;
 
         let mut over_buffer = [0u8; 100000];
         rand::rng().fill_bytes(&mut over_buffer[..]);
@@ -87,8 +87,8 @@ mod tests {
         let listener = TcpCotpService::create_server(test_address).await?;
         let (client, server) = join!(TcpCotpService::connect(test_address), listener.accept());
 
-        let (mut client_read, mut client_writer) = TcpCotpConnection::split(client?).await?;
-        let (mut server_read, mut server_writer) = TcpCotpConnection::split(server?).await?;
+        let (mut client_read, mut client_writer) = client?.split().await?;
+        let (mut server_read, mut server_writer) = server?.split().await?;
 
         let mut over_buffer = [0u8; 1024];
         let mut data_buffer = Vec::new();
