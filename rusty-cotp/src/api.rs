@@ -31,7 +31,7 @@ pub trait CotpServer<T> {
 }
 
 pub trait CotpConnection<T> {
-    fn split<'a>(self) -> impl std::future::Future<Output = Result<(impl 'a + CotpReader<T> + Send, impl 'a + CotpWriter<T> + Send), CotpError>> + Send;
+    fn split(self) -> impl std::future::Future<Output = Result<(impl CotpReader<T> + Send, impl CotpWriter<T> + Send), CotpError>> + Send;
 }
 
 pub trait CotpReader<T> {

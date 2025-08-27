@@ -38,7 +38,7 @@ mod tests {
     async fn parse_payloads_happy() -> Result<(), anyhow::Error> {
         let subject = TransportProtocolDataUnitParser::new();
 
-        assert_eq!(subject.parse(hex::decode("06810000000000")?.as_slice())?, TransportProtocolDataUnit::DR(DisconnectRequest::new(0, 0, 0.into(), vec![], &[])));
+        assert_eq!(subject.parse(hex::decode("06800000000000")?.as_slice())?, TransportProtocolDataUnit::DR(DisconnectRequest::new(0, 0, 0.into(), vec![], &[])));
 
         Ok(())
     }
@@ -48,7 +48,7 @@ mod tests {
     async fn parse_payloads_with_alternative_classes_happy() -> Result<(), anyhow::Error> {
         let subject = TransportProtocolDataUnitParser::new();
 
-        assert_eq!(subject.parse(hex::decode("06810000000080")?.as_slice())?, TransportProtocolDataUnit::DR(DisconnectRequest::new(0, 0, 128.into(), vec![], &[])));
+        assert_eq!(subject.parse(hex::decode("06800000000080")?.as_slice())?, TransportProtocolDataUnit::DR(DisconnectRequest::new(0, 0, 128.into(), vec![], &[])));
 
         Ok(())
     }
@@ -59,7 +59,7 @@ mod tests {
         let subject = TransportProtocolDataUnitParser::new();
 
         assert_eq!(
-            subject.parse(hex::decode("0D8100000000C8AB0548656C6C6F")?.as_slice())?,
+            subject.parse(hex::decode("0D8000000000C8AB0548656C6C6F")?.as_slice())?,
             TransportProtocolDataUnit::DR(DisconnectRequest::new(0, 0, 200.into(), vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])], &[]))
         );
 
@@ -72,7 +72,7 @@ mod tests {
         let subject = TransportProtocolDataUnitParser::new();
 
         assert_eq!(
-            subject.parse(hex::decode("15810000000014C00108C703001030AB0548656C6C6F010203")?.as_slice())?,
+            subject.parse(hex::decode("15800000000014C00108C703001030AB0548656C6C6F010203")?.as_slice())?,
             TransportProtocolDataUnit::DR(DisconnectRequest::new(
                 0,
                 0,
@@ -96,7 +96,7 @@ mod tests {
 
         assert_eq!(
             // Not striclty legal having userdata on class 0, but eh.
-            subject.parse(hex::decode("0681000000008c010203")?.as_slice())?,
+            subject.parse(hex::decode("0680000000008c010203")?.as_slice())?,
             TransportProtocolDataUnit::DR(DisconnectRequest::new(0, 0, 140.into(), vec![], &[1, 2, 3]))
         );
 

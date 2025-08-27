@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{collections::VecDeque, net::SocketAddr};
 
 use rusty_cotp::api::{CotpReader, CotpRecvResult, CotpWriter};
 use tracing::warn;
@@ -156,11 +156,11 @@ pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter<SocketAddr
     Ok(writer.send(&pdus.serialise()?).await?)
 }
 
-pub(crate) struct ReceivedOverflowAcceptRequest {
+pub(crate) struct ReceivedAcceptRequest {
     pub maximum_size_to_responder: TsduMaximumSizeSelected,
 }
 
-pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketAddr>) -> Result<ReceivedOverflowAcceptRequest, IsoSpError> {
+pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketAddr>) -> Result<ReceivedAcceptRequest, IsoSpError> {
     let data = match reader.recv().await? {
         CotpRecvResult::Closed => return Err(IsoSpError::ProtocolError("The transport connection was closed before the conection overflow was accepted.".into())),
         CotpRecvResult::Data(data) => data,
@@ -196,10 +196,10 @@ pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketA
         _ => return Err(IsoSpError::ProtocolError("Only version 2 is supported but version1 was requested.".into())),
     }
 
-    Ok(ReceivedOverflowAcceptRequest { maximum_size_to_responder })
+    Ok(ReceivedAcceptRequest { maximum_size_to_responder })
 }
 
-pub(crate) async fn send_connection_overflow_data(writer: &mut impl CotpWriter<SocketAddr>, data: &[u8]) -> Result<(), IsoSpError> {
+pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter<SocketAddr>, data: &[u8]) -> Result<(), IsoSpError> {
     const MAX_PAYLOAD_SIZE: usize = 65528;
     let mut cursor = 0;
 
@@ -224,4 +224,98 @@ pub(crate) async fn send_connection_overflow_data(writer: &mut impl CotpWriter<S
             .await?;
     }
     Ok(())
+}
+
+pub(crate) async fn receive_connect_data_overflow(reader: &mut impl CotpReader<SocketAddr>) -> Result<Vec<u8>, IsoSpError> {
+    const MAX_PAYLOAD_SIZE: usize = 65528;
+    let mut buffer = VecDeque::new();
+
+    let mut end_flag = false;
+    while !end_flag {
+        let data = match reader.recv().await? {
+            CotpRecvResult::Closed => return Err(IsoSpError::ProtocolError("The transport connection was closed before the conection overflow was accepted.".into())),
+            CotpRecvResult::Data(data) => data,
+        };
+
+        let mut pdus = SessionPduList::deserialise(TsduMaximumSizeSelected::Unlimited, &data)?;
+        if pdus.0.len() > 1 {
+            warn!("Received extra SPDUs on connect data overflow. Ignoring the extra PDUs.");
+        }
+        let mut parameters = match pdus.0.pop() {
+            Some(SessionPdu::ConnectDataOverflow(session_pdu_parameters)) => session_pdu_parameters,
+            Some(pdu) => return Err(IsoSpError::ProtocolError(format!("Expected a connect data overflow but got {}", <SessionPdu as Into<&'static str>>::into(pdu)))),
+            _ => return Err(IsoSpError::ProtocolError("Cannot finish connect. The peer did not send data.".into())),
+        };
+
+        // Not minding about order or duplicates.
+        for parameter in parameters.drain(..) {
+            match parameter {
+                SessionPduParameter::EnclosureItem(value) => end_flag = value.end(),
+                SessionPduParameter::UserData(value) => {
+                    buffer.extend(value);
+                }
+                _ => (), // Ignore everything else.
+            };
+        }
+    }
+    Ok(buffer.drain(..).collect())
+}
+
+pub(crate) async fn send_accept(writer: &mut impl CotpWriter<SocketAddr>, initiator_size: &TsduMaximumSizeSelected, user_data: Option<&[u8]>) -> Result<(), IsoSpError> {
+    let mut connect_accept_sub_parameters = Vec::new();
+    if let TsduMaximumSizeSelected::Size(initiator_size) = initiator_size {
+        // This will set the responder size to 0xFFFF to indicate that we accept unlimited size. But we also echo back the initiator size.
+        connect_accept_sub_parameters.push(SessionPduSubParameter::TsduMaximumSizeParameter(TsduMaximumSize(*initiator_size as u32)));
+    }
+    connect_accept_sub_parameters.push(SessionPduSubParameter::VersionNumberParameter(SupportedVersions(2))); // Accept version 2
+
+    let mut session_parameters = vec![
+        SessionPduParameter::ConnectAcceptItem(connect_accept_sub_parameters),
+        SessionPduParameter::SessionUserRequirementsItem(SessionUserRequirements(2)), // Accept Full Duplex only
+    ];
+    if let Some(user_data) = user_data {
+        session_parameters.push(SessionPduParameter::UserData(user_data.to_vec()));
+    }
+
+    let pdus = SessionPduList(vec![SessionPdu::Accept(session_parameters)]);
+    Ok(writer.send(&pdus.serialise()?).await?)
+}
+
+pub(crate) async fn receive_accept(reader: &mut impl CotpReader<SocketAddr>) -> Result<ReceivedAcceptRequest, IsoSpError> {
+    let data = match reader.recv().await? {
+        CotpRecvResult::Closed => return Err(IsoSpError::ProtocolError("The transport connection was closed before the conection was accepted.".into())),
+        CotpRecvResult::Data(data) => data,
+    };
+
+    let mut pdus = SessionPduList::deserialise(TsduMaximumSizeSelected::Unlimited, &data)?;
+    if pdus.0.len() > 1 {
+        warn!("Received extra SPDUs on accept. Ignoring the extra PDUs.");
+    }
+    let mut parameters = match pdus.0.pop() {
+        Some(SessionPdu::Accept(session_pdu_parameters)) => session_pdu_parameters,
+        Some(pdu) => return Err(IsoSpError::ProtocolError(format!("Expected am accept but got {}", <SessionPdu as Into<&'static str>>::into(pdu)))),
+        _ => return Err(IsoSpError::ProtocolError("Cannot accept connection. The peer did not send data.".into())),
+    };
+
+    let mut version_number = None;
+    let mut maximum_size_to_responder = TsduMaximumSizeSelected::Unlimited;
+
+    // Not minding about order or duplicates.
+    for parameter in parameters.drain(..) {
+        match parameter {
+            SessionPduParameter::VersionNumberParameter(value) => version_number = Some(value),
+            SessionPduParameter::TsduMaximumSizeParameter(value) => {
+                if value.initiator() != 0 {
+                    maximum_size_to_responder = TsduMaximumSizeSelected::Size(value.initiator()) // Ignore the initiator as that is us.
+                }
+            }
+            _ => (), // Ignore everything else.
+        };
+    }
+    match version_number {
+        Some(version) if version.version2() => (),
+        _ => return Err(IsoSpError::ProtocolError("Only version 2 is supported but version1 was requested.".into())),
+    }
+
+    Ok(ReceivedAcceptRequest { maximum_size_to_responder })
 }

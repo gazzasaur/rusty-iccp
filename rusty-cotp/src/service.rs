@@ -214,7 +214,7 @@ impl TcpCotpConnection {
 
 impl CotpConnection<SocketAddr> for TcpCotpConnection {
     #[allow(refining_impl_trait)]
-    async fn split<'a>(self) -> Result<(TcpCotpReader, TcpCotpWriter), CotpError> {
+    async fn split(self) -> Result<(TcpCotpReader, TcpCotpWriter), CotpError> {
         Ok((TcpCotpReader::new(self.reader, self.parser), TcpCotpWriter::new(self.writer, self.max_payload_size, self.serialiser)))
     }
 }

@@ -35,7 +35,7 @@ pub trait IsoSpServer<T> {
 }
 
 pub trait IsoSpAcceptor<T> {
-    fn accept<'a>(self, accept_data: &[u8]) -> impl std::future::Future<Output = Result<impl 'a + IsoSpConnection<T>, IsoSpError>> + Send;
+    fn accept<'a>(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<(impl 'a + IsoSpConnection<T>, Option<Vec<u8>>), IsoSpError>> + Send;
 }
 
 pub trait IsoSpConnection<T> {

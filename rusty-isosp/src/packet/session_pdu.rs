@@ -385,8 +385,8 @@ bitfield! {
     #[derive(Debug)]
     pub struct Enclosure(u8);
 
-    begining, _ : 0; // The only valid value is false
-    end, _ : 1;
+    pub begining, _ : 0; // The only valid value is false
+    pub end, _ : 1;
     reserved, _ : 2, 7;
 }
 

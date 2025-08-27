@@ -1,6 +1,6 @@
 use crate::packet::parameter::CotpParameter;
 
-pub const DISCONNECT_REQUEST_CODE: u8 = 0x81u8;
+pub const DISCONNECT_REQUEST_CODE: u8 = 0x80u8;
 
 #[derive(Debug, PartialEq)]
 pub struct DisconnectRequest {

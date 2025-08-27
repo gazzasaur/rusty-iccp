@@ -1,17 +1,15 @@
 use std::{
-    net::SocketAddr,
-    sync::{Arc, RwLock},
+    collections::VecDeque, net::SocketAddr, sync::{Arc, RwLock}
 };
 
 use rusty_cotp::{
-    api::{CotpConnection, CotpReader, CotpServer, CotpService, CotpWriter},
-    service::{TcpCotpConnection, TcpCotpReader, TcpCotpServer, TcpCotpService, TcpCotpWriter},
+    api::{CotpConnection, CotpReader, CotpServer, CotpService, CotpWriter}, packet::connection_request, service::{TcpCotpConnection, TcpCotpReader, TcpCotpServer, TcpCotpService, TcpCotpWriter}
 };
 
 use crate::{
     api::{IsoSpAcceptor, IsoSpConnection, IsoSpError, IsoSpReader, IsoSpRecvResult, IsoSpServer, IsoSpService, IsoSpWriter},
-    packet::session_pdu::{self, ProtocolOptions, SessionPdu, SessionPduList, SessionPduParameter, SessionPduSubParameter, SessionUserRequirements, SupportedVersions, TsduMaximumSizeSelected},
-    service::{IcpIsoStateMachine, receive_overflow_accept, send_connect_reqeust, send_connection_overflow_data},
+    packet::session_pdu::{ProtocolOptions, SessionPdu, SessionPduList, SessionPduParameter, SessionPduSubParameter, SessionUserRequirements, SupportedVersions, TsduMaximumSizeSelected},
+    service::{receive_accept, receive_connect_data_overflow, receive_connection_request, receive_overflow_accept, send_accept, send_connect_data_overflow, send_connect_reqeust, send_overflow_accept, IcpIsoStateMachine},
 };
 
 pub mod api;
@@ -25,40 +23,21 @@ impl IsoSpService<SocketAddr> for TcpIsoSpService {
         Ok(TcpIsoSpServer::new(address).await?)
     }
 
+    // TODO Also need to handle refuse which will just generically error at the moment.
     async fn connect<'a>(address: SocketAddr, connect_data: Option<&[u8]>) -> Result<impl 'a + IsoSpConnection<SocketAddr>, IsoSpError> {
         let cotp_connection = TcpCotpService::connect(address).await?;
         let (mut cotp_reader, mut cotp_writer) = TcpCotpConnection::split(cotp_connection).await?;
 
         let send_connect_result = send_connect_reqeust(&mut cotp_writer, connect_data).await?;
 
-        match (send_connect_result, connect_data) {
-            (service::SendConnectionRequestResult::Complete, _) => receive_accept(&mut cotp_reader).await?,
+        let maximum_size_to_responder = match (send_connect_result, connect_data) {
+            (service::SendConnectionRequestResult::Complete, _) => receive_accept(&mut cotp_reader).await?.maximum_size_to_responder,
             (service::SendConnectionRequestResult::Overflow(sent_data), Some(user_data)) => {
-                let oa = receive_overflow_accept(&mut cotp_reader).await?;
-                send_connection_overflow_data(&mut cotp_writer, &user_data[sent_data..]).await?;
-                oa
+                let overflow_accept = receive_overflow_accept(&mut cotp_reader).await?;
+                send_connect_data_overflow(&mut cotp_writer, &user_data[sent_data..]).await?;
+                overflow_accept.maximum_size_to_responder // This is all we really care about here. The rest is check in the receive method.
             }
             (service::SendConnectionRequestResult::Overflow(_), None) => return Err(IsoSpError::InternalError("User data was sent event though user data was not provided.".into())),
-        };
-
-        let data = match cotp_reader.recv().await? {
-            rusty_cotp::api::CotpRecvResult::Closed => return Err(IsoSpError::ProtocolError("The connection was closed before the negotiation could complete.".into())),
-            rusty_cotp::api::CotpRecvResult::Data(data) => data,
-        };
-        let pdus = SessionPduList::deserialise(TsduMaximumSizeSelected::Unlimited, &data)?;
-
-        if pdus.0.len() == 0 {
-            return Err(IsoSpError::ProtocolError("Error: Did not receive any data on connect.".into()));
-        } else if pdus.0.len() > 1 {
-            return Err(IsoSpError::ProtocolError("Error: Received more than one payload on a Class 1 event.".into()));
-        }
-
-        // TODO Follow the validation rules.
-        let connect_pdu = match &pdus.0[0] {
-            SessionPdu::Accept(session_pdu_parameters) => session_pdu_parameters,
-            SessionPdu::Refuse(session_pdu_parameters) => return Err(IsoSpError::ProtocolError("The peer rejected the session request. They may be incompatible.".into())),
-            SessionPdu::Unknown(..) => return Err(IsoSpError::ProtocolError("The peer did not return a recognised response.".into())),
-            _ => return Err(IsoSpError::ProtocolError("The peer returned an unexpected response.".into())),
         };
 
         Ok(TcpIsoSpConnection::new(cotp_reader, cotp_writer))
@@ -94,24 +73,33 @@ impl TcpIsoSpAcceptor {
 }
 
 impl IsoSpAcceptor<SocketAddr> for TcpIsoSpAcceptor {
-    async fn accept<'a>(self, accept_data: &[u8]) -> Result<impl 'a + IsoSpConnection<SocketAddr>, IsoSpError> {
-        // TODO check if we are compatible
+    async fn accept<'a>(self, accept_data: Option<&[u8]>) -> Result<(impl 'a + IsoSpConnection<SocketAddr>, Option<Vec<u8>>), IsoSpError> {
         let (mut cotp_reader, mut cotp_writer) = self.cotp_connection.split().await?;
 
-        cotp_reader.recv().await?;
+        let connect_request = receive_connection_request(&mut cotp_reader).await?;
+        let maximum_size_to_initiator = connect_request.maximum_size_to_initiator;
+        let has_more_data = match &connect_request.data_overflow {
+            Some(overflow) => overflow.more_data(),
+            None => false,
+        };
 
-        let data = SessionPduList(vec![SessionPdu::Accept(vec![
-            SessionPduParameter::ConnectAcceptItem(vec![
-                SessionPduSubParameter::ProtocolOptionsParameter(ProtocolOptions(2)), // Only set the duplex functionall unit
-                SessionPduSubParameter::VersionNumberParameter(SupportedVersions(2)), // Version 2 only
-            ]),
-            SessionPduParameter::SessionUserRequirementsItem(SessionUserRequirements(2)), // Full Duplex only
-        ])])
-        .serialise()?;
+        let mut user_data = VecDeque::new();
+        let has_user_data = connect_request.user_data.is_some() || connect_request.data_overflow.is_some();
+        if let Some(request_user_data) = connect_request.user_data {
+            user_data.extend(request_user_data);
+        }
 
-        cotp_writer.send(data.as_slice()).await?;
+        if has_more_data {
+            send_overflow_accept(&mut cotp_writer, &maximum_size_to_initiator).await?;
+            user_data.extend(receive_connect_data_overflow(&mut cotp_reader).await?);
+        }
+        send_accept(&mut cotp_writer, &maximum_size_to_initiator, accept_data).await?;
 
-        Ok(TcpIsoSpConnection::new(cotp_reader, cotp_writer))
+        let user_data = match has_user_data {
+            true => Some(user_data.drain(..).collect()),
+            false => None,
+        };
+        Ok((TcpIsoSpConnection::new(cotp_reader, cotp_writer), user_data))
     }
 }
 
@@ -205,10 +193,10 @@ mod tests {
 
         let (client_result, acceptor_result) = join!(TcpIsoSpService::connect(address, None), async {
             let acceptor = server.accept().await?;
-            acceptor.accept(&[]).await
+            acceptor.accept(None).await
         });
         let client_connection = client_result?;
-        let server_connection = acceptor_result?;
+        let (server_connection, _connect_data) = acceptor_result?;
 
         let (client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, server_writer) = server_connection.split().await?;
