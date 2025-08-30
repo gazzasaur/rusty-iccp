@@ -4,7 +4,7 @@ use bytes::BytesMut;
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktService, TcpTpktWriter, TpktConnection, TpktReader, TpktRecvResult, TpktServer, TpktService, TpktWriter};
 
 use crate::{
-    api::{CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpServer, CotpService, CotpWriter},
+    api::{CotpConnectOptions, CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpServer, CotpService, CotpWriter},
     packet::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
@@ -25,8 +25,8 @@ impl CotpService<SocketAddr> for TcpCotpService {
     }
 
     #[allow(refining_impl_trait)]
-    async fn connect<'a>(address: SocketAddr) -> Result<TcpCotpConnection, CotpError> {
-        TcpCotpConnection::initiate(TcpTpktService::connect(address).await?).await
+    async fn connect<'a>(address: SocketAddr, options: CotpConnectOptions<'a>) -> Result<TcpCotpConnection, CotpError> {
+        TcpCotpConnection::initiate(TcpTpktService::connect(address).await?, options).await
     }
 }
 
@@ -59,13 +59,13 @@ pub struct TcpCotpConnection {
 }
 
 impl TcpCotpConnection {
-    pub async fn initiate(connection: TcpTpktConnection) -> Result<Self, CotpError> {
+    pub async fn initiate(connection: TcpTpktConnection, options: CotpConnectOptions<'_>) -> Result<Self, CotpError> {
         let source_reference: u16 = rand::random();
         let parser = TransportProtocolDataUnitParser::new();
         let serialiser = TransportProtocolDataUnitSerialiser::new();
         let (mut reader, mut writer) = TcpTpktConnection::split(connection).await?;
 
-        TcpCotpConnection::send_connection_request(&mut writer, &serialiser, source_reference).await?;
+        TcpCotpConnection::send_connection_request(&mut writer, &serialiser, source_reference, options).await?;
         let connection_confirm = TcpCotpConnection::receive_connection_confirm(&mut reader, &parser).await?;
         let (_, max_payload_size) = TcpCotpConnection::calculate_remote_size_payload(connection_confirm.parameters()).await?;
 
@@ -100,7 +100,15 @@ impl TcpCotpConnection {
         })
     }
 
-    async fn send_connection_request(writer: &mut TcpTpktWriter, serialiser: &TransportProtocolDataUnitSerialiser, source_reference: u16) -> Result<(), CotpError> {
+    async fn send_connection_request(writer: &mut TcpTpktWriter, serialiser: &TransportProtocolDataUnitSerialiser, source_reference: u16, options: CotpConnectOptions<'_>) -> Result<(), CotpError> {
+        let mut parameters = Vec::new();
+        if let Some(calling_tsap) = options.calling_tsap {
+            parameters.push(CotpParameter::CallingTsap(calling_tsap.to_vec()));
+        }
+        if let Some(called_tsap) = options.called_tsap {
+            parameters.push(CotpParameter::CalledTsap(called_tsap.to_vec()));
+        }
+
         let payload = serialiser.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
             0,
             source_reference,

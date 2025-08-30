@@ -1,5 +1,7 @@
 use crate::api::CotpError;
 
+pub const CALLING_TSAP_PARAMETER_CODE: u8 = 0b11000001;
+pub const CALLED_TSAP_PARAMETER_CODE: u8 = 0b11000010;
 pub const TPDU_SIZE_PARAMETER_CODE: u8 = 0b11000000;
 pub const ALTERNATIVE_CLASS_PARAMETER_CODE: u8 = 0b11000111;
 
@@ -107,6 +109,8 @@ impl From<&TpduSize> for u8 {
 
 #[derive(Debug, PartialEq)]
 pub enum CotpParameter {
+    CallingTsap(Vec<u8>),
+    CalledTsap(Vec<u8>),
     AlternativeClassParameter(Vec<ConnectionClass>),
     TpduLengthParameter(TpduSize),
     UnknownParameter(u8, Vec<u8>),

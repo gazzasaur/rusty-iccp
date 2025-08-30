@@ -1,4 +1,4 @@
-use rusty_cotp::api::CotpError;
+use rusty_cotp::api::{CotpConnectOptions, CotpError};
 use thiserror::Error;
 
 // Do not allow any more than 1G or data to be buffered.
@@ -27,7 +27,7 @@ pub enum IsoSpRecvResult {
 
 pub trait IsoSpService<T> {
     fn create_server<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + IsoSpServer<T>, IsoSpError>> + Send;
-    fn connect<'a>(address: T, connect_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl 'a + IsoSpConnection<T>, IsoSpError>> + Send;
+    fn connect<'a>(address: T, connect_data: Option<&[u8]>, options: CotpConnectOptions<'a>) -> impl std::future::Future<Output = Result<impl 'a + IsoSpConnection<T>, IsoSpError>> + Send;
 }
 
 pub trait IsoSpServer<T> {

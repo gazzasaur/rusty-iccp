@@ -1,6 +1,6 @@
 use crate::{
     api::CotpError,
-    packet::parameter::{ALTERNATIVE_CLASS_PARAMETER_CODE, ConnectionClass, CotpParameter, TPDU_SIZE_PARAMETER_CODE},
+    packet::parameter::{ConnectionClass, CotpParameter, ALTERNATIVE_CLASS_PARAMETER_CODE, CALLED_TSAP_PARAMETER_CODE, CALLING_TSAP_PARAMETER_CODE, TPDU_SIZE_PARAMETER_CODE},
 };
 
 pub fn serialise_parameters(params: &[CotpParameter]) -> Result<Vec<u8>, CotpError> {
@@ -11,6 +11,20 @@ pub fn serialise_parameters(params: &[CotpParameter]) -> Result<Vec<u8>, CotpErr
         buffer.push(cotp_parameter_code_to_u8(param));
 
         match param {
+            CotpParameter::CallingTsap(value) => {
+                if value.len() >= 255 {
+                    return Err(CotpError::ProtocolError(format!("{} The calling TSAP address must be less than 255 bytes.", buffer.len())));
+                }
+                buffer.push(value.len() as u8);
+                buffer.extend(value);
+            }
+            CotpParameter::CalledTsap(value) => {
+                if value.len() >= 255 {
+                    return Err(CotpError::ProtocolError(format!("{} The called TSAP address must be less than 255 bytes.", buffer.len())));
+                }
+                buffer.push(value.len() as u8);
+                buffer.extend(value);
+            }
             CotpParameter::AlternativeClassParameter(items) => {
                 if items.len() > 255 {
                     return Err(CotpError::ProtocolError(format!("{} alternative connection classes have been specified. Only 4 exist.", buffer.len())));
@@ -37,6 +51,8 @@ pub fn serialise_parameters(params: &[CotpParameter]) -> Result<Vec<u8>, CotpErr
 
 pub fn cotp_parameter_code_to_u8(param: &CotpParameter) -> u8 {
     match param {
+        CotpParameter::CallingTsap(_) => CALLING_TSAP_PARAMETER_CODE,
+        CotpParameter::CalledTsap(_) => CALLED_TSAP_PARAMETER_CODE,
         CotpParameter::AlternativeClassParameter(_) => ALTERNATIVE_CLASS_PARAMETER_CODE,
         CotpParameter::TpduLengthParameter(_) => TPDU_SIZE_PARAMETER_CODE,
         CotpParameter::UnknownParameter(x, _) => *x,

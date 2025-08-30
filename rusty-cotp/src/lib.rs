@@ -27,7 +27,7 @@ mod tests {
         // Prove we can srop everything after the split.
         let (mut client_read, mut client_writer, mut server_read, mut server_writer) = {
             let listener = TcpCotpService::create_server(test_address).await?;
-            let (client, server) = join!(TcpCotpService::connect(test_address), listener.accept());
+            let (client, server) = join!(TcpCotpService::connect(test_address, Default::default()), listener.accept());
 
             let (client_read, client_writer) = client?.split().await?;
             let (server_read, server_writer) = server?.split().await?;
@@ -55,7 +55,7 @@ mod tests {
     async fn it_transfers_data_over_multiple_segments() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let listener = TcpCotpService::create_server(test_address).await?;
-        let (client, server) = join!(TcpCotpService::connect(test_address), listener.accept());
+        let (client, server) = join!(TcpCotpService::connect(test_address, Default::default()), listener.accept());
 
         let (mut client_read, mut client_writer) = client?.split().await?;
         let (mut server_read, mut server_writer) = server?.split().await?;
@@ -85,7 +85,7 @@ mod tests {
     async fn it_flushes_correctly() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let listener = TcpCotpService::create_server(test_address).await?;
-        let (client, server) = join!(TcpCotpService::connect(test_address), listener.accept());
+        let (client, server) = join!(TcpCotpService::connect(test_address, Default::default()), listener.accept());
 
         let (mut client_read, mut client_writer) = client?.split().await?;
         let (mut server_read, mut server_writer) = server?.split().await?;

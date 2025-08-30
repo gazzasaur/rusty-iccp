@@ -21,9 +21,20 @@ pub enum CotpRecvResult {
     Data(Vec<u8>),
 }
 
+pub struct CotpConnectOptions<'a> {
+    pub calling_tsap: Option<&'a [u8]>,
+    pub called_tsap: Option<&'a [u8]>,
+}
+
+impl<'a> Default for CotpConnectOptions<'a> {
+    fn default() -> Self {
+        Self { calling_tsap: None, called_tsap: None }
+    }
+}
+
 pub trait CotpService<T> {
     fn create_server<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + CotpServer<T>, CotpError>> + Send;
-    fn connect<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + CotpConnection<T>, CotpError>> + Send;
+    fn connect<'a>(address: T, options: CotpConnectOptions<'a>) -> impl std::future::Future<Output = Result<impl 'a + CotpConnection<T>, CotpError>> + Send;
 }
 
 pub trait CotpServer<T> {
