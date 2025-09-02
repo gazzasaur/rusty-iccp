@@ -27,7 +27,7 @@ mod tests {
 
     use crate::{
         packet::{
-            parameter::{ConnectionClass, CotpParameter, TpduSize},
+            parameters::{ConnectionClass, CotpParameter, TpduSize},
             payload::TransportProtocolDataUnit,
         },
         parser::packet::TransportProtocolDataUnitParser,

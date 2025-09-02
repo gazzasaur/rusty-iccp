@@ -1,4 +1,4 @@
-use crate::packet::parameter::CotpParameter;
+use crate::packet::parameters::CotpParameter;
 
 pub const DISCONNECT_REQUEST_CODE: u8 = 0x80u8;
 

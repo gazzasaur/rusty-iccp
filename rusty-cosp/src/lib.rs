@@ -8,17 +8,20 @@ use rusty_cotp::{
     api::{CotpConnectOptions, CotpConnection, CotpReader, CotpServer, CotpService, CotpWriter},
     service::{TcpCotpConnection, TcpCotpReader, TcpCotpServer, TcpCotpService, TcpCotpWriter},
 };
-use tracing::trace;
 
 use crate::{
     api::{IsoSpAcceptor, IsoSpConnection, IsoSpError, IsoSpReader, IsoSpRecvResult, IsoSpServer, IsoSpService, IsoSpWriter},
-    packet::session_pdu::{Enclosure, SessionPdu, SessionPduList, SessionPduParameter, TsduMaximumSizeSelected},
-    service::{IcpIsoStateMachine, receive_accept, receive_connect_data_overflow, receive_connection_request, receive_overflow_accept, send_accept, send_connect_data_overflow, send_connect_reqeust, send_overflow_accept},
+    common::TsduMaximumSize,
+    message::CospMessage,
+    packet::{parameters::SessionPduParameter, pdu::SessionPduList},
+    service::{IcpIsoStateMachine, receive_accept, receive_connect_data_overflow, receive_message, receive_overflow_accept, send_accept, send_connect_data_overflow, send_connect_reqeust, send_overflow_accept},
 };
 
 pub mod api;
-pub mod packet;
-pub mod service;
+pub(crate) mod common;
+pub(crate) mod message;
+pub(crate) mod packet;
+pub(crate) mod service;
 
 pub struct TcpIsoSpService {}
 
@@ -80,16 +83,20 @@ impl IsoSpAcceptor<SocketAddr> for TcpIsoSpAcceptor {
     async fn accept<'a>(self, accept_data: Option<&[u8]>) -> Result<(impl 'a + IsoSpConnection<SocketAddr>, Option<Vec<u8>>), IsoSpError> {
         let (mut cotp_reader, mut cotp_writer) = self.cotp_connection.split().await?;
 
-        let connect_request = receive_connection_request(&mut cotp_reader).await?;
-        let maximum_size_to_initiator = connect_request.maximum_size_to_initiator;
-        let has_more_data = match &connect_request.data_overflow {
+        let connect_request = match receive_message(&mut cotp_reader).await? {
+            CospMessage::CN(connect_message) => connect_message,
+            message => return Err(IsoSpError::ProtocolError(format!("Expecting a connect message, but got {}", <CospMessage as Into<&'static str>>::into(message)))),
+        };
+
+        let maximum_size_to_initiator = connect_request.maximum_size_to_initiator();
+        let has_more_data = match &connect_request.data_overflow() {
             Some(overflow) => overflow.more_data(),
             None => false,
         };
 
         let mut user_data = VecDeque::new();
-        let has_user_data = connect_request.user_data.is_some() || connect_request.data_overflow.is_some();
-        if let Some(request_user_data) = connect_request.user_data {
+        let has_user_data = connect_request.user_data().is_some() || connect_request.data_overflow().is_some();
+        if let Some(request_user_data) = connect_request.user_data() {
             user_data.extend(request_user_data);
         }
 
@@ -103,7 +110,7 @@ impl IsoSpAcceptor<SocketAddr> for TcpIsoSpAcceptor {
             true => Some(user_data.drain(..).collect()),
             false => None,
         };
-        Ok((TcpIsoSpConnection::new(cotp_reader, cotp_writer, maximum_size_to_initiator), user_data))
+        Ok((TcpIsoSpConnection::new(cotp_reader, cotp_writer, *maximum_size_to_initiator), user_data))
     }
 }
 
@@ -111,11 +118,11 @@ pub struct TcpIsoSpConnection {
     _state_machine: Arc<RwLock<IcpIsoStateMachine>>,
     cotp_reader: TcpCotpReader,
     cotp_writer: TcpCotpWriter,
-    _remote_max_size: TsduMaximumSizeSelected,
+    _remote_max_size: TsduMaximumSize,
 }
 
 impl TcpIsoSpConnection {
-    pub fn new(cotp_reader: TcpCotpReader, cotp_writer: TcpCotpWriter, remote_max_size: TsduMaximumSizeSelected) -> Self {
+    pub fn new(cotp_reader: TcpCotpReader, cotp_writer: TcpCotpWriter, remote_max_size: TsduMaximumSize) -> Self {
         Self {
             _state_machine: Arc::new(RwLock::new(IcpIsoStateMachine::default())),
             cotp_reader,
@@ -130,7 +137,7 @@ impl IsoSpConnection<SocketAddr> for TcpIsoSpConnection {
         Ok((
             TcpIsoSpReader {
                 cotp_reader: self.cotp_reader,
-                buffer: VecDeque::new(),
+                _buffer: VecDeque::new(),
             },
             TcpIsoSpWriter { cotp_writer: self.cotp_writer },
         ))
@@ -139,55 +146,24 @@ impl IsoSpConnection<SocketAddr> for TcpIsoSpConnection {
 
 pub struct TcpIsoSpReader {
     cotp_reader: TcpCotpReader,
-    buffer: VecDeque<u8>,
+    _buffer: VecDeque<u8>,
 }
 
 impl IsoSpReader<SocketAddr> for TcpIsoSpReader {
     async fn recv(&mut self) -> Result<IsoSpRecvResult, IsoSpError> {
-        loop {
-            let data = match self.cotp_reader.recv().await? {
-                rusty_cotp::api::CotpRecvResult::Closed => return Ok(IsoSpRecvResult::Closed),
-                rusty_cotp::api::CotpRecvResult::Data(data) => data,
-            };
+        let receive_result = self.cotp_reader.recv().await?;
+        let data = match receive_result {
+            rusty_cotp::api::CotpRecvResult::Closed => return Ok(IsoSpRecvResult::Closed),
+            rusty_cotp::api::CotpRecvResult::Data(data) => data,
+        };
 
-            let mut pdus = SessionPduList::deserialise(TsduMaximumSizeSelected::Unlimited, &data)
-                .map_err(|e| IsoSpError::ProtocolError(format!("Failed to parse message: {}", e).to_string()))?
-                .0;
-
-            while let Some(session_pdu) = pdus.pop() {
-                let (enclosure, user_data) = match session_pdu {
-                    SessionPdu::Finish(_session_pdu_parameters) => todo!(),
-                    SessionPdu::Disconnect(_session_pdu_parameters) => todo!(),
-                    SessionPdu::Abort(_session_pdu_parameters) => todo!(),
-                    SessionPdu::DataTransfer(session_pdu_parameters) => {
-                        let mut relevant_pdus: Vec<SessionPduParameter> = session_pdu_parameters
-                            .into_iter()
-                            .filter(|x| matches!(x, SessionPduParameter::EnclosureItem(_)) || matches!(x, SessionPduParameter::UserData(_)))
-                            .collect();
-
-                        match (relevant_pdus.pop(), relevant_pdus.pop()) {
-                            (Some(SessionPduParameter::EnclosureItem(enclosure)), Some(SessionPduParameter::UserData(user_data))) => (enclosure, user_data),
-                            (Some(SessionPduParameter::UserData(user_data)), _) => (Enclosure(0x02), user_data),
-                            x => {
-                                let message = "Failed to parse Data Transfer";
-                                trace!("{} - Got: {:?}", message, x);
-                                return Err(IsoSpError::ProtocolError(message.into()));
-                            }
-                        }
-                    }
-                    SessionPdu::GiveTokens(_) => continue,
-                    SessionPdu::Unknown(_, _items) => todo!(),
-                    _ => return Err(IsoSpError::ProtocolError("An unexpected payload was received.".into())),
-                };
-
-                self.buffer.extend(user_data);
-                if !enclosure.end() {
-                    continue;
-                }
-            }
-
-            return Ok(IsoSpRecvResult::Data(data));
+        let received_message = CospMessage::from_spdu_list(SessionPduList::deserialise(&data)?)?;
+        match received_message {
+            CospMessage::DT(connect_message) => (),
+            _ => todo!(),
         }
+
+        Ok(IsoSpRecvResult::Closed)
     }
 }
 
@@ -198,7 +174,8 @@ pub struct TcpIsoSpWriter {
 impl IsoSpWriter<SocketAddr> for TcpIsoSpWriter {
     async fn send(&mut self, data: &[u8]) -> Result<(), IsoSpError> {
         // TODO Segmentation
-        let payload = SessionPduList(vec![SessionPdu::GiveTokens(vec![]), SessionPdu::DataTransfer(vec![SessionPduParameter::UserData(data.to_vec())])]).serialise()?;
+        //        let payload = SessionPduList::new(vec![], data.to_vec()).serialise()?;
+        let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data.to_vec()).serialise()?;
         self.cotp_writer.send(&payload).await?;
         Ok(())
     }
@@ -231,7 +208,7 @@ mod tests {
         let (_client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, _server_writer) = server_connection.split().await?;
 
-        client_writer.send("Hello".as_bytes()).await?;
+        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
         match server_reader.recv().await? {
             IsoSpRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             IsoSpRecvResult::Data(data) => assert_eq!(hex::encode(data), "01000107c10548656c6c6f"),

@@ -2,7 +2,7 @@ use crate::{
     api::CotpError,
     packet::{
         connection_confirm::{CONNECTION_CONFIRM_CODE, ConnectionConfirm},
-        parameter::{ConnectionClass, ConnectionOption, CotpParameter, TpduSize},
+        parameters::{ConnectionClass, ConnectionOption, CotpParameter, TpduSize},
     },
     serialiser::params::serialise_parameters,
 };
@@ -68,7 +68,7 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        packet::{parameter::ConnectionClass, payload::TransportProtocolDataUnit},
+        packet::{parameters::ConnectionClass, payload::TransportProtocolDataUnit},
         serialiser::packet::TransportProtocolDataUnitSerialiser,
     };
 

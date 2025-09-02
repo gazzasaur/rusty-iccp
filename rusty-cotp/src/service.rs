@@ -9,7 +9,7 @@ use crate::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
         data_transfer::DataTransfer,
-        parameter::{ConnectionClass, CotpParameter, TpduSize},
+        parameters::{ConnectionClass, CotpParameter, TpduSize},
         payload::TransportProtocolDataUnit,
     },
     parser::packet::TransportProtocolDataUnitParser,

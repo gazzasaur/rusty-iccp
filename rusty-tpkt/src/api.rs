@@ -2,13 +2,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum TpktError {
-    #[error("Protocol Error - {}", .0)]
+    #[error("TPKT Protocol Error - {}", .0)]
     ProtocolError(String),
 
-    #[error("IO Error: {:?}", .0)]
+    #[error("TPKT IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),
 
-    #[error("Error: {}", .0)]
+    #[error("TPKT Error: {}", .0)]
     InternalError(String),
 }
 

@@ -25,7 +25,7 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        packet::{parameter::CotpParameter, payload::TransportProtocolDataUnit},
+        packet::{parameters::CotpParameter, payload::TransportProtocolDataUnit},
         parser::packet::TransportProtocolDataUnitParser,
     };
 

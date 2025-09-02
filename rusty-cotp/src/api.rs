@@ -3,16 +3,16 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum CotpError {
-    #[error("Protocol Error - {}", .0)]
+    #[error("COTP Protocol Error - {}", .0)]
     ProtocolError(String),
 
-    #[error("Protocol Stack Error - {}", .0)]
+    #[error("COTP over TPKT Protocol Stack Error - {}", .0)]
     ProtocolStackError(#[from] TpktError),
 
-    #[error("IO Error: {:?}", .0)]
+    #[error("COTP IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),
 
-    #[error("Error: {}", .0)]
+    #[error("COTP Error: {}", .0)]
     InternalError(String),
 }
 

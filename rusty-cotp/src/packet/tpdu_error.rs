@@ -1,4 +1,4 @@
-use crate::packet::parameter::CotpParameter;
+use crate::packet::parameters::CotpParameter;
 
 pub const TPDU_ERROR_CODE: u8 = 0x70u8;
 

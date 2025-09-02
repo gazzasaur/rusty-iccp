@@ -1,6 +1,6 @@
 use crate::{
     api::CotpError,
-    packet::parameter::{ConnectionClass, CotpParameter, ALTERNATIVE_CLASS_PARAMETER_CODE, CALLED_TSAP_PARAMETER_CODE, CALLING_TSAP_PARAMETER_CODE, TPDU_SIZE_PARAMETER_CODE},
+    packet::parameters::{ConnectionClass, CotpParameter, ALTERNATIVE_CLASS_PARAMETER_CODE, CALLED_TSAP_PARAMETER_CODE, CALLING_TSAP_PARAMETER_CODE, TPDU_SIZE_PARAMETER_CODE},
 };
 
 pub fn serialise_parameters(params: &[CotpParameter]) -> Result<Vec<u8>, CotpError> {

@@ -7,16 +7,16 @@ pub const MAX_DATA_SIZE: usize = 2_000_000_000;
 
 #[derive(Error, Debug)]
 pub enum IsoSpError {
-    #[error("Protocol Error - {}", .0)]
+    #[error("COSP Protocol Error - {}", .0)]
     ProtocolError(String),
 
-    #[error("Protocol Stack Error - {}", .0)]
+    #[error("COSP over COTP Protocol Stack Error - {}", .0)]
     ProtocolStackError(#[from] CotpError),
 
-    #[error("IO Error: {:?}", .0)]
+    #[error("COSP IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),
 
-    #[error("Error: {}", .0)]
+    #[error("COSP Error: {}", .0)]
     InternalError(String),
 }
 

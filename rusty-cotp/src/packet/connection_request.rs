@@ -1,9 +1,9 @@
-use crate::packet::parameter::{ConnectionClass, ConnectionOption, CotpParameter};
+use crate::packet::parameters::{ConnectionClass, ConnectionOption, CotpParameter};
 
 pub const CONNECTION_REQUEST_CODE: u8 = 0xE0u8;
 
 #[derive(Debug, PartialEq)]
-pub struct ConnectionRequest {
+pub(crate) struct ConnectionRequest {
     credit: u8,
     source_reference: u16,
     destination_reference: u16,

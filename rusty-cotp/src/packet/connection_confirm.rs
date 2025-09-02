@@ -1,4 +1,4 @@
-use crate::packet::parameter::{ConnectionClass, ConnectionOption, CotpParameter};
+use crate::packet::parameters::{ConnectionClass, ConnectionOption, CotpParameter};
 
 pub const CONNECTION_CONFIRM_CODE: u8 = 0xD0u8;
 

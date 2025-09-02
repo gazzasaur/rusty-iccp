@@ -1,6 +1,6 @@
 use crate::{
     api::CotpError,
-    packet::{connection_confirm::ConnectionConfirm, parameter::ConnectionOption, payload::TransportProtocolDataUnit},
+    packet::{connection_confirm::ConnectionConfirm, parameters::ConnectionOption, payload::TransportProtocolDataUnit},
     parser::{common::parse_u16, params::parse_parameters},
 };
 
@@ -36,7 +36,7 @@ mod tests {
 
     use crate::{
         packet::{
-            parameter::{ConnectionClass, CotpParameter, TpduSize},
+            parameters::{ConnectionClass, CotpParameter, TpduSize},
             payload::TransportProtocolDataUnit,
         },
         parser::packet::TransportProtocolDataUnitParser,
