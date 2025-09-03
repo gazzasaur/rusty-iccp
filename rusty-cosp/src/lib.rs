@@ -10,7 +10,7 @@ use rusty_cotp::{
 };
 
 use crate::{
-    api::{IsoSpAcceptor, IsoSpConnection, IsoSpError, IsoSpReader, IsoSpRecvResult, IsoSpServer, IsoSpService, IsoSpWriter},
+    api::{CospAcceptor, CospConnection, CospError, CospReader, CospRecvResult, CospServer, CospService, CospWriter},
     common::TsduMaximumSize,
     message::CospMessage,
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
@@ -23,15 +23,15 @@ pub(crate) mod message;
 pub(crate) mod packet;
 pub(crate) mod service;
 
-pub struct TcpIsoSpService {}
+pub struct TcpCospService {}
 
-impl IsoSpService<SocketAddr> for TcpIsoSpService {
-    async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + IsoSpServer<SocketAddr>, IsoSpError> {
-        Ok(TcpIsoSpServer::new(address).await?)
+impl CospService<SocketAddr> for TcpCospService {
+    async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + CospServer<SocketAddr>, CospError> {
+        Ok(TcpCospServer::new(address).await?)
     }
 
     // TODO Also need to handle refuse which will just generically error at the moment.
-    async fn connect<'a>(address: SocketAddr, connect_data: Option<&[u8]>, options: CotpConnectOptions<'a>) -> Result<impl 'a + IsoSpConnection<SocketAddr>, IsoSpError> {
+    async fn connect<'a>(address: SocketAddr, connect_data: Option<&[u8]>, options: CotpConnectOptions<'a>) -> Result<impl 'a + CospConnection<SocketAddr>, CospError> {
         let cotp_connection = TcpCotpService::connect(address, options).await?;
         let (mut cotp_reader, mut cotp_writer) = TcpCotpConnection::split(cotp_connection).await?;
 
@@ -44,48 +44,48 @@ impl IsoSpService<SocketAddr> for TcpIsoSpService {
                 send_connect_data_overflow(&mut cotp_writer, &user_data[sent_data..]).await?;
                 overflow_accept.maximum_size_to_responder // This is all we really care about here. The rest is check in the receive method.
             }
-            (service::SendConnectionRequestResult::Overflow(_), None) => return Err(IsoSpError::InternalError("User data was sent event though user data was not provided.".into())),
+            (service::SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent event though user data was not provided.".into())),
         };
 
-        Ok(TcpIsoSpConnection::new(cotp_reader, cotp_writer, maximum_size_to_responder))
+        Ok(TcpCospConnection::new(cotp_reader, cotp_writer, maximum_size_to_responder))
     }
 }
 
-pub struct TcpIsoSpServer {
+pub struct TcpCospServer {
     cotp_server: TcpCotpServer,
 }
 
-impl TcpIsoSpServer {
-    pub async fn new(address: SocketAddr) -> Result<Self, IsoSpError> {
+impl TcpCospServer {
+    pub async fn new(address: SocketAddr) -> Result<Self, CospError> {
         Ok(Self {
             cotp_server: TcpCotpServer::new(address).await?,
         })
     }
 }
 
-impl IsoSpServer<SocketAddr> for TcpIsoSpServer {
-    async fn accept<'a>(&self) -> Result<impl 'a + IsoSpAcceptor<SocketAddr>, IsoSpError> {
-        Ok(TcpIsoSpAcceptor::new(self.cotp_server.accept().await?))
+impl CospServer<SocketAddr> for TcpCospServer {
+    async fn accept<'a>(&self) -> Result<impl 'a + CospAcceptor<SocketAddr>, CospError> {
+        Ok(TcpCospAcceptor::new(self.cotp_server.accept().await?))
     }
 }
 
-pub struct TcpIsoSpAcceptor {
+pub struct TcpCospAcceptor {
     cotp_connection: TcpCotpConnection,
 }
 
-impl TcpIsoSpAcceptor {
+impl TcpCospAcceptor {
     pub fn new(cotp_connection: TcpCotpConnection) -> Self {
         Self { cotp_connection }
     }
 }
 
-impl IsoSpAcceptor<SocketAddr> for TcpIsoSpAcceptor {
-    async fn accept<'a>(self, accept_data: Option<&[u8]>) -> Result<(impl 'a + IsoSpConnection<SocketAddr>, Option<Vec<u8>>), IsoSpError> {
+impl CospAcceptor<SocketAddr> for TcpCospAcceptor {
+    async fn accept<'a>(self, accept_data: Option<&[u8]>) -> Result<(impl 'a + CospConnection<SocketAddr>, Option<Vec<u8>>), CospError> {
         let (mut cotp_reader, mut cotp_writer) = self.cotp_connection.split().await?;
 
         let connect_request = match receive_message(&mut cotp_reader).await? {
             CospMessage::CN(connect_message) => connect_message,
-            message => return Err(IsoSpError::ProtocolError(format!("Expecting a connect message, but got {}", <CospMessage as Into<&'static str>>::into(message)))),
+            message => return Err(CospError::ProtocolError(format!("Expecting a connect message, but got {}", <CospMessage as Into<&'static str>>::into(message)))),
         };
 
         let maximum_size_to_initiator = connect_request.maximum_size_to_initiator();
@@ -110,18 +110,18 @@ impl IsoSpAcceptor<SocketAddr> for TcpIsoSpAcceptor {
             true => Some(user_data.drain(..).collect()),
             false => None,
         };
-        Ok((TcpIsoSpConnection::new(cotp_reader, cotp_writer, *maximum_size_to_initiator), user_data))
+        Ok((TcpCospConnection::new(cotp_reader, cotp_writer, *maximum_size_to_initiator), user_data))
     }
 }
 
-pub struct TcpIsoSpConnection {
+pub struct TcpCospConnection {
     _state_machine: Arc<RwLock<IcpIsoStateMachine>>,
     cotp_reader: TcpCotpReader,
     cotp_writer: TcpCotpWriter,
     _remote_max_size: TsduMaximumSize,
 }
 
-impl TcpIsoSpConnection {
+impl TcpCospConnection {
     pub fn new(cotp_reader: TcpCotpReader, cotp_writer: TcpCotpWriter, remote_max_size: TsduMaximumSize) -> Self {
         Self {
             _state_machine: Arc::new(RwLock::new(IcpIsoStateMachine::default())),
@@ -132,47 +132,49 @@ impl TcpIsoSpConnection {
     }
 }
 
-impl IsoSpConnection<SocketAddr> for TcpIsoSpConnection {
-    async fn split<'a>(self) -> Result<(impl 'a + IsoSpReader<SocketAddr> + Send, impl 'a + IsoSpWriter<SocketAddr> + Send), IsoSpError> {
+impl CospConnection<SocketAddr> for TcpCospConnection {
+    async fn split<'a>(self) -> Result<(impl 'a + CospReader<SocketAddr> + Send, impl 'a + CospWriter<SocketAddr> + Send), CospError> {
         Ok((
-            TcpIsoSpReader {
+            TcpCospReader {
                 cotp_reader: self.cotp_reader,
                 _buffer: VecDeque::new(),
             },
-            TcpIsoSpWriter { cotp_writer: self.cotp_writer },
+            TcpCospWriter { cotp_writer: self.cotp_writer },
         ))
     }
 }
 
-pub struct TcpIsoSpReader {
+pub struct TcpCospReader {
     cotp_reader: TcpCotpReader,
     _buffer: VecDeque<u8>,
 }
 
-impl IsoSpReader<SocketAddr> for TcpIsoSpReader {
-    async fn recv(&mut self) -> Result<IsoSpRecvResult, IsoSpError> {
+impl CospReader<SocketAddr> for TcpCospReader {
+    async fn recv(&mut self) -> Result<CospRecvResult, CospError> {
         let receive_result = self.cotp_reader.recv().await?;
         let data = match receive_result {
-            rusty_cotp::api::CotpRecvResult::Closed => return Ok(IsoSpRecvResult::Closed),
+            rusty_cotp::api::CotpRecvResult::Closed => return Ok(CospRecvResult::Closed),
             rusty_cotp::api::CotpRecvResult::Data(data) => data,
         };
 
         let received_message = CospMessage::from_spdu_list(SessionPduList::deserialise(&data)?)?;
-        match received_message {
-            CospMessage::DT(connect_message) => (),
+        let data_transfer_message = match received_message {
+            CospMessage::DT(message) => message,
             _ => todo!(),
-        }
+        };
 
-        Ok(IsoSpRecvResult::Closed)
+        // TODO Need to cater for fragmentation
+
+        Ok(CospRecvResult::Data(data_transfer_message.take_user_information()))
     }
 }
 
-pub struct TcpIsoSpWriter {
+pub struct TcpCospWriter {
     cotp_writer: TcpCotpWriter,
 }
 
-impl IsoSpWriter<SocketAddr> for TcpIsoSpWriter {
-    async fn send(&mut self, data: &[u8]) -> Result<(), IsoSpError> {
+impl CospWriter<SocketAddr> for TcpCospWriter {
+    async fn send(&mut self, data: &[u8]) -> Result<(), CospError> {
         // TODO Segmentation
         //        let payload = SessionPduList::new(vec![], data.to_vec()).serialise()?;
         let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data.to_vec()).serialise()?;
@@ -180,7 +182,7 @@ impl IsoSpWriter<SocketAddr> for TcpIsoSpWriter {
         Ok(())
     }
 
-    async fn continue_send(&mut self) -> Result<(), IsoSpError> {
+    async fn continue_send(&mut self) -> Result<(), CospError> {
         Ok(())
     }
 }
@@ -192,26 +194,34 @@ mod tests {
 
     use super::*;
 
+    // TODO Performance. We use a lot of to_vec. Consider using take for user information.
+
     #[tokio::test]
     #[traced_test]
     async fn it_should_negotiate_a_version_2_unlimited_size_connection() -> Result<(), anyhow::Error> {
         let address = "127.0.0.1:10002".parse()?;
-        let server = TcpIsoSpService::create_server(address).await?;
+        let server = TcpCospService::create_server(address).await?;
 
-        let (client_result, acceptor_result) = join!(TcpIsoSpService::connect(address, None, CotpConnectOptions::default()), async {
+        let (client_result, acceptor_result) = join!(TcpCospService::connect(address, None, CotpConnectOptions::default()), async {
             let acceptor = server.accept().await?;
             acceptor.accept(None).await
         });
         let client_connection = client_result?;
-        let (server_connection, _connect_data) = acceptor_result?;
+        let (server_connection, connect_data) = acceptor_result?;
+        assert_eq!(connect_data, None);
 
-        let (_client_reader, mut client_writer) = client_connection.split().await?;
-        let (mut server_reader, _server_writer) = server_connection.split().await?;
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
         client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
         match server_reader.recv().await? {
-            IsoSpRecvResult::Closed => assert!(false, "Expected the connection to be open."),
-            IsoSpRecvResult::Data(data) => assert_eq!(hex::encode(data), "01000107c10548656c6c6f"),
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
+        }
+        server_writer.send(&[1, 2, 3, 4]).await?;
+        match client_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
         }
 
         Ok(())

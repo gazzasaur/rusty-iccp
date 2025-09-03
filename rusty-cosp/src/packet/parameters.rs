@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use bitfield::bitfield;
 use strum::IntoStaticStr;
 
-use crate::{api::IsoSpError, packet::{constants::REASON_CODE_PARAMETER_CODE}};
+use crate::{api::CospError, packet::{constants::REASON_CODE_PARAMETER_CODE}};
 
 #[derive(Debug, IntoStaticStr)]
 pub(crate) enum SessionPduParameter {
@@ -34,9 +34,9 @@ pub(crate) enum SessionPduParameter {
 // ---
 // Utilities
 
-pub(crate) fn encode_length(length: usize) -> Result<Vec<u8>, IsoSpError> {
+pub(crate) fn encode_length(length: usize) -> Result<Vec<u8>, CospError> {
     if length > u16::MAX as usize {
-        Err(IsoSpError::InternalError(format!("Parameter length is greater than max length {}", length)).into())
+        Err(CospError::InternalError(format!("Parameter length is greater than max length {}", length)).into())
     } else if length < 255 {
         Ok(vec![length as u8])
     } else {
@@ -56,7 +56,7 @@ macro_rules! serialise_parameter_value {
         buffer.extend(encode_length(encoded_value.len())?);
         buffer.extend(encoded_value);
 
-        Result::<Vec<u8>, IsoSpError>::Ok(buffer.drain(..).collect())
+        Result::<Vec<u8>, CospError>::Ok(buffer.drain(..).collect())
     }};
 }
 
@@ -136,7 +136,7 @@ impl ReasonCode {
 }
 
 impl TryFrom<&ReasonCode> for Vec<u8> {
-    type Error = IsoSpError;
+    type Error = CospError;
     
     fn try_from(value: &ReasonCode) -> Result<Self, Self::Error> {
         let mut buffer = VecDeque::new();

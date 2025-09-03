@@ -1,16 +1,18 @@
 use std::collections::VecDeque;
 
 use bitfield::bitfield;
+use rusty_cotp::packet::data_transfer::DataTransfer;
 use tracing::warn;
 
 use crate::{
-    api::IsoSpError,
+    api::CospError,
     common::slice_tlv_data,
     packet::{
         constants::{
-            ACCEPT_SI_CODE, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE
+            ACCEPT_SI_CODE, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE,
+            GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE,
         },
-        parameters::{encode_length, DataOverflowField, EnclosureField, ProtocolOptionsField, ReasonCode, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
+        parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, ReasonCode, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField, encode_length},
     },
     serialise_parameter_value,
 };
@@ -38,21 +40,21 @@ impl SessionPduList {
         self.user_information.as_slice()
     }
 
-    pub(crate) fn serialise(&self) -> Result<Vec<u8>, IsoSpError> {
+    pub(crate) fn serialise(&self) -> Result<Vec<u8>, CospError> {
         let mut buffer: VecDeque<u8> = VecDeque::new();
         buffer.extend(serialise_parameters(self.session_pdus())?);
         buffer.extend(self.user_information());
         Ok(buffer.into_iter().collect())
     }
 
-    pub(crate) fn deserialise(data: &[u8]) -> Result<Self, IsoSpError> {
+    pub(crate) fn deserialise(data: &[u8]) -> Result<Self, CospError> {
         let (session_pdus, user_information_offset) = deserialise_parameters(data)?;
         let user_information = data[user_information_offset..].to_vec();
         Ok(SessionPduList::new(session_pdus, user_information))
     }
 }
 
-fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, IsoSpError> {
+fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, CospError> {
     let mut buffer = VecDeque::new();
 
     for parameter in parameters {
@@ -83,7 +85,7 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, I
     Ok(buffer.drain(..).collect())
 }
 
-fn serialise_composite_parameter(code: u8, sub_parameters: &[SessionPduParameter]) -> Result<Vec<u8>, IsoSpError> {
+fn serialise_composite_parameter(code: u8, sub_parameters: &[SessionPduParameter]) -> Result<Vec<u8>, CospError> {
     let mut buffer = VecDeque::new();
 
     let sub_parameter_data = serialise_parameters(sub_parameters)?;
@@ -94,7 +96,7 @@ fn serialise_composite_parameter(code: u8, sub_parameters: &[SessionPduParameter
     Ok(buffer.drain(..).collect())
 }
 
-fn serialise_data_parameter(code: u8, data: &[u8]) -> Result<Vec<u8>, IsoSpError> {
+fn serialise_data_parameter(code: u8, data: &[u8]) -> Result<Vec<u8>, CospError> {
     let mut buffer = VecDeque::new();
 
     buffer.push_back(code);
@@ -104,7 +106,7 @@ fn serialise_data_parameter(code: u8, data: &[u8]) -> Result<Vec<u8>, IsoSpError
     Ok(buffer.drain(..).collect())
 }
 
-fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usize), IsoSpError> {
+fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usize), CospError> {
     let mut offset = 0;
     let mut parameters = VecDeque::new();
 
@@ -115,7 +117,11 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
         let parameter = match tag {
             CONNECT_SI_CODE => SessionPduParameter::Connect(deserialise_parameters(payload)?.0),
             ACCEPT_SI_CODE => SessionPduParameter::Accept(deserialise_parameters(payload)?.0),
-            GIVE_TOKENS_SI_CODE => SessionPduParameter::GiveTokens(),
+
+            // Category 0 message. Must always be the the first SPDU in a concatenated list. Otherwise it is a Data Transfer. Their SI codes are the same.
+            GIVE_TOKENS_SI_CODE if parameters.len() == 0 => SessionPduParameter::GiveTokens(),
+            // Category 2 message. Must come after Give Tokens. Their SI codes are the same.
+            DATA_TRANSFER_SI_CODE => SessionPduParameter::DataTransfer(deserialise_parameters(payload)?.0),
 
             CONNECT_ACCEPT_ITEM_PARAMETER_CODE => SessionPduParameter::ConnectAcceptItemParameter(deserialise_parameters(payload)?.0),
 
@@ -135,65 +141,69 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
             unknown_code => {
                 warn!("Unknown parameter code: {}", unknown_code);
                 SessionPduParameter::Unknown
-            },
+            }
         };
+        if let SessionPduParameter::DataTransfer(_) = parameter {
+            parameters.push_back(parameter);
+            break;
+        }
         parameters.push_back(parameter);
     }
     Ok((parameters.drain(..).collect(), offset))
 }
 
-fn parse_protocol_options(data: &[u8]) -> Result<ProtocolOptionsField, IsoSpError> {
+fn parse_protocol_options(data: &[u8]) -> Result<ProtocolOptionsField, CospError> {
     verify_length("Protocol Parameters", 1, data)?;
     Ok(ProtocolOptionsField(data[0]))
 }
 
-fn parse_tsdu_maximum_size(data: &[u8]) -> Result<TsduMaximumSizeField, IsoSpError> {
+fn parse_tsdu_maximum_size(data: &[u8]) -> Result<TsduMaximumSizeField, CospError> {
     verify_length("TSDU Maximum Size", 4, data)?;
-    Ok(TsduMaximumSizeField(u32::from_be_bytes(data.try_into().map_err(|e: std::array::TryFromSliceError| IsoSpError::ProtocolError(e.to_string()))?)))
+    Ok(TsduMaximumSizeField(u32::from_be_bytes(data.try_into().map_err(|e: std::array::TryFromSliceError| CospError::ProtocolError(e.to_string()))?)))
 }
 
-fn parse_session_user_requirements(data: &[u8]) -> Result<SessionUserRequirementsField, IsoSpError> {
+fn parse_session_user_requirements(data: &[u8]) -> Result<SessionUserRequirementsField, CospError> {
     verify_length("Session User Requirements", 2, data)?;
     Ok(SessionUserRequirementsField(u16::from_be_bytes(
-        data.try_into().map_err(|e: std::array::TryFromSliceError| IsoSpError::ProtocolError(e.to_string()))?,
+        data.try_into().map_err(|e: std::array::TryFromSliceError| CospError::ProtocolError(e.to_string()))?,
     )))
 }
 
-fn parse_version_number(data: &[u8]) -> Result<VersionNumberField, IsoSpError> {
+fn parse_version_number(data: &[u8]) -> Result<VersionNumberField, CospError> {
     verify_length("Protocol Parameters", 1, data)?;
     Ok(VersionNumberField(data[0]))
 }
 
-fn parse_data_overflow(data: &[u8]) -> Result<DataOverflowField, IsoSpError> {
+fn parse_data_overflow(data: &[u8]) -> Result<DataOverflowField, CospError> {
     verify_length("Data Overflow", 1, data)?;
     Ok(DataOverflowField(data[0]))
 }
 
-fn parse_enclosure_item(data: &[u8]) -> Result<EnclosureField, IsoSpError> {
+fn parse_enclosure_item(data: &[u8]) -> Result<EnclosureField, CospError> {
     verify_length("Enclosure Field", 1, data)?;
     Ok(EnclosureField(data[0]))
 }
 
-fn parse_transport_disconnect(data: &[u8]) -> Result<TransportDisconnect, IsoSpError> {
+fn parse_transport_disconnect(data: &[u8]) -> Result<TransportDisconnect, CospError> {
     verify_length("Transport Disconnect", 1, data)?;
     Ok(TransportDisconnect(data[0]))
 }
 
-fn parse_reason_code(data: &[u8]) -> Result<SessionPduParameter, IsoSpError> {
+fn parse_reason_code(data: &[u8]) -> Result<SessionPduParameter, CospError> {
     verify_length_greater("Reason Code", 0, data)?;
     Ok(SessionPduParameter::ReasonCodeParameter(ReasonCode::new(data[1], &data[1..])))
 }
 
-fn verify_length(label: &str, expected_length: usize, data: &[u8]) -> Result<(), IsoSpError> {
+fn verify_length(label: &str, expected_length: usize, data: &[u8]) -> Result<(), CospError> {
     if expected_length != data.len() {
-        return Err(IsoSpError::ProtocolError(format!("Invalid Length: {} - Expected {}, Got {}", label, expected_length, data.len())));
+        return Err(CospError::ProtocolError(format!("Invalid Length: {} - Expected {}, Got {}", label, expected_length, data.len())));
     }
     Ok(())
 }
 
-fn verify_length_greater(label: &str, expected_length: usize, data: &[u8]) -> Result<(), IsoSpError> {
+fn verify_length_greater(label: &str, expected_length: usize, data: &[u8]) -> Result<(), CospError> {
     if expected_length >= data.len() {
-        return Err(IsoSpError::ProtocolError(format!("Invalid Length: {} - Expected to be greater than {}, Got {}", label, expected_length, data.len())));
+        return Err(CospError::ProtocolError(format!("Invalid Length: {} - Expected to be greater than {}, Got {}", label, expected_length, data.len())));
     }
     Ok(())
 }

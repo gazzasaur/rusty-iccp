@@ -1,10 +1,11 @@
 use crate::{
-    api::IsoSpError,
+    api::CospError,
     packet::parameters::{EnclosureField, SessionPduParameter},
 };
 
 pub(crate) struct DataTransferMessage {
     enclosure: Option<EnclosureField>,
+    user_information: Vec<u8>,
 }
 
 impl DataTransferMessage {
@@ -12,7 +13,11 @@ impl DataTransferMessage {
         self.enclosure
     }
 
-    pub(crate) fn from_parameters(parameters: &[SessionPduParameter]) -> Result<Self, IsoSpError> {
+    pub(crate) fn take_user_information(self) -> Vec<u8> {
+        self.user_information
+    }
+
+    pub(crate) fn from_parameters(parameters: &[SessionPduParameter], user_information: Vec<u8>) -> Result<Self, CospError> {
         let mut enclosure = None;
 
         // Not minding about order or duplicates.
@@ -23,6 +28,6 @@ impl DataTransferMessage {
             };
         }
 
-        Ok(DataTransferMessage { enclosure })
+        Ok(DataTransferMessage { enclosure, user_information })
     }
 }

@@ -65,3 +65,22 @@ However, due to a rust bug https://github.com/rust-lang/rust/issues/100013 it wa
 This means that, for the implementation, you have to use the lower level services from this library.
 The intention was tp be able to swap out parts. For example, provide a TLS service to Tpkt.
 Instead I will build a TcpSocketFactory at a later point.
+
+# Development
+
+### Coverage
+
+1. Install the coverage toolset.
+
+```
+cargo install cargo-nextest --locked
+cargo +stable install cargo-llvm-cov --locked
+```
+
+2. Run tests with coverage
+
+```
+cargo llvm-cov nextest --lcov --output-path ./target/lcov.info
+```
+
+3. Use VS Code Gutters https://github.com/ryanluker/vscode-coverage-gutters to visulaise the coverage.

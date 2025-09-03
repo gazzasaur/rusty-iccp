@@ -1,4 +1,4 @@
-use crate::api::IsoSpError;
+use crate::api::CospError;
 
 #[derive(Clone, Copy)]
 pub enum TsduMaximumSize {
@@ -6,23 +6,23 @@ pub enum TsduMaximumSize {
     Size(u16),
 }
 
-pub fn slice_tlv_data(data: &[u8]) -> Result<(u8, &[u8], usize), IsoSpError> {
+pub fn slice_tlv_data(data: &[u8]) -> Result<(u8, &[u8], usize), CospError> {
     let (tag, data_offset, data_length) = if data.len() < 2 {
-        return Err(IsoSpError::ProtocolError(format!("Not enough data to form an SPDU. Needed at least 2 bytes but {} found", data.len())));
+        return Err(CospError::ProtocolError(format!("Not enough data to form an SPDU. Needed at least 2 bytes but {} found", data.len())));
     } else if data[1] == 0xFF && data.len() < 4 {
-        return Err(IsoSpError::ProtocolError(format!("Not enough data to form an SPDU. Needed at least 4 bytes but {} found", data.len())));
+        return Err(CospError::ProtocolError(format!("Not enough data to form an SPDU. Needed at least 4 bytes but {} found", data.len())));
     } else if data[1] == 0xFF {
         (
             data[0],
             4,
-            u16::from_be_bytes(data[2..4].try_into().map_err(|e: std::array::TryFromSliceError| IsoSpError::InternalError(e.to_string()))?) as usize,
+            u16::from_be_bytes(data[2..4].try_into().map_err(|e: std::array::TryFromSliceError| CospError::InternalError(e.to_string()))?) as usize,
         )
     } else {
         (data[0], 2, data[1] as usize)
     };
 
     if data.len() < data_offset + data_length {
-        return Err(IsoSpError::ProtocolError(format!(
+        return Err(CospError::ProtocolError(format!(
             "Not enough data to form an SPDU. Needed at least {} bytes but {} found",
             data_offset + data_length,
             data.len()

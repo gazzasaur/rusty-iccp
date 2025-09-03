@@ -1,5 +1,5 @@
 use crate::{
-    api::IsoSpError,
+    api::CospError,
     common::TsduMaximumSize,
     packet::parameters::{DataOverflowField, SessionPduParameter, SessionUserRequirementsField},
 };
@@ -23,7 +23,7 @@ impl ConnectMessage {
         &self.maximum_size_to_initiator
     }
 
-    pub(crate) fn from_parameters(parameters: &[SessionPduParameter]) -> Result<Self, IsoSpError> {
+    pub(crate) fn from_parameters(parameters: &[SessionPduParameter]) -> Result<Self, CospError> {
         let mut user_data = None;
         let mut data_overflow = None;
         let mut extended_user_data = None;
@@ -57,19 +57,19 @@ impl ConnectMessage {
         }
         match version_number {
             Some(version) if version.version2() => (),
-            _ => return Err(IsoSpError::ProtocolError("Only version 2 is supported but version 1 was requested by the client.".into())),
+            _ => return Err(CospError::ProtocolError("Only version 2 is supported but version 1 was requested by the client.".into())),
         }
         if !session_user_requirements.full_duplex() {
-            return Err(IsoSpError::ProtocolError(format!("Full duplex mode is not supported by peer.")));
+            return Err(CospError::ProtocolError(format!("Full duplex mode is not supported by peer.")));
         }
         if extended_user_data.is_none() && data_overflow.is_some() {
-            return Err(IsoSpError::ProtocolError(format!("An overflow parameter was found but no data was provided.")));
+            return Err(CospError::ProtocolError(format!("An overflow parameter was found but no data was provided.")));
         }
         let user_data = match (user_data, extended_user_data) {
             (None, None) => None,
             (None, Some(data)) => Some(data.clone()),
             (Some(data), None) => Some(data.clone()),
-            (Some(_), Some(_)) => return Err(IsoSpError::ProtocolError(format!("User Data and Overflow data was detected. Cannot continue to connect."))),
+            (Some(_), Some(_)) => return Err(CospError::ProtocolError(format!("User Data and Overflow data was detected. Cannot continue to connect."))),
         };
 
         Ok(ConnectMessage {
