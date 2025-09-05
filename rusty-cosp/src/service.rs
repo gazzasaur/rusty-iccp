@@ -4,7 +4,7 @@ use rusty_cotp::api::{CotpReader, CotpRecvResult, CotpWriter};
 use tracing::{trace, warn};
 
 use crate::{
-    api::CospError, common::TsduMaximumSize, message::{connect::ConnectMessage, CospMessage}, packet::{
+    api::CospError, common::TsduMaximumSize, message::CospMessage, packet::{
         parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
     }
@@ -63,12 +63,6 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter<SocketAddr
         0 => SendConnectionRequestResult::Complete,
         _ => SendConnectionRequestResult::Overflow(overflow_length),
     })
-}
-
-pub(crate) struct ReceivedConnectionRequest {
-    pub user_data: Option<Vec<u8>>,
-    pub data_overflow: Option<DataOverflowField>,
-    pub maximum_size_to_initiator: TsduMaximumSize,
 }
 
 pub(crate) async fn receive_message(reader: &mut impl CotpReader<SocketAddr>) -> Result<CospMessage, CospError> {
@@ -220,7 +214,7 @@ pub(crate) async fn send_accept(writer: &mut impl CotpWriter<SocketAddr>, initia
     }
 
     let mut cursor = 0;
-    let default_user_data = []; // This will never be used. It is only used to keep rusts safety happy.
+    let default_user_data = [];
     // The -2 accounts a 16-bit encoded length when the size is >254 bytes.
     let maximum_data_size = MAX_SPDU_SIZE - serialise_accept(initiator_size, Some(false), None)?.len() - 2;
     let user_data = match user_data {
@@ -274,9 +268,6 @@ pub(crate) fn serialise_accept(initiator_size: &TsduMaximumSize, is_last: Option
             session_parameters.push(SessionPduParameter::Enclosure(EnclosureField(0)));
             session_parameters.push(SessionPduParameter::UserDataParameter(user_data.to_vec()));
         }
-    }
-    if let Some(user_data) = user_data {
-        session_parameters.push(SessionPduParameter::UserDataParameter(user_data.to_vec()));
     }
 
     SessionPduList::new(vec![SessionPduParameter::Accept(session_parameters)], vec![]).serialise()

@@ -8,6 +8,7 @@ use rusty_cotp::{
     api::{CotpConnectOptions, CotpConnection, CotpReader, CotpServer, CotpService, CotpWriter},
     service::{TcpCotpConnection, TcpCotpReader, TcpCotpServer, TcpCotpService, TcpCotpWriter},
 };
+use tracing::trace;
 
 use crate::{
     api::{CospAcceptor, CospConnection, CospError, CospReader, CospRecvResult, CospServer, CospService, CospWriter},
@@ -44,7 +45,7 @@ impl CospService<SocketAddr> for TcpCospService {
                 send_connect_data_overflow(&mut cotp_writer, &user_data[sent_data..]).await?;
                 overflow_accept.maximum_size_to_responder // This is all we really care about here. The rest is check in the receive method.
             }
-            (service::SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent event though user data was not provided.".into())),
+            (service::SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
         };
 
         Ok(TcpCospConnection::new(cotp_reader, cotp_writer, maximum_size_to_responder))
@@ -65,23 +66,7 @@ impl TcpCospServer {
 
 impl CospServer<SocketAddr> for TcpCospServer {
     async fn accept<'a>(&self) -> Result<impl 'a + CospAcceptor<SocketAddr>, CospError> {
-        Ok(TcpCospAcceptor::new(self.cotp_server.accept().await?))
-    }
-}
-
-pub struct TcpCospAcceptor {
-    cotp_connection: TcpCotpConnection,
-}
-
-impl TcpCospAcceptor {
-    pub fn new(cotp_connection: TcpCotpConnection) -> Self {
-        Self { cotp_connection }
-    }
-}
-
-impl CospAcceptor<SocketAddr> for TcpCospAcceptor {
-    async fn accept<'a>(self, accept_data: Option<&[u8]>) -> Result<(impl 'a + CospConnection<SocketAddr>, Option<Vec<u8>>), CospError> {
-        let (mut cotp_reader, mut cotp_writer) = self.cotp_connection.split().await?;
+        let (mut cotp_reader, mut cotp_writer) = self.cotp_server.accept().await?.split().await?;
 
         let connect_request = match receive_message(&mut cotp_reader).await? {
             CospMessage::CN(connect_message) => connect_message,
@@ -104,13 +89,36 @@ impl CospAcceptor<SocketAddr> for TcpCospAcceptor {
             send_overflow_accept(&mut cotp_writer, &maximum_size_to_initiator).await?;
             user_data.extend(receive_connect_data_overflow(&mut cotp_reader).await?);
         }
-        send_accept(&mut cotp_writer, &maximum_size_to_initiator, accept_data).await?;
 
         let user_data = match has_user_data {
             true => Some(user_data.drain(..).collect()),
             false => None,
         };
-        Ok((TcpCospConnection::new(cotp_reader, cotp_writer, *maximum_size_to_initiator), user_data))
+        Ok(TcpCospAcceptor::new(cotp_reader, cotp_writer, *maximum_size_to_initiator, user_data))
+    }
+}
+
+pub struct TcpCospAcceptor {
+    cotp_reader: TcpCotpReader,
+    cotp_writer: TcpCotpWriter,
+    maximum_size_to_initiator: TsduMaximumSize,
+    user_data: Option<Vec<u8>>,
+}
+
+impl TcpCospAcceptor {
+    pub fn new(cotp_reader: TcpCotpReader, cotp_writer: TcpCotpWriter, maximum_size_to_initiator: TsduMaximumSize, user_data: Option<Vec<u8>>) -> Self {
+        Self { cotp_reader, cotp_writer, maximum_size_to_initiator, user_data }
+    }
+}
+
+impl CospAcceptor<SocketAddr> for TcpCospAcceptor {
+    fn user_data(&self) -> Option<&[u8]> {
+        self.user_data.as_deref()
+    }
+
+    async fn complete_accept<'a>(mut self, accept_data: Option<&[u8]>) -> Result<impl 'a + CospConnection<SocketAddr>, CospError> {
+        send_accept(&mut self.cotp_writer, &self.maximum_size_to_initiator, accept_data).await?;
+        Ok(TcpCospConnection::new(self.cotp_reader, self.cotp_writer, self.maximum_size_to_initiator))
     }
 }
 
@@ -189,26 +197,136 @@ impl CospWriter<SocketAddr> for TcpCospWriter {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Range;
+
     use tokio::join;
     use tracing_test::traced_test;
 
     use super::*;
 
-    // TODO Performance. We use a lot of to_vec. Consider using take for user information.
-
     #[tokio::test]
     #[traced_test]
     async fn it_should_negotiate_a_version_2_unlimited_size_connection() -> Result<(), anyhow::Error> {
-        let address = "127.0.0.1:10002".parse()?;
-        let server = TcpCospService::create_server(address).await?;
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
+        let server = TcpCospService::create_server(test_address).await?;
 
-        let (client_result, acceptor_result) = join!(TcpCospService::connect(address, None, CotpConnectOptions::default()), async {
+        let (client_result, acceptor_result) = join!(TcpCospService::connect(test_address, None, CotpConnectOptions::default()), async {
             let acceptor = server.accept().await?;
-            acceptor.accept(None).await
+            assert_eq!(acceptor.user_data(), None);
+            acceptor.complete_accept(None).await
         });
         let client_connection = client_result?;
-        let (server_connection, connect_data) = acceptor_result?;
-        assert_eq!(connect_data, None);
+        let server_connection = acceptor_result?;
+
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
+
+        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        match server_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
+        }
+        server_writer.send(&[1, 2, 3, 4]).await?;
+        match client_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_pass_small_connect_and_accept_data() -> Result<(), anyhow::Error> {
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
+        let server = TcpCospService::create_server(test_address).await?;
+
+        let accept_data = vec![5, 4, 3];
+        let (client_result, acceptor_result) = join!(TcpCospService::connect(test_address, Some(&[5, 6, 7]), CotpConnectOptions::default()), async {
+            let acceptor = server.accept().await?;
+            assert_eq!(acceptor.user_data(), Some(&[5u8, 6u8, 7u8][..]));
+            acceptor.complete_accept(Some(accept_data.as_slice())).await
+        });
+        let client_connection = client_result?;
+        let server_connection = acceptor_result?;
+
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
+
+        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        match server_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
+        }
+        server_writer.send(&[1, 2, 3, 4]).await?;
+        match client_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_pass_medium_connect_and_accept_data() -> Result<(), anyhow::Error> {
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
+        let server = TcpCospService::create_server(test_address).await?;
+
+        let mut initial_connect_data = vec![0xabu8; 10240];
+        rand::fill(initial_connect_data.as_mut_slice());
+
+        let mut init_accept_data = vec![0x8; 512];
+        rand::fill(init_accept_data.as_mut_slice());
+
+        let (client_result, acceptor_result) = join!(TcpCospService::connect(test_address, Some(initial_connect_data.as_slice()), CotpConnectOptions::default()), async {
+            let acceptor = server.accept().await?;
+            assert_eq!(acceptor.user_data(), Some(&initial_connect_data[..]));
+            acceptor.complete_accept(Some(init_accept_data.as_slice())).await
+        });
+        let client_connection = client_result?;
+        let server_connection = acceptor_result?;
+
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
+
+        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        match server_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
+        }
+        server_writer.send(&[1, 2, 3, 4]).await?;
+        match client_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_pass_jumbo_connect_and_accept_data() -> Result<(), anyhow::Error> {
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
+        let server = TcpCospService::create_server(test_address).await?;
+
+        let mut initial_connect_data = vec![0xabu8; 10241];
+        rand::fill(initial_connect_data.as_mut_slice());
+
+        let mut init_accept_data = vec![0x8; 512];
+        rand::fill(init_accept_data.as_mut_slice());
+
+        let (client_result, acceptor_result) = join!(TcpCospService::connect(test_address, Some(initial_connect_data.as_slice()), CotpConnectOptions::default()), async {
+            let acceptor = server.accept().await?;
+            assert_eq!(acceptor.user_data(), Some(&initial_connect_data[..]));
+            acceptor.complete_accept(Some(init_accept_data.as_slice())).await
+        });
+        let client_connection = client_result?;
+        let server_connection = acceptor_result?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;

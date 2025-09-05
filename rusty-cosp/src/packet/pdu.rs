@@ -2,17 +2,16 @@ use std::collections::VecDeque;
 
 use bitfield::bitfield;
 use rusty_cotp::packet::data_transfer::DataTransfer;
-use tracing::warn;
+use tracing::{trace, warn};
 
 use crate::{
     api::CospError,
     common::slice_tlv_data,
     packet::{
         constants::{
-            ACCEPT_SI_CODE, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE,
-            GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE,
+            ACCEPT_SI_CODE, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE
         },
-        parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, ReasonCode, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField, encode_length},
+        parameters::{encode_length, DataOverflowField, EnclosureField, ProtocolOptionsField, ReasonCode, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
     },
     serialise_parameter_value,
 };
@@ -50,6 +49,7 @@ impl SessionPduList {
     pub(crate) fn deserialise(data: &[u8]) -> Result<Self, CospError> {
         let (session_pdus, user_information_offset) = deserialise_parameters(data)?;
         let user_information = data[user_information_offset..].to_vec();
+        trace!("{:?}", user_information);
         Ok(SessionPduList::new(session_pdus, user_information))
     }
 }
@@ -74,7 +74,7 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, C
             SessionPduParameter::VersionNumberParameter(field) => serialise_parameter_value!(VERSION_NUMBER_PARAMETER_CODE, field.0)?,
             SessionPduParameter::ReasonCodeParameter(reason_code) => reason_code.try_into()?,
             SessionPduParameter::SessionUserRequirementsParameter(field) => serialise_parameter_value!(SESSION_USER_REQUIREMENTS_PARAMETER_CODE, field.0)?,
-            SessionPduParameter::UserDataParameter(data) => serialise_data_parameter(SESSION_USER_REQUIREMENTS_PARAMETER_CODE, data)?,
+            SessionPduParameter::UserDataParameter(data) => serialise_data_parameter(USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::ExtendedUserDataParameter(data) => serialise_data_parameter(EXTENDED_USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::DataOverflowParameter(field) => serialise_parameter_value!(DATA_OVERFLOW_PARAMETER_CODE, field.0)?,
             SessionPduParameter::Enclosure(field) => serialise_parameter_value!(ENCLOSURE_PARAMETER_CODE, field.0)?,
@@ -130,9 +130,10 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
             SESSION_USER_REQUIREMENTS_PARAMETER_CODE => SessionPduParameter::SessionUserRequirementsParameter(parse_session_user_requirements(payload)?),
             VERSION_NUMBER_PARAMETER_CODE => SessionPduParameter::VersionNumberParameter(parse_version_number(payload)?),
 
-            // USER_DATA_PARAMETER_CODE => SessionPduParameter::UserData(parameter_value.to_vec()),
-            // DATA_OVERFLOW_PARAMETER_CODE => SessionPduParameter::DataOverflowItem(parse_data_overflow(data)?),
-            // EXTENDED_USER_DATA_PARAMETER_CODE => SessionPduParameter::ExtendedUserData(parameter_value.to_vec()),
+            USER_DATA_PARAMETER_CODE => SessionPduParameter::UserDataParameter(payload.to_vec()),
+            EXTENDED_USER_DATA_PARAMETER_CODE => SessionPduParameter::ExtendedUserDataParameter(payload.to_vec()),
+            DATA_OVERFLOW_PARAMETER_CODE => SessionPduParameter::DataOverflowParameter(parse_data_overflow(data)?),
+
             // ENCLOSURE_ITEM_PARAMETER_CODE => SessionPduParameter::EnclosureItem(parse_enclosure_item(data)?),
             // TRANSPORT_DISCONNECT_PARAMETER_CODE => SessionPduParameter::TransportDisconnectItem(parse_transport_disconnect(data)?),
             // REASON_CODE_PARAMETER_CODE => parse_reason_code(data)?,

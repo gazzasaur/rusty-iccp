@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use bitfield::bitfield;
 use strum::IntoStaticStr;
+use tracing::trace;
 
 use crate::{api::CospError, packet::{constants::REASON_CODE_PARAMETER_CODE}};
 
@@ -40,7 +41,7 @@ pub(crate) fn encode_length(length: usize) -> Result<Vec<u8>, CospError> {
     } else if length < 255 {
         Ok(vec![length as u8])
     } else {
-        let length_bytes = length.to_be_bytes();
+        let length_bytes = (length as u16).to_be_bytes();
         Ok(vec![0xFF, length_bytes[0], length_bytes[1]])
     }
 }

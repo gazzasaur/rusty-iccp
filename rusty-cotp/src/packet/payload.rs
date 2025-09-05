@@ -7,7 +7,7 @@ use crate::packet::{
 };
 
 #[derive(Debug, PartialEq)]
-pub enum TransportProtocolDataUnit {
+pub(crate) enum TransportProtocolDataUnit {
     CR(ConnectionRequest),
     CC(ConnectionConfirm),
     DR(DisconnectRequest),

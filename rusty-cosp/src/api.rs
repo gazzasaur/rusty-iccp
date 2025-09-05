@@ -35,7 +35,8 @@ pub trait CospServer<T> {
 }
 
 pub trait CospAcceptor<T> {
-    fn accept<'a>(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<(impl 'a + CospConnection<T>, Option<Vec<u8>>), CospError>> + Send;
+    fn user_data(&self) -> Option<&[u8]>;
+    fn complete_accept<'a>(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl 'a + CospConnection<T>, CospError>> + Send;
 }
 
 pub trait CospConnection<T> {
