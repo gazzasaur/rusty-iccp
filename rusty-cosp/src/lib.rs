@@ -8,14 +8,13 @@ use rusty_cotp::{
     api::{CotpConnectOptions, CotpConnection, CotpReader, CotpServer, CotpService, CotpWriter},
     service::{TcpCotpConnection, TcpCotpReader, TcpCotpServer, TcpCotpService, TcpCotpWriter},
 };
-use tracing::trace;
 
 use crate::{
     api::{CospAcceptor, CospConnection, CospError, CospReader, CospRecvResult, CospServer, CospService, CospWriter},
     common::TsduMaximumSize,
     message::CospMessage,
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
-    service::{IcpIsoStateMachine, receive_accept, receive_connect_data_overflow, receive_message, receive_overflow_accept, send_accept, send_connect_data_overflow, send_connect_reqeust, send_overflow_accept},
+    service::{IcpIsoStateMachine, receive_accept_with_all_user_data, receive_connect_data_overflow, receive_message, receive_overflow_accept, send_accept, send_connect_data_overflow, send_connect_reqeust, send_overflow_accept},
 };
 
 pub mod api;
@@ -38,17 +37,17 @@ impl CospService<SocketAddr> for TcpCospService {
 
         let send_connect_result = send_connect_reqeust(&mut cotp_writer, connect_data).await?;
 
-        let maximum_size_to_responder = match (send_connect_result, connect_data) {
-            (service::SendConnectionRequestResult::Complete, _) => receive_accept(&mut cotp_reader).await?.maximum_size_to_responder,
+        let accept_message = match (send_connect_result, connect_data) {
+            (service::SendConnectionRequestResult::Complete, _) => receive_accept_with_all_user_data(&mut cotp_reader).await?,
             (service::SendConnectionRequestResult::Overflow(sent_data), Some(user_data)) => {
-                let overflow_accept = receive_overflow_accept(&mut cotp_reader).await?;
+                receive_overflow_accept(&mut cotp_reader).await?;
                 send_connect_data_overflow(&mut cotp_writer, &user_data[sent_data..]).await?;
-                overflow_accept.maximum_size_to_responder // This is all we really care about here. The rest is check in the receive method.
+                receive_accept_with_all_user_data(&mut cotp_reader).await?
             }
             (service::SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
         };
 
-        Ok(TcpCospConnection::new(cotp_reader, cotp_writer, maximum_size_to_responder))
+        Ok(TcpCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder()))
     }
 }
 
@@ -207,8 +206,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_negotiate_a_version_2_unlimited_size_connection() -> Result<(), anyhow::Error> {
-        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let test_address = "127.0.0.1:10002".parse()?;
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let server = TcpCospService::create_server(test_address).await?;
 
         let (client_result, acceptor_result) = join!(TcpCospService::connect(test_address, None, CotpConnectOptions::default()), async {
@@ -239,8 +237,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_pass_small_connect_and_accept_data() -> Result<(), anyhow::Error> {
-        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let test_address = "127.0.0.1:10002".parse()?;
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let server = TcpCospService::create_server(test_address).await?;
 
         let accept_data = vec![5, 4, 3];
@@ -272,8 +269,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_pass_medium_connect_and_accept_data() -> Result<(), anyhow::Error> {
-        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let test_address = "127.0.0.1:10002".parse()?;
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let server = TcpCospService::create_server(test_address).await?;
 
         let mut initial_connect_data = vec![0xabu8; 10240];
@@ -310,23 +306,23 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_pass_jumbo_connect_and_accept_data() -> Result<(), anyhow::Error> {
-        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let test_address = "127.0.0.1:10002".parse()?;
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let server = TcpCospService::create_server(test_address).await?;
 
-        let mut initial_connect_data = vec![0xabu8; 10241];
+        let mut initial_connect_data = vec![0x00u8; 10240 + 65520 + 65520 + 100];
         rand::fill(initial_connect_data.as_mut_slice());
 
-        let mut init_accept_data = vec![0x8; 512];
-        rand::fill(init_accept_data.as_mut_slice());
+        let mut init_accept_data = vec![0x00u8; 50];
+        // rand::fill(init_accept_data.as_mut_slice());
 
         let (client_result, acceptor_result) = join!(TcpCospService::connect(test_address, Some(initial_connect_data.as_slice()), CotpConnectOptions::default()), async {
             let acceptor = server.accept().await?;
+            assert_eq!(acceptor.user_data().unwrap().len(), initial_connect_data.len());
             assert_eq!(acceptor.user_data(), Some(&initial_connect_data[..]));
             acceptor.complete_accept(Some(init_accept_data.as_slice())).await
         });
-        let client_connection = client_result?;
         let server_connection = acceptor_result?;
+        let client_connection = client_result?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;

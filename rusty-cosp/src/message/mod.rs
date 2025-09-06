@@ -1,18 +1,22 @@
 use strum::IntoStaticStr;
-use tracing::trace;
+use tracing::warn;
 
 use crate::{
     api::CospError,
-    message::{connect::ConnectMessage, data_transfer::DataTransferMessage},
+    message::{accept::AcceptMessage, connect::ConnectMessage, connect_data_overflow::ConnectDataOverflowMessage, data_transfer::DataTransferMessage},
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
 };
 
 pub(crate) mod connect;
 pub(crate) mod data_transfer;
+pub(crate) mod accept;
+pub(crate) mod connect_data_overflow;
 
 #[derive(IntoStaticStr)]
 pub(crate)  enum CospMessage {
     CN(ConnectMessage),
+    AC(AcceptMessage),
+    CDO(ConnectDataOverflowMessage),
     DT(DataTransferMessage),
 }
 
@@ -25,7 +29,7 @@ impl CospMessage {
         } else if spdu_list.session_pdus().len() == 2 {
             CospMessage::process_basic_concatenated(&spdu_list.session_pdus()[0], &spdu_list.session_pdus()[1], spdu_list.user_information())
         } else {
-            trace!("Extended PDUs are not supported: {:?}", spdu_list);
+            warn!("Extended PDUs are not supported: {:?}", spdu_list);
             return Err(CospError::ProtocolError("Extended PDUs are not supported.".into()));
         }
     }
@@ -33,9 +37,9 @@ impl CospMessage {
     fn process_basic(message_parameter: &SessionPduParameter) -> Result<Self, CospError> {
         Ok(match message_parameter {
             SessionPduParameter::Connect(parameters) => CospMessage::CN(ConnectMessage::from_parameters(parameters.as_slice())?),
+            SessionPduParameter::Accept(parameters) => CospMessage::AC(AcceptMessage::from_parameters(parameters.as_slice())?),
+            SessionPduParameter::ConnectDataOverflow(parameters) => CospMessage::CDO(ConnectDataOverflowMessage::from_parameters(parameters.as_slice())?),
             SessionPduParameter::OverflowAccept(parameters) => todo!(),
-            SessionPduParameter::ConnectDataOverflow(parameters) => todo!(),
-            SessionPduParameter::Accept(parameters) => todo!(),
             _ => return Err(CospError::ProtocolError(format!("Unsupported SPDU: {}", <&SessionPduParameter as Into<&'static str>>::into(message_parameter)))),
         })
     }

@@ -27,7 +27,7 @@ pub(crate) enum SessionPduParameter {
     UserDataParameter(Vec<u8>),
     ExtendedUserDataParameter(Vec<u8>),
     DataOverflowParameter(DataOverflowField),
-    Enclosure(EnclosureField),
+    EnclosureParameter(EnclosureField),
 
     Unknown,
 }
@@ -84,8 +84,8 @@ bitfield! {
     impl Debug;
 
     u16;
-    pub(crate) to_initiator, _ : 0, 15;
-    pub(crate) to_responder, _ : 16, 31;
+    pub(crate) to_initiator, _ : 15, 0;
+    pub(crate) to_responder, _ : 31, 16;
 }
 
 // ---
@@ -99,7 +99,7 @@ bitfield! {
 
     pub(crate) version1, _ : 0;
     pub(crate) version2, _ : 1;
-    pub(crate) reserved, _ : 2, 7;
+    pub(crate) reserved, _ : 7, 2;
 }
 
 // ---
@@ -216,7 +216,7 @@ bitfield! {
     pub(crate) struct DataOverflowField(u8);
 
     pub(crate) more_data, _ : 0; // The only valid value is true
-    pub(crate) reserved, _ : 1, 7;
+    pub(crate) reserved, _ : 7, 1;
 }
 
 impl Clone for DataOverflowField {
@@ -243,7 +243,7 @@ bitfield! {
 
     pub(crate) begining, _ : 0; // The only valid value is false
     pub(crate) end, _ : 1;
-    pub(crate) reserved, _ : 2, 7;
+    pub(crate) reserved, _ : 7, 2;
 }
 
 impl Clone for EnclosureField {
@@ -257,6 +257,6 @@ impl Copy for EnclosureField {
 
 impl Default for EnclosureField {
     fn default() -> Self {
-        Self(0x00)
+        Self(0x02)
     }
 }

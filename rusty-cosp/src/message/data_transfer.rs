@@ -23,7 +23,7 @@ impl DataTransferMessage {
         // Not minding about order or duplicates.
         for parameter in parameters {
             match parameter {
-                SessionPduParameter::Enclosure(field) => enclosure = Some(*field),
+                SessionPduParameter::EnclosureParameter(field) => enclosure = Some(*field),
                 _ => (), // Ignore everything else.
             };
         }

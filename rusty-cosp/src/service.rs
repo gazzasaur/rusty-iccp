@@ -1,14 +1,19 @@
 use std::{collections::VecDeque, net::SocketAddr};
 
 use rusty_cotp::api::{CotpReader, CotpRecvResult, CotpWriter};
-use tracing::{trace, warn};
+use tracing::warn;
 
 use crate::{
-    api::CospError, common::TsduMaximumSize, message::CospMessage, packet::{
+    api::CospError,
+    common::TsduMaximumSize,
+    message::{accept::AcceptMessage, CospMessage},
+    packet::{
         parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
-    }
+    },
 };
+
+const MAX_PAYLOAD_SIZE: usize = 65520; // Technically the maximum is 65528 but it seems to be an issue with some frameworks.
 
 pub(crate) enum IcpIsoState {
     Connecting,
@@ -65,14 +70,6 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter<SocketAddr
     })
 }
 
-pub(crate) async fn receive_message(reader: &mut impl CotpReader<SocketAddr>) -> Result<CospMessage, CospError> {
-    let data = match reader.recv().await? {
-        CotpRecvResult::Closed => return Err(CospError::ProtocolError("The transport connection was closed before the conection could be established.".into())),
-        CotpRecvResult::Data(data) => data,
-    };
-    CospMessage::from_spdu_list(SessionPduList::deserialise(&data)?)
-}
-
 pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter<SocketAddr>, initiator_size: &TsduMaximumSize) -> Result<(), CospError> {
     let mut connect_accept_sub_parameters = Vec::new();
     if let TsduMaximumSize::Size(initiator_size) = initiator_size {
@@ -91,12 +88,8 @@ pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter<SocketAddr
     Ok(writer.send(&pdus.serialise()?).await?)
 }
 
-pub(crate) struct ReceivedAcceptRequest {
-    pub maximum_size_to_responder: TsduMaximumSize,
-    pub user_data: Option<Vec<u8>>,
-}
-
-pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketAddr>) -> Result<ReceivedAcceptRequest, CospError> {
+// We do not really need to return anything here. We will inspect the accept payload at the end.
+pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketAddr>) -> Result<(), CospError> {
     let data = match reader.recv().await? {
         CotpRecvResult::Closed => return Err(CospError::ProtocolError("The transport connection was closed before the conection overflow was accepted.".into())),
         CotpRecvResult::Data(data) => data,
@@ -108,22 +101,26 @@ pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketA
     }
     let mut parameters = match pdus.session_pdus_mut().pop() {
         Some(SessionPduParameter::OverflowAccept(session_pdu_parameters)) => session_pdu_parameters,
-        Some(pdu) => return Err(CospError::ProtocolError(format!("Expected am overflow accept but got {}", <SessionPduParameter as Into<&'static str>>::into(pdu)))),
+        Some(pdu) => return Err(CospError::ProtocolError(format!("Expected an overflow accept but got {}", <SessionPduParameter as Into<&'static str>>::into(pdu)))),
         _ => return Err(CospError::ProtocolError("Cannot accept connection. The peer did not send data.".into())),
     };
 
     let mut version_number = None;
-    let mut maximum_size_to_responder = TsduMaximumSize::Unlimited;
+    let mut session_requirements = SessionUserRequirementsField::default();
+    // Protocol options is not required as we are not going to send packets with extended concatenation.
 
     // Not minding about order or duplicates.
     for parameter in parameters.drain(..) {
         match parameter {
-            SessionPduParameter::VersionNumberParameter(value) => version_number = Some(value),
-            SessionPduParameter::TsduMaximumSizeParameter(value) => {
-                if value.to_initiator() != 0 {
-                    maximum_size_to_responder = TsduMaximumSize::Size(value.to_responder()) // Ignore the initiator as that is us.
+            SessionPduParameter::ConnectAcceptItemParameter(sub_parameters) => {
+                for sub_parameter in sub_parameters {
+                    match sub_parameter {
+                        SessionPduParameter::VersionNumberParameter(value) => version_number = Some(value),
+                        _ => (), // Technically, we should compare parameters with the follow-up accept, but it feels like too much. Ignore everything else.
+                    }
                 }
             }
+            SessionPduParameter::SessionUserRequirementsParameter(value) => session_requirements = value,
             _ => (), // Ignore everything else.
         };
     }
@@ -131,13 +128,14 @@ pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketA
         Some(version) if version.version2() => (),
         _ => return Err(CospError::ProtocolError("Only version 2 is supported but version 1 was requested by the server in overflow accept.".into())),
     }
-
-    // There is no userbdata on overflow accept.
-    Ok(ReceivedAcceptRequest { maximum_size_to_responder, user_data: None })
+    if session_requirements.0 != 2 {
+        // TODO Reject
+        return Err(CospError::ProtocolError("More than the full duplex function was requested.".into()));
+    }
+    Ok(())
 }
 
 pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter<SocketAddr>, data: &[u8]) -> Result<(), CospError> {
-    const MAX_PAYLOAD_SIZE: usize = 65528;
     let mut cursor = 0;
 
     while cursor < data.len() {
@@ -154,7 +152,7 @@ pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter<Sock
             .send(
                 &SessionPduList::new(
                     vec![SessionPduParameter::ConnectDataOverflow(vec![
-                        SessionPduParameter::Enclosure(EnclosureField(end_flag)),
+                        SessionPduParameter::EnclosureParameter(EnclosureField(2*end_flag)),
                         SessionPduParameter::UserDataParameter(data[start_index..cursor].to_vec()),
                     ])],
                     vec![],
@@ -167,36 +165,19 @@ pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter<Sock
 }
 
 pub(crate) async fn receive_connect_data_overflow(reader: &mut impl CotpReader<SocketAddr>) -> Result<Vec<u8>, CospError> {
-    const MAX_PAYLOAD_SIZE: usize = 65528;
     let mut buffer = VecDeque::new();
 
-    let mut end_flag = false;
-    while !end_flag {
-        let data = match reader.recv().await? {
-            CotpRecvResult::Closed => return Err(CospError::ProtocolError("The transport connection was closed before the conection overflow was accepted.".into())),
-            CotpRecvResult::Data(data) => data,
+    let mut has_more_data = true;
+    while has_more_data {
+        let message = receive_message(reader).await?;
+        let cdo_message = match message {
+            CospMessage::CDO(overflow_message) => overflow_message,
+            _ => return Err(CospError::ProtocolError(format!("Expected a Connect Data Overflow message but got: {}", <CospMessage as Into<&'static str>>::into(message)))),
         };
-
-        let mut pdus = SessionPduList::deserialise(&data)?;
-        if pdus.session_pdus().len() > 1 {
-            warn!("Received extra SPDUs on connect data overflow. Ignoring the extra PDUs.");
+        if let Some(user_data) = cdo_message.user_data() {
+            buffer.extend(user_data);
         }
-        let mut parameters = match pdus.session_pdus_mut().pop() {
-            Some(SessionPduParameter::ConnectDataOverflow(session_pdu_parameters)) => session_pdu_parameters,
-            Some(pdu) => return Err(CospError::ProtocolError(format!("Expected a connect data overflow but got {}", <SessionPduParameter as Into<&'static str>>::into(pdu)))),
-            _ => return Err(CospError::ProtocolError("Cannot finish connect. The peer did not send data.".into())),
-        };
-
-        // Not minding about order or duplicates.
-        for parameter in parameters.drain(..) {
-            match parameter {
-                SessionPduParameter::Enclosure(value) => end_flag = value.end(),
-                SessionPduParameter::UserDataParameter(value) => {
-                    buffer.extend(value);
-                }
-                _ => (), // Ignore everything else.
-            };
-        }
+        has_more_data = cdo_message.has_more_data();
     }
     Ok(buffer.drain(..).collect())
 }
@@ -206,7 +187,7 @@ pub(crate) async fn send_accept(writer: &mut impl CotpWriter<SocketAddr>, initia
 
     // As we may need to send multiple accept payloads, we will precalculate the size of the header without enclosure.
     // Enclosure is a fixed 3 bytes which we only need to take into account if we are doing segmentation.
-    let optimistic_accept = serialise_accept(initiator_size, None, user_data)?;
+    let optimistic_accept = serialise_accept(initiator_size, None, Some(&[]))?;
     let requires_segmentation = optimistic_accept.len() > MAX_SPDU_SIZE;
 
     if !requires_segmentation {
@@ -253,19 +234,19 @@ pub(crate) fn serialise_accept(initiator_size: &TsduMaximumSize, is_last: Option
             session_parameters.push(SessionPduParameter::UserDataParameter(user_data.to_vec()));
         }
         (Some(is_last), None) if is_last => {
-            session_parameters.push(SessionPduParameter::Enclosure(EnclosureField(2)));
+            session_parameters.push(SessionPduParameter::EnclosureParameter(EnclosureField(2)));
             session_parameters.push(SessionPduParameter::UserDataParameter(vec![]));
         }
         (Some(_), None) => {
-            session_parameters.push(SessionPduParameter::Enclosure(EnclosureField(0)));
+            session_parameters.push(SessionPduParameter::EnclosureParameter(EnclosureField(0)));
             session_parameters.push(SessionPduParameter::UserDataParameter(vec![]));
         }
         (Some(is_last), Some(user_data)) if is_last => {
-            session_parameters.push(SessionPduParameter::Enclosure(EnclosureField(2)));
+            session_parameters.push(SessionPduParameter::EnclosureParameter(EnclosureField(2)));
             session_parameters.push(SessionPduParameter::UserDataParameter(user_data.to_vec()));
         }
         (Some(_), Some(user_data)) => {
-            session_parameters.push(SessionPduParameter::Enclosure(EnclosureField(0)));
+            session_parameters.push(SessionPduParameter::EnclosureParameter(EnclosureField(0)));
             session_parameters.push(SessionPduParameter::UserDataParameter(user_data.to_vec()));
         }
     }
@@ -273,94 +254,44 @@ pub(crate) fn serialise_accept(initiator_size: &TsduMaximumSize, is_last: Option
     SessionPduList::new(vec![SessionPduParameter::Accept(session_parameters)], vec![]).serialise()
 }
 
-pub(crate) async fn receive_accept(reader: &mut impl CotpReader<SocketAddr>) -> Result<ReceivedAcceptRequest, CospError> {
-    let mut user_data_buffer = None;
-    loop {
-        let data = match reader.recv().await? {
-            CotpRecvResult::Closed => return Err(CospError::ProtocolError("The transport connection was closed before the conection was accepted.".into())),
-            CotpRecvResult::Data(data) => data,
-        };
-
-        let deserialise_result = deserialise_accept(&data)?;
-        match (&mut user_data_buffer, deserialise_result.user_data) {
-            (None, Some(user_data)) => {
-                let mut buffer = VecDeque::new();
-                buffer.extend(user_data);
-                user_data_buffer = Some(buffer);
-            }
-            (Some(buffer), Some(user_data)) => {
-                buffer.extend(user_data);
-            }
-            (_, _) => (),
-        };
-
-        if !deserialise_result.has_more {
-            return Ok(ReceivedAcceptRequest {
-                maximum_size_to_responder: deserialise_result.maximum_size_to_responder,
-                user_data: user_data_buffer.map(|x| x.into_iter().collect()),
-            });
-        }
-    }
-}
-
-struct DeserialiseResult {
-    pub has_more: bool,
-    pub user_data: Option<Vec<u8>>,
-    maximum_size_to_responder: TsduMaximumSize,
-}
-
-fn deserialise_accept(data: &[u8]) -> Result<DeserialiseResult, CospError> {
-    let mut pdus = SessionPduList::deserialise(&data)?;
-    if pdus.session_pdus().len() > 1 {
-        warn!("Received extra SPDUs on accept. Ignoring the extra PDUs.");
-    }
-    let mut parameters = match pdus.session_pdus_mut().pop() {
-        Some(SessionPduParameter::Accept(session_pdu_parameters)) => session_pdu_parameters,
-        Some(pdu) => return Err(CospError::ProtocolError(format!("Expected am accept but got {}", <SessionPduParameter as Into<&'static str>>::into(pdu)))),
-        _ => return Err(CospError::ProtocolError("Cannot accept connection. The peer did not send data.".into())),
+pub(crate) async fn receive_accept_with_all_user_data(reader: &mut impl CotpReader<SocketAddr>) -> Result<AcceptMessage, CospError> {
+    let message = receive_message(reader).await?;
+    let accept_message = match message {
+        CospMessage::AC(accept_message) => accept_message,
+        _ => return Err(CospError::ProtocolError(format!("Expected an Accept message but got: {}", <CospMessage as Into<&'static str>>::into(message)))),
     };
 
-    let mut has_more = false;
-    let mut user_data = None;
-    let mut version_number = None;
-    let mut maximum_size_to_responder = TsduMaximumSize::Unlimited;
+    let mut buffer = VecDeque::new();
+    let has_data = accept_message.user_data().is_some();
+    let mut has_more_data = accept_message.has_more_data();
+    if let Some(user_data) = accept_message.user_data() {
+        buffer.extend(user_data);
+    }
 
-    // Not minding about order or duplicates.
-    for parameter in parameters.drain(..) {
-        match parameter {
-            SessionPduParameter::ConnectAcceptItemParameter(sub_pdus) => {
-                for sub_pdu in sub_pdus {
-                    match sub_pdu {
-                        SessionPduParameter::VersionNumberParameter(supported_versions) => version_number = Some(supported_versions),
-                        SessionPduParameter::TsduMaximumSizeParameter(tsdu_maximum_size) => maximum_size_to_responder = TsduMaximumSize::Size(tsdu_maximum_size.to_responder()),
-                        _ => (), // Ignore everything else.
-                    }
-                }
-            }
-            SessionPduParameter::TsduMaximumSizeParameter(value) => {
-                if value.to_initiator() != 0 {
-                    maximum_size_to_responder = TsduMaximumSize::Size(value.to_initiator()) // Ignore the initiator as that is us.
-                }
-            }
-            SessionPduParameter::Enclosure(field) => {
-                has_more = !field.end();
-            }
-            SessionPduParameter::UserDataParameter(data) => {
-                user_data = Some(data);
-            }
-            _ => (), // Ignore everything else.
+    while has_more_data {
+        let message = receive_message(reader).await?;
+        let accept_message = match message {
+            CospMessage::AC(accept_message) => accept_message,
+            _ => return Err(CospError::ProtocolError(format!("Expected an Accept message but got: {}", <CospMessage as Into<&'static str>>::into(message)))),
         };
-    }
-    match version_number {
-        Some(version) if version.version2() => (),
-        Some(version) if version.version1() => return Err(CospError::ProtocolError("Only version 2 is supported but version 1 was requested by the server on accept.".into())),
-        Some(_) => return Err(CospError::ProtocolError("Only version 2 is supported but no was requested by the server on accept.".into())),
-        None => return Err(CospError::ProtocolError("Only version 2 is supported but version 1 was implied by the server on accept.".into())),
+
+        has_more_data = accept_message.has_more_data();
+        if let Some(user_data) = accept_message.user_data() {
+            buffer.extend(user_data);
+        }
     }
 
-    Ok(DeserialiseResult {
-        has_more,
-        user_data,
-        maximum_size_to_responder,
-    })
+    let user_data = match has_data {
+        true => Some(buffer.drain(..).collect()),
+        false => None,
+    };
+    Ok(AcceptMessage::new(false, *accept_message.maximum_size_to_responder(), user_data))
+}
+
+pub(crate) async fn receive_message(reader: &mut impl CotpReader<SocketAddr>) -> Result<CospMessage, CospError> {
+    let data = match reader.recv().await? {
+        CotpRecvResult::Closed => return Err(CospError::ProtocolError("The transport connection was closed before the conection could be established.".into())),
+        CotpRecvResult::Data(data) => data,
+    };
+    CospMessage::from_spdu_list(SessionPduList::deserialise(&data)?)
 }

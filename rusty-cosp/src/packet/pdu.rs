@@ -1,8 +1,7 @@
 use std::collections::VecDeque;
 
 use bitfield::bitfield;
-use rusty_cotp::packet::data_transfer::DataTransfer;
-use tracing::{trace, warn};
+use tracing::warn;
 
 use crate::{
     api::CospError,
@@ -49,7 +48,6 @@ impl SessionPduList {
     pub(crate) fn deserialise(data: &[u8]) -> Result<Self, CospError> {
         let (session_pdus, user_information_offset) = deserialise_parameters(data)?;
         let user_information = data[user_information_offset..].to_vec();
-        trace!("{:?}", user_information);
         Ok(SessionPduList::new(session_pdus, user_information))
     }
 }
@@ -77,7 +75,7 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, C
             SessionPduParameter::UserDataParameter(data) => serialise_data_parameter(USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::ExtendedUserDataParameter(data) => serialise_data_parameter(EXTENDED_USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::DataOverflowParameter(field) => serialise_parameter_value!(DATA_OVERFLOW_PARAMETER_CODE, field.0)?,
-            SessionPduParameter::Enclosure(field) => serialise_parameter_value!(ENCLOSURE_PARAMETER_CODE, field.0)?,
+            SessionPduParameter::EnclosureParameter(field) => serialise_parameter_value!(ENCLOSURE_PARAMETER_CODE, field.0)?,
 
             SessionPduParameter::Unknown => todo!(),
         });
@@ -117,6 +115,8 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
         let parameter = match tag {
             CONNECT_SI_CODE => SessionPduParameter::Connect(deserialise_parameters(payload)?.0),
             ACCEPT_SI_CODE => SessionPduParameter::Accept(deserialise_parameters(payload)?.0),
+            OVERFLOW_ACCEPT_SI_CODE => SessionPduParameter::OverflowAccept(deserialise_parameters(payload)?.0),
+            CONNECT_DATA_OVERFLOW_SI_CODE => SessionPduParameter::ConnectDataOverflow(deserialise_parameters(payload)?.0),
 
             // Category 0 message. Must always be the the first SPDU in a concatenated list. Otherwise it is a Data Transfer. Their SI codes are the same.
             GIVE_TOKENS_SI_CODE if parameters.len() == 0 => SessionPduParameter::GiveTokens(),
@@ -132,9 +132,9 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
 
             USER_DATA_PARAMETER_CODE => SessionPduParameter::UserDataParameter(payload.to_vec()),
             EXTENDED_USER_DATA_PARAMETER_CODE => SessionPduParameter::ExtendedUserDataParameter(payload.to_vec()),
-            DATA_OVERFLOW_PARAMETER_CODE => SessionPduParameter::DataOverflowParameter(parse_data_overflow(data)?),
+            DATA_OVERFLOW_PARAMETER_CODE => SessionPduParameter::DataOverflowParameter(parse_data_overflow(payload)?),
+            ENCLOSURE_PARAMETER_CODE => SessionPduParameter::EnclosureParameter(parse_enclosure_item(payload)?),
 
-            // ENCLOSURE_ITEM_PARAMETER_CODE => SessionPduParameter::EnclosureItem(parse_enclosure_item(data)?),
             // TRANSPORT_DISCONNECT_PARAMETER_CODE => SessionPduParameter::TransportDisconnectItem(parse_transport_disconnect(data)?),
             // REASON_CODE_PARAMETER_CODE => parse_reason_code(data)?,
             // REFLECT_PARAMETER_VALUES_PARAMETER_CODE => SessionPduParameter::ReflectParameterValues(data.to_vec()),
@@ -171,7 +171,7 @@ fn parse_session_user_requirements(data: &[u8]) -> Result<SessionUserRequirement
 }
 
 fn parse_version_number(data: &[u8]) -> Result<VersionNumberField, CospError> {
-    verify_length("Protocol Parameters", 1, data)?;
+    verify_length("Version Parameters", 1, data)?;
     Ok(VersionNumberField(data[0]))
 }
 

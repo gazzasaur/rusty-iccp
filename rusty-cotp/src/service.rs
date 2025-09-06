@@ -2,6 +2,7 @@ use std::{collections::VecDeque, net::SocketAddr};
 
 use bytes::BytesMut;
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktService, TcpTpktWriter, TpktConnection, TpktReader, TpktRecvResult, TpktServer, TpktService, TpktWriter};
+use tracing::trace;
 
 use crate::{
     api::{CotpConnectOptions, CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpServer, CotpService, CotpWriter},
@@ -293,7 +294,9 @@ impl TcpCotpWriter {
 
 impl CotpWriter<SocketAddr> for TcpCotpWriter {
     async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {
-        let chunks = data.chunks(self.max_payload_size);
+        const HEADER_LENGTH: usize = 3;
+
+        let chunks = data.chunks(self.max_payload_size - HEADER_LENGTH);
         let chunk_count = chunks.len();
         for (chunk_index, chunk_data) in chunks.enumerate() {
             let end_of_transmission = chunk_index + 1 >= chunk_count;
