@@ -4,7 +4,7 @@ use crate::{
     parser::{common::parse_u16, params::parse_parameters},
 };
 
-pub fn parse_create_confirm(credit: u8, header_data: &[u8], user_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
+pub(crate) fn parse_create_confirm(credit: u8, header_data: &[u8], user_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
     if header_data.len() < 5 {
         return Err(CotpError::ProtocolError(format!("At least 5 bytes are required to parse the payload but got {}", header_data.len())).into());
     }

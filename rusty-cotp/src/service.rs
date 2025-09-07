@@ -2,7 +2,6 @@ use std::{collections::VecDeque, net::SocketAddr};
 
 use bytes::BytesMut;
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktService, TcpTpktWriter, TpktConnection, TpktReader, TpktRecvResult, TpktServer, TpktService, TpktWriter};
-use tracing::trace;
 
 use crate::{
     api::{CotpConnectOptions, CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpServer, CotpService, CotpWriter},
@@ -111,7 +110,6 @@ impl TcpCotpConnection {
         }
 
         let payload = serialiser.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
-            0,
             source_reference,
             0,
             ConnectionClass::Class0,

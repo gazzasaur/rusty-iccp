@@ -7,7 +7,7 @@ use crate::{
     serialiser::params::serialise_parameters,
 };
 
-pub fn serialise_connection_request(data: &ConnectionRequest) -> Result<Vec<u8>, CotpError> {
+pub(crate) fn serialise_connection_request(data: &ConnectionRequest) -> Result<Vec<u8>, CotpError> {
     if data.preferred_class() != &ConnectionClass::Class0 {
         return Err(CotpError::ProtocolError(format!("Unsupported class {:?}. Only Class 0 is supported by this package.", data.preferred_class()).into()));
     }
@@ -79,7 +79,7 @@ mod tests {
         let subject = TransportProtocolDataUnitSerialiser::new();
 
         assert_eq!(
-            subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[])))?,
+            subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[])))?,
             hex::decode("06E00000000000")?.as_slice()
         );
 
@@ -93,7 +93,6 @@ mod tests {
 
         assert_eq!(
             subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
-                0,
                 0,
                 0,
                 ConnectionClass::Class0,
@@ -113,7 +112,6 @@ mod tests {
         let subject = TransportProtocolDataUnitSerialiser::new();
 
         match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
-            0,
             0,
             0,
             ConnectionClass::Class4,
@@ -136,7 +134,6 @@ mod tests {
         match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
             0,
             0,
-            0,
             ConnectionClass::Class0,
             vec![],
             vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])],
@@ -154,7 +151,7 @@ mod tests {
     async fn parse_payloads_with_userdata_sad() -> Result<(), anyhow::Error> {
         let subject = TransportProtocolDataUnitSerialiser::new();
 
-        match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))) {
+        match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))) {
             Ok(_) => assert!(false, "Expected this to result in an error"),
             Err(CotpError::ProtocolError(message)) => assert_eq!("User data is not supported on Class 0 connection requests.", message),
             _ => assert!(false, "Unexpected failure result."),

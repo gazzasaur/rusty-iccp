@@ -4,7 +4,7 @@ pub const CONNECTION_REQUEST_CODE: u8 = 0xE0u8;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ConnectionRequest {
-    credit: u8,
+    // Credit field is not required
     source_reference: u16,
     destination_reference: u16,
     preferred_class: ConnectionClass,
@@ -14,9 +14,8 @@ pub(crate) struct ConnectionRequest {
 }
 
 impl ConnectionRequest {
-    pub(crate) fn new(credit: u8, source_reference: u16, destination_reference: u16, preferred_class: ConnectionClass, options: Vec<ConnectionOption>, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
+    pub(crate) fn new(source_reference: u16, destination_reference: u16, preferred_class: ConnectionClass, options: Vec<ConnectionOption>, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
         Self {
-            credit,
             source_reference,
             destination_reference,
             preferred_class,
@@ -24,10 +23,6 @@ impl ConnectionRequest {
             parameters,
             user_data: user_data.into(),
         }
-    }
-
-    pub(crate) fn credit(&self) -> u8 {
-        self.credit
     }
 
     pub(crate) fn source_reference(&self) -> u16 {

@@ -30,10 +30,6 @@ impl SessionPduList {
         &self.session_pdus
     }
 
-    pub(crate) fn session_pdus_mut(&mut self) -> &mut Vec<SessionPduParameter> {
-        &mut self.session_pdus
-    }
-
     pub(crate) fn user_information(&self) -> &[u8] {
         self.user_information.as_slice()
     }

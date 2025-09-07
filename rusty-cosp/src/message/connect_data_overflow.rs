@@ -1,5 +1,3 @@
-use tracing::trace;
-
 use crate::{
     api::CospError,
     packet::parameters::{EnclosureField, SessionPduParameter},
@@ -11,10 +9,6 @@ pub(crate) struct ConnectDataOverflowMessage {
 }
 
 impl ConnectDataOverflowMessage {
-    pub(crate) fn new(has_more_data: bool, user_data: Option<Vec<u8>>) -> Self {
-        Self { has_more_data, user_data }
-    }
-    
     pub(crate) fn user_data(&self) -> Option<&Vec<u8>> {
         self.user_data.as_ref()
     }

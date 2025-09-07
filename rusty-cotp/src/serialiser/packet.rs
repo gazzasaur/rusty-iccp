@@ -7,11 +7,11 @@ use crate::{
 pub struct TransportProtocolDataUnitSerialiser {}
 
 impl TransportProtocolDataUnitSerialiser {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         TransportProtocolDataUnitSerialiser {}
     }
 
-    pub fn serialise(&self, data: &TransportProtocolDataUnit) -> Result<Vec<u8>, CotpError> {
+    pub(crate) fn serialise(&self, data: &TransportProtocolDataUnit) -> Result<Vec<u8>, CotpError> {
         match data {
             TransportProtocolDataUnit::CR(x) => serialise_connection_request(&x),
             TransportProtocolDataUnit::CC(x) => serialise_connection_confirm(&x),

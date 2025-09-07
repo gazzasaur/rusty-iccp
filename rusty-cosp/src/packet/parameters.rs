@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 
 use bitfield::bitfield;
 use strum::IntoStaticStr;
-use tracing::trace;
 
 use crate::{api::CospError, packet::{constants::REASON_CODE_PARAMETER_CODE}};
 

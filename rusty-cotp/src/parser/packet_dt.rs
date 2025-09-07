@@ -3,7 +3,7 @@ use crate::{
     packet::{data_transfer::DataTransfer, payload::TransportProtocolDataUnit},
 };
 
-pub fn parse_data_transfer(header_data: &[u8], user_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
+pub(crate) fn parse_data_transfer(header_data: &[u8], user_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
     if header_data.len() < 1 {
         return Err(CotpError::ProtocolError(format!("At least 1 bytes are required to parse the payload but got {}", header_data.len())).into());
     }

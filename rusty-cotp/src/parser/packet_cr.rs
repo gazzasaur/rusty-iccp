@@ -4,7 +4,7 @@ use crate::{
     parser::{common::parse_u16, params::parse_parameters},
 };
 
-pub fn parse_connection_request(credit: u8, header_data: &[u8], user_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
+pub(crate) fn parse_connection_request(header_data: &[u8], user_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
     if header_data.len() < 5 {
         return Err(CotpError::ProtocolError(format!("At least 5 bytes are required to parse the payload but got {}", header_data.len())).into());
     }
@@ -18,7 +18,6 @@ pub fn parse_connection_request(credit: u8, header_data: &[u8], user_data: &[u8]
     let parameters = parse_parameters(variable_part)?;
 
     Ok(TransportProtocolDataUnit::CR(ConnectionRequest::new(
-        credit,
         source_reference,
         destination_reference,
         preferred_class.into(),
@@ -49,7 +48,7 @@ mod tests {
 
         assert_eq!(
             subject.parse(hex::decode("06E00000000000")?.as_slice())?,
-            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[]))
+            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[]))
         );
 
         Ok(())
@@ -62,7 +61,7 @@ mod tests {
 
         assert_eq!(
             subject.parse(hex::decode("06E00000000045")?.as_slice())?,
-            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, 0, ConnectionClass::Class4, vec![ConnectionOption::Unknown(1), ConnectionOption::Unknown(3)], vec![], &[]))
+            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class4, vec![ConnectionOption::Unknown(1), ConnectionOption::Unknown(3)], vec![], &[]))
         );
 
         Ok(())
@@ -76,7 +75,6 @@ mod tests {
         assert_eq!(
             subject.parse(hex::decode("0DE00000000000AB0548656C6C6F")?.as_slice())?,
             TransportProtocolDataUnit::CR(ConnectionRequest::new(
-                0,
                 0,
                 0,
                 ConnectionClass::Class0,
@@ -97,7 +95,6 @@ mod tests {
         assert_eq!(
             subject.parse(hex::decode("15E00000000000C00108C703001030AB0548656C6C6F010203")?.as_slice())?,
             TransportProtocolDataUnit::CR(ConnectionRequest::new(
-                0,
                 0,
                 0,
                 ConnectionClass::Class0,
@@ -122,7 +119,7 @@ mod tests {
         assert_eq!(
             // Not striclty legal having userdata on class 0, but eh.
             subject.parse(hex::decode("06E00000000000010203")?.as_slice())?,
-            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))
+            TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))
         );
 
         Ok(())

@@ -1,5 +1,3 @@
-use tracing::trace;
-
 use crate::{
     api::CospError,
     common::TsduMaximumSize,

@@ -27,15 +27,14 @@ pub enum CospRecvResult {
 
 pub trait CospService<T> {
     fn create_server<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + CospServer<T>, CospError>> + Send;
-    fn connect<'a>(address: T, connect_data: Option<&[u8]>, options: CotpConnectOptions<'a>) -> impl std::future::Future<Output = Result<impl 'a + CospConnection<T>, CospError>> + Send;
+    fn connect<'a>(address: T, connect_data: Option<&[u8]>, options: CotpConnectOptions<'a>) -> impl std::future::Future<Output = Result<(impl 'a + CospConnection<T>, Option<Vec<u8>>), CospError>> + Send;
 }
 
 pub trait CospServer<T> {
-    fn accept<'a>(&self) -> impl std::future::Future<Output = Result<impl 'a + CospAcceptor<T>, CospError>> + Send;
+    fn accept<'a>(&self) -> impl std::future::Future<Output = Result<(impl 'a + CospAcceptor<T>, Option<Vec<u8>>), CospError>> + Send;
 }
 
 pub trait CospAcceptor<T> {
-    fn user_data(&self) -> Option<&[u8]>;
     fn complete_accept<'a>(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl 'a + CospConnection<T>, CospError>> + Send;
 }
 

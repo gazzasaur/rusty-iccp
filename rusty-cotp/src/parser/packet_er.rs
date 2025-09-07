@@ -4,7 +4,7 @@ use crate::{
     parser::{common::parse_u16, params::parse_parameters},
 };
 
-pub fn parse_tpdu_error(header_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
+pub(crate) fn parse_tpdu_error(header_data: &[u8]) -> Result<TransportProtocolDataUnit, CotpError> {
     if header_data.len() < 3 {
         return Err(CotpError::ProtocolError(format!("At least 3 bytes are required to parse the payload but got {}", header_data.len())).into());
     }
