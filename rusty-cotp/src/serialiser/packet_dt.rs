@@ -21,15 +21,13 @@ mod tests {
 
     use tracing_test::traced_test;
 
-    use crate::{packet::payload::TransportProtocolDataUnit, serialiser::packet::TransportProtocolDataUnitSerialiser};
+    use crate::{packet::payload::TransportProtocolDataUnit, serialiser::packet::serialise};
 
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_happy() -> Result<(), anyhow::Error> {
-        let subject = TransportProtocolDataUnitSerialiser::new();
-
-        assert_eq!(subject.serialise(&TransportProtocolDataUnit::DT(DataTransfer::new(false, &[1, 2, 3])))?, hex::decode("02F000010203")?.as_slice());
-        assert_eq!(subject.serialise(&TransportProtocolDataUnit::DT(DataTransfer::new(true, &[3, 2, 1])))?, hex::decode("02F080030201")?.as_slice());
+        assert_eq!(serialise(&TransportProtocolDataUnit::DT(DataTransfer::new(false, &[1, 2, 3])))?, hex::decode("02F000010203")?.as_slice());
+        assert_eq!(serialise(&TransportProtocolDataUnit::DT(DataTransfer::new(true, &[3, 2, 1])))?, hex::decode("02F080030201")?.as_slice());
 
         Ok(())
     }

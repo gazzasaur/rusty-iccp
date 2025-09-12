@@ -70,16 +70,14 @@ mod tests {
 
     use crate::{
         packet::{parameters::ConnectionClass, payload::TransportProtocolDataUnit},
-        serialiser::packet::TransportProtocolDataUnitSerialiser,
+        serialiser::packet::serialise,
     };
 
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_happy() -> Result<(), anyhow::Error> {
-        let subject = TransportProtocolDataUnitSerialiser::new();
-
         assert_eq!(
-            subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[])))?,
+            serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[])))?,
             hex::decode("06E00000000000")?.as_slice()
         );
 
@@ -89,10 +87,8 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_with_alternative_classes_happy() -> Result<(), anyhow::Error> {
-        let subject = TransportProtocolDataUnitSerialiser::new();
-
         assert_eq!(
-            subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
+            serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
                 0,
                 0,
                 ConnectionClass::Class0,
@@ -109,9 +105,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_with_alternative_classes_sad() -> Result<(), anyhow::Error> {
-        let subject = TransportProtocolDataUnitSerialiser::new();
-
-        match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
+        match serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
             0,
             0,
             ConnectionClass::Class4,
@@ -129,9 +123,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_with_parameters_happy() -> Result<(), anyhow::Error> {
-        let subject = TransportProtocolDataUnitSerialiser::new();
-
-        match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
+        match serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(
             0,
             0,
             ConnectionClass::Class0,
@@ -149,9 +141,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_with_userdata_sad() -> Result<(), anyhow::Error> {
-        let subject = TransportProtocolDataUnitSerialiser::new();
-
-        match subject.serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))) {
+        match serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(0, 0, ConnectionClass::Class0, vec![], vec![], &[1, 2, 3]))) {
             Ok(_) => assert!(false, "Expected this to result in an error"),
             Err(CotpError::ProtocolError(message)) => assert_eq!("User data is not supported on Class 0 connection requests.", message),
             _ => assert!(false, "Unexpected failure result."),

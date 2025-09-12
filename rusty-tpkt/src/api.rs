@@ -17,25 +17,15 @@ pub enum TpktRecvResult {
     Data(Vec<u8>),
 }
 
-pub trait TpktService<T> {
-    fn create_server<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + TpktServer<T> + Send, TpktError>> + Send;
-    fn connect<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + TpktConnection<T> + Send, TpktError>> + Send;
+pub trait TpktConnection {
+    fn split<'a>(self) -> impl std::future::Future<Output = Result<(impl 'a + TpktReader, impl 'a + TpktWriter), TpktError>> + Send;
 }
 
-pub trait TpktServer<T> {
-    fn accept<'a>(&self) -> impl std::future::Future<Output = Result<impl 'a + TpktConnection<T> + Send, TpktError>> + Send;
-}
-
-pub trait TpktConnection<T> {
-    fn remote_host(&self) -> T;
-    fn split<'a>(self) -> impl std::future::Future<Output = Result<(impl 'a + TpktReader<T> + Send, impl 'a + TpktWriter<T> + Send), TpktError>> + Send;
-}
-
-pub trait TpktReader<T> {
+pub trait TpktReader {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<TpktRecvResult, TpktError>> + Send;
 }
 
-pub trait TpktWriter<T> {
+pub trait TpktWriter {
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
 }

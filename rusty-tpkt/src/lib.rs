@@ -1,10 +1,9 @@
-pub mod api;
-pub mod parser;
-pub mod serialiser;
-pub mod service;
+pub(crate) mod api;
+pub(crate) mod parser;
+pub(crate) mod serialiser;
+pub(crate) mod service;
 
 pub use crate::api::*;
-pub use crate::parser::*;
 pub use crate::service::*;
 
 #[cfg(test)]
@@ -21,12 +20,13 @@ mod tests {
     #[traced_test]
     async fn test_txrx_sequential_payloads() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTpktService::create_server(test_address).await?;
+        let server = TcpTpktServer::listen(test_address).await?;
 
         // This proves we can drop the connection after the split takes place.
         let (mut client_reader, mut client_writer, mut server_reader, mut server_writer) = {
-            let client_connection = TcpTpktService::connect(test_address).await?;
-            let server_connection = server.accept().await?;
+            let client_connection = TcpTpktConnection::connect(test_address).await?;
+            let (server_connection, remote_host) = server.accept().await?;
+            assert!(remote_host.to_string().starts_with("127.0.0.1:"));
 
             let (client_reader, client_writer) = client_connection.split().await?;
             let (server_reader, server_writer) = server_connection.split().await?;
@@ -98,10 +98,11 @@ mod tests {
     #[traced_test]
     async fn test_txrx_concurrent_payloads() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTpktService::create_server(test_address).await?;
+        let server = TcpTpktServer::listen(test_address).await?;
 
-        let client_connection = TcpTpktService::connect(test_address).await?;
-        let server_connection = server.accept().await?;
+        let client_connection = TcpTpktConnection::connect(test_address).await?;
+        let (server_connection, remote_host) = server.accept().await?;
+        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -171,10 +172,11 @@ mod tests {
     #[traced_test]
     async fn test_txrx_sequential_ungraceful_shutdown() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTpktService::create_server(test_address).await?;
+        let server = TcpTpktServer::listen(test_address).await?;
 
-        let client_connection = TcpTpktService::connect(test_address).await?;
-        let server_connection = server.accept().await?;
+        let client_connection = TcpTpktConnection::connect(test_address).await?;
+        let (server_connection, remote_host) = server.accept().await?;
+        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -244,10 +246,11 @@ mod tests {
     #[traced_test]
     async fn test_txrx_zero_byte_data() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTpktService::create_server(test_address).await?;
+        let server = TcpTpktServer::listen(test_address).await?;
 
-        let client_connection = TcpTpktService::connect(test_address).await?;
-        let server_connection = server.accept().await?;
+        let client_connection = TcpTpktConnection::connect(test_address).await?;
+        let (server_connection, remote_host) = server.accept().await?;
+        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
 
         drop(server);
 
@@ -317,10 +320,11 @@ mod tests {
     #[traced_test]
     async fn test_txrx_max_byte_data() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTpktService::create_server(test_address).await?;
+        let server = TcpTpktServer::listen(test_address).await?;
 
-        let client_connection = TcpTpktService::connect(test_address).await?;
-        let server_connection = server.accept().await?;
+        let client_connection = TcpTpktConnection::connect(test_address).await?;
+        let (server_connection, remote_host) = server.accept().await?;
+        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
 
         drop(server);
 
@@ -393,10 +397,11 @@ mod tests {
     #[traced_test]
     async fn test_txrx_over_max_byte_data() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        let server = TcpTpktService::create_server(test_address).await?;
+        let server = TcpTpktServer::listen(test_address).await?;
 
-        let client_connection = TcpTpktService::connect(test_address).await?;
-        let server_connection = server.accept().await?;
+        let client_connection = TcpTpktConnection::connect(test_address).await?;
+        let (server_connection, remote_host) = server.accept().await?;
+        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
 
         drop(server);
 
@@ -479,7 +484,7 @@ mod tests {
     async fn test_no_open_socket() -> Result<(), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
 
-        match TcpTpktService::connect(test_address).await {
+        match TcpTpktConnection::connect(test_address).await {
             Ok(_) => assert!(false, "This was expected to fail as a socket was not opened."),
             Err(TpktError::IoError(x)) => assert_eq!(x.kind(), ErrorKind::ConnectionRefused),
             Err(x) => assert!(false, "Something unexpected happened: {:?}", x),

@@ -6,62 +6,45 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-use crate::{TpktConnection, TpktError, TpktParser, TpktParserResult, TpktReader, TpktRecvResult, TpktServer, TpktService, TpktWriter, serialiser::TpktSerialiser};
+use crate::{parser::{TpktParser, TpktParserResult}, serialiser::TpktSerialiser, TpktConnection, TpktError, TpktReader, TpktRecvResult, TpktWriter};
 
 pub struct TcpTpktService {}
-
-impl TpktService<SocketAddr> for TcpTpktService {
-    #[allow(refining_impl_trait)]
-    async fn create_server<'a>(address: SocketAddr) -> Result<TcpTpktServer, TpktError> {
-        TcpTpktServer::new(address).await
-    }
-
-    #[allow(refining_impl_trait)]
-    async fn connect<'a>(address: SocketAddr) -> Result<TcpTpktConnection, TpktError> {
-        let stream = TcpStream::connect(address).await?;
-        let (reader, writer) = split(stream);
-        return Ok(TcpTpktConnection::new(address, TcpTpktReader::new(reader), TcpTpktWriter::new(writer)));
-    }
-}
 
 pub struct TcpTpktServer {
     listener: TcpListener,
 }
 
 impl TcpTpktServer {
-    pub async fn new(address: SocketAddr) -> Result<Self, TpktError> {
+    pub async fn listen(address: SocketAddr) -> Result<Self, TpktError> {
         Ok(Self { listener: TcpListener::bind(address).await? })
     }
-}
 
-impl TpktServer<SocketAddr> for TcpTpktServer {
-    #[allow(refining_impl_trait)]
-    async fn accept<'a>(&self) -> Result<TcpTpktConnection, TpktError> {
+    pub async fn accept<'a>(&self) -> Result<(TcpTpktConnection, SocketAddr), TpktError> {
         let (stream, remote_host) = self.listener.accept().await?;
         let (reader, writer) = split(stream);
-        Ok(TcpTpktConnection::new(remote_host, TcpTpktReader::new(reader), TcpTpktWriter::new(writer)))
+        Ok((TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer)), remote_host))
     }
 }
 
 pub struct TcpTpktConnection {
-    remote_host: SocketAddr,
     reader: TcpTpktReader,
     writer: TcpTpktWriter,
 }
 
-impl<'a> TcpTpktConnection {
-    pub fn new(remote_host: SocketAddr, reader: TcpTpktReader, writer: TcpTpktWriter) -> Self {
-        TcpTpktConnection { remote_host, reader, writer }
+impl TcpTpktConnection {
+    pub async fn connect<'a>(address: SocketAddr) -> Result<TcpTpktConnection, TpktError> {
+        let stream = TcpStream::connect(address).await?;
+        let (reader, writer) = split(stream);
+        return Ok(TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer)));
+    }
+
+    fn new(reader: TcpTpktReader, writer: TcpTpktWriter) -> Self {
+        TcpTpktConnection { reader, writer }
     }
 }
 
-impl TpktConnection<SocketAddr> for TcpTpktConnection {
-    fn remote_host(&self) -> SocketAddr {
-        self.remote_host
-    }
-
-    #[allow(refining_impl_trait)]
-    async fn split<'a>(self) -> Result<(TcpTpktReader, TcpTpktWriter), TpktError> {
+impl TpktConnection for TcpTpktConnection {
+    async fn split<'a>(self) -> Result<(impl 'a + TpktReader, impl 'a + TpktWriter), TpktError> {
         Ok((self.reader, self.writer))
     }
 }
@@ -82,7 +65,7 @@ impl TcpTpktReader {
     }
 }
 
-impl TpktReader<SocketAddr> for TcpTpktReader {
+impl TpktReader for TcpTpktReader {
     async fn recv(&mut self) -> Result<TpktRecvResult, TpktError> {
         loop {
             let buffer = &mut self.receive_buffer;
@@ -114,7 +97,7 @@ impl TcpTpktWriter {
     }
 }
 
-impl TpktWriter<SocketAddr> for TcpTpktWriter {
+impl TpktWriter for TcpTpktWriter {
     async fn send(&mut self, data: &[u8]) -> Result<(), TpktError> {
         self.write_buffer.extend(self.serialiser.serialise(data)?);
         while self.write_buffer.has_remaining() {

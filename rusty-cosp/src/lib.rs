@@ -1,15 +1,10 @@
-use std::{
-    collections::VecDeque,
-    net::SocketAddr,
-};
+use std::{collections::VecDeque, net::SocketAddr};
 
-use rusty_cotp::{
-    api::{CotpConnectOptions, CotpConnection, CotpReader, CotpServer, CotpService, CotpWriter},
-    service::{TcpCotpConnection, TcpCotpReader, TcpCotpServer, TcpCotpService, TcpCotpWriter},
-};
+use rand::rand_core::impls;
+use rusty_cotp::{CotpConnection, CotpReader, CotpWriter, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
 
 use crate::{
-    api::{CospAcceptor, CospConnection, CospError, CospReader, CospRecvResult, CospServer, CospService, CospWriter},
+    api::{CospAcceptor, CospConnection, CospError, CospReader, CospRecvResult, CospWriter},
     common::TsduMaximumSize,
     message::CospMessage,
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
@@ -22,47 +17,47 @@ pub(crate) mod message;
 pub(crate) mod packet;
 pub(crate) mod service;
 
-pub struct TcpCospService {}
+// impl TcpCospServer {
+//     async fn accept<'a>(&self) -> Result<(impl 'a + CospAcceptor<SocketAddr>, Option<Vec<u8>>), CospError> {
+//         let (mut cotp_reader, mut cotp_writer) = self.cotp_server.accept().await?.split().await?;
 
-impl CospService<SocketAddr> for TcpCospService {
-    async fn create_server<'a>(address: SocketAddr) -> Result<impl 'a + CospServer<SocketAddr>, CospError> {
-        Ok(TcpCospServer::new(address).await?)
-    }
+//         let connect_request = match receive_message(&mut cotp_reader).await? {
+//             CospMessage::CN(connect_message) => connect_message,
+//             message => return Err(CospError::ProtocolError(format!("Expecting a connect message, but got {}", <CospMessage as Into<&'static str>>::into(message)))),
+//         };
 
-    // TODO Also need to handle refuse which will just generically error at the moment.
-    async fn connect<'a>(address: SocketAddr, connect_data: Option<&[u8]>, options: CotpConnectOptions<'a>) -> Result<(impl 'a + CospConnection<SocketAddr>, Option<Vec<u8>>), CospError> {
-        let cotp_connection = TcpCotpService::connect(address, options).await?;
-        let (mut cotp_reader, mut cotp_writer) = TcpCotpConnection::split(cotp_connection).await?;
+//         let maximum_size_to_initiator = connect_request.maximum_size_to_initiator();
+//         let has_more_data = match &connect_request.data_overflow() {
+//             Some(overflow) => overflow.more_data(),
+//             None => false,
+//         };
 
-        let send_connect_result = send_connect_reqeust(&mut cotp_writer, connect_data).await?;
+//         let mut user_data = VecDeque::new();
+//         let has_user_data = connect_request.user_data().is_some() || connect_request.data_overflow().is_some();
+//         if let Some(request_user_data) = connect_request.user_data() {
+//             user_data.extend(request_user_data);
+//         }
 
-        let accept_message = match (send_connect_result, connect_data) {
-            (service::SendConnectionRequestResult::Complete, _) => receive_accept_with_all_user_data(&mut cotp_reader).await?,
-            (service::SendConnectionRequestResult::Overflow(sent_data), Some(user_data)) => {
-                receive_overflow_accept(&mut cotp_reader).await?;
-                send_connect_data_overflow(&mut cotp_writer, &user_data[sent_data..]).await?;
-                receive_accept_with_all_user_data(&mut cotp_reader).await?
-            }
-            (service::SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
-        };
+//         if has_more_data {
+//             send_overflow_accept(&mut cotp_writer, &maximum_size_to_initiator).await?;
+//             user_data.extend(receive_connect_data_overflow(&mut cotp_reader).await?);
+//         }
 
-        Ok((TcpCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder()), accept_message.user_data().map(|data| data.clone())))
-    }
+//         let user_data = match has_user_data {
+//             true => Some(user_data.drain(..).collect()),
+//             false => None,
+//         };
+//         Ok((TcpCospAcceptor::new(cotp_reader, cotp_writer, *maximum_size_to_initiator), user_data))
+//     }
+// }
+
+pub struct TcpCospAcceptor<R: CotpReader, W: CotpWriter> {
+    cotp_reader: R,
+    cotp_writer: W,
+    maximum_size_to_initiator: TsduMaximumSize,
 }
 
-pub struct TcpCospServer {
-    cotp_server: TcpCotpServer,
-}
-
-impl TcpCospServer {
-    pub async fn new(address: SocketAddr) -> Result<Self, CospError> {
-        Ok(Self {
-            cotp_server: TcpCotpServer::new(address).await?,
-        })
-    }
-}
-
-impl CospServer<SocketAddr> for TcpCospServer {
+impl<R: CotpReader, W: CotpWriter> TcpCospAcceptor<R, W> {
     async fn accept<'a>(&self) -> Result<(impl 'a + CospAcceptor<SocketAddr>, Option<Vec<u8>>), CospError> {
         let (mut cotp_reader, mut cotp_writer) = self.cotp_server.accept().await?.split().await?;
 
@@ -94,17 +89,13 @@ impl CospServer<SocketAddr> for TcpCospServer {
         };
         Ok((TcpCospAcceptor::new(cotp_reader, cotp_writer, *maximum_size_to_initiator), user_data))
     }
-}
 
-pub struct TcpCospAcceptor {
-    cotp_reader: TcpCotpReader,
-    cotp_writer: TcpCotpWriter,
-    maximum_size_to_initiator: TsduMaximumSize,
-}
-
-impl TcpCospAcceptor {
-    pub fn new(cotp_reader: TcpCotpReader, cotp_writer: TcpCotpWriter, maximum_size_to_initiator: TsduMaximumSize) -> Self {
-        Self { cotp_reader, cotp_writer, maximum_size_to_initiator }
+    fn new(cotp_reader: impl CotpReader, cotp_writer: impl CotpWriter, maximum_size_to_initiator: TsduMaximumSize) -> TcpCospAcceptor<impl CotpReader, impl CotpWriter> {
+        Self {
+            cotp_reader,
+            cotp_writer,
+            maximum_size_to_initiator,
+        }
     }
 }
 
@@ -115,14 +106,36 @@ impl CospAcceptor<SocketAddr> for TcpCospAcceptor {
     }
 }
 
-pub struct TcpCospConnection {
-    cotp_reader: TcpCotpReader,
-    cotp_writer: TcpCotpWriter,
+pub struct TcpCospConnection<R: CotpReader, W: CotpWriter> {
+    cotp_reader: R,
+    cotp_writer: W,
     _remote_max_size: TsduMaximumSize,
 }
 
-impl TcpCospConnection {
-    pub fn new(cotp_reader: TcpCotpReader, cotp_writer: TcpCotpWriter, remote_max_size: TsduMaximumSize) -> Self {
+impl<R: CotpReader, W: CotpWriter> TcpCospConnection<R, W> {
+    // TODO Also need to handle refuse which will just generically error at the moment.
+    async fn connect(cotp_connection: impl CotpConnection, connect_data: Option<&[u8]>) -> Result<(impl TcpCospConnection<impl CotpReader, impl CotpWriter>, Option<Vec<u8>>), CospError> {
+        let (mut cotp_reader, mut cotp_writer) = TcpCotpConnection::split(cotp_connection).await?;
+
+        let send_connect_result = send_connect_reqeust(&mut cotp_writer, connect_data).await?;
+
+        let accept_message = match (send_connect_result, connect_data) {
+            (service::SendConnectionRequestResult::Complete, _) => receive_accept_with_all_user_data(&mut cotp_reader).await?,
+            (service::SendConnectionRequestResult::Overflow(sent_data), Some(user_data)) => {
+                receive_overflow_accept(&mut cotp_reader).await?;
+                send_connect_data_overflow(&mut cotp_writer, &user_data[sent_data..]).await?;
+                receive_accept_with_all_user_data(&mut cotp_reader).await?
+            }
+            (service::SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
+        };
+
+        Ok((
+            TcpCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder()),
+            accept_message.user_data().map(|data| data.clone()),
+        ))
+    }
+
+    fn new(cotp_reader: impl CotpReader, cotp_writer: impl CotpWriter, remote_max_size: TsduMaximumSize) -> TcpCospConnection<impl CotpReader, impl CotpWriter> {
         Self {
             cotp_reader,
             cotp_writer,

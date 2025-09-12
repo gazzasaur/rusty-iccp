@@ -16,40 +16,36 @@ pub enum CotpError {
     InternalError(String),
 }
 
-pub enum CotpRecvResult {
-    Closed,
-    Data(Vec<u8>),
+#[derive(PartialEq, Debug)]
+pub struct CotpConnectionInformation {
+    pub calling_tsap: Option<Vec<u8>>,
+    pub called_tsap: Option<Vec<u8>>,
 }
 
-pub struct CotpConnectOptions<'a> {
-    pub calling_tsap: Option<&'a [u8]>,
-    pub called_tsap: Option<&'a [u8]>,
-}
-
-impl<'a> Default for CotpConnectOptions<'a> {
+impl Default for CotpConnectionInformation {
     fn default() -> Self {
         Self { calling_tsap: None, called_tsap: None }
     }
 }
 
-pub trait CotpService<T> {
-    fn create_server<'a>(address: T) -> impl std::future::Future<Output = Result<impl 'a + CotpServer<T>, CotpError>> + Send;
-    fn connect<'a>(address: T, options: CotpConnectOptions<'a>) -> impl std::future::Future<Output = Result<impl 'a + CotpConnection<T>, CotpError>> + Send;
+pub enum CotpRecvResult {
+    Closed,
+    Data(Vec<u8>),
 }
 
-pub trait CotpServer<T> {
-    fn accept<'a>(&self) -> impl std::future::Future<Output = Result<impl 'a + CotpConnection<T>, CotpError>> + Send;
+pub trait CotpAcceptor {
+    fn accept(self) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
 }
 
-pub trait CotpConnection<T> {
-    fn split(self) -> impl std::future::Future<Output = Result<(impl CotpReader<T> + Send, impl CotpWriter<T> + Send), CotpError>> + Send;
+pub trait CotpConnection {
+    fn split(self) -> impl std::future::Future<Output = Result<(impl CotpReader, impl CotpWriter), CotpError>> + Send;
 }
 
-pub trait CotpReader<T> {
+pub trait CotpReader {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<CotpRecvResult, CotpError>> + Send;
 }
 
-pub trait CotpWriter<T> {
+pub trait CotpWriter {
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
 }
