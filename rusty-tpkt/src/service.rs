@@ -44,7 +44,7 @@ impl TcpTpktConnection {
 }
 
 impl TpktConnection for TcpTpktConnection {
-    async fn split<'a>(self) -> Result<(impl 'a + TpktReader, impl 'a + TpktWriter), TpktError> {
+    async fn split(self) -> Result<(impl TpktReader, impl TpktWriter), TpktError> {
         Ok((self.reader, self.writer))
     }
 }

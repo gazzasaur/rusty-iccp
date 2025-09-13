@@ -48,7 +48,7 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
                 destination_reference,
                 max_payload_indicator,
             },
-            CotpConnectionInformation::default(),
+            CotpConnectionInformation::default()
         ))
     }
 }
@@ -109,7 +109,7 @@ pub struct TcpCotpReader<R: TpktReader> {
     data_buffer: BytesMut,
 }
 
-impl<R: TpktReader + Send> TcpCotpReader<R> {
+impl<R: TpktReader> TcpCotpReader<R> {
     pub fn new(reader: R, parser: TransportProtocolDataUnitParser) -> Self {
         Self {
             reader,

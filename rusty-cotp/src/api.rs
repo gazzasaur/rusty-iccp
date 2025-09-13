@@ -33,19 +33,19 @@ pub enum CotpRecvResult {
     Data(Vec<u8>),
 }
 
-pub trait CotpAcceptor {
+pub trait CotpAcceptor: Send {
     fn accept(self) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
 }
 
-pub trait CotpConnection {
+pub trait CotpConnection: Send {
     fn split(self) -> impl std::future::Future<Output = Result<(impl CotpReader, impl CotpWriter), CotpError>> + Send;
 }
 
-pub trait CotpReader {
+pub trait CotpReader: Send {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<CotpRecvResult, CotpError>> + Send;
 }
 
-pub trait CotpWriter {
+pub trait CotpWriter: Send {
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
 }

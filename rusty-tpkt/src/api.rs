@@ -17,15 +17,15 @@ pub enum TpktRecvResult {
     Data(Vec<u8>),
 }
 
-pub trait TpktConnection {
-    fn split<'a>(self) -> impl std::future::Future<Output = Result<(impl 'a + TpktReader, impl 'a + TpktWriter), TpktError>> + Send;
+pub trait TpktConnection: Send {
+    fn split(self) -> impl std::future::Future<Output = Result<(impl TpktReader, impl TpktWriter), TpktError>> + Send;
 }
 
-pub trait TpktReader {
+pub trait TpktReader: Send {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<TpktRecvResult, TpktError>> + Send;
 }
 
-pub trait TpktWriter {
+pub trait TpktWriter: Send {
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
 }
