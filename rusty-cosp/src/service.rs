@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, net::SocketAddr};
 
-use rusty_cotp::api::{CotpReader, CotpRecvResult, CotpWriter};
+use rusty_cotp::{CotpReader, CotpRecvResult, CotpWriter};
 
 use crate::{
     api::CospError,
@@ -19,7 +19,7 @@ pub(crate) enum SendConnectionRequestResult {
     Overflow(usize),
 }
 
-pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter<SocketAddr>, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
+pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
     const MAX_USER_DATA_PAYLOAD_SIZE: usize = 512;
     const MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE: usize = 10240;
 
@@ -55,7 +55,7 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter<SocketAddr
     })
 }
 
-pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter<SocketAddr>, initiator_size: &TsduMaximumSize) -> Result<(), CospError> {
+pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize) -> Result<(), CospError> {
     let mut sub_parameters = Vec::new();
     if let TsduMaximumSize::Size(initiator_size) = initiator_size {
         // This will set the responder size to 0x0000 to indicate that we (the responder) accept unlimited size. But we also echo back the initiator size.
@@ -68,7 +68,7 @@ pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter<SocketAddr
 }
 
 // We do not really need to return anything here. We will inspect the accept payload at the end.
-pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketAddr>) -> Result<OverflowAcceptMessage, CospError> {
+pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader) -> Result<OverflowAcceptMessage, CospError> {
     let message = receive_message(reader).await?;
     let overflow_accept_message = match message {
         CospMessage::OA(accept_message) => accept_message,
@@ -77,7 +77,7 @@ pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader<SocketA
     Ok(overflow_accept_message)
 }
 
-pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter<SocketAddr>, data: &[u8]) -> Result<(), CospError> {
+pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter, data: &[u8]) -> Result<(), CospError> {
     let mut cursor = 0;
 
     while cursor < data.len() {
@@ -106,7 +106,7 @@ pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter<Sock
     Ok(())
 }
 
-pub(crate) async fn receive_connect_data_overflow(reader: &mut impl CotpReader<SocketAddr>) -> Result<Vec<u8>, CospError> {
+pub(crate) async fn receive_connect_data_overflow(reader: &mut impl CotpReader) -> Result<Vec<u8>, CospError> {
     let mut buffer = VecDeque::new();
 
     let mut has_more_data = true;
@@ -124,7 +124,7 @@ pub(crate) async fn receive_connect_data_overflow(reader: &mut impl CotpReader<S
     Ok(buffer.drain(..).collect())
 }
 
-pub(crate) async fn send_accept(writer: &mut impl CotpWriter<SocketAddr>, initiator_size: &TsduMaximumSize, user_data: Option<&[u8]>) -> Result<(), CospError> {
+pub(crate) async fn send_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize, user_data: Option<&[u8]>) -> Result<(), CospError> {
     // As we may need to send multiple accept payloads, we will precalculate the size of the header without enclosure.
     let optimistic_accept = serialise_accept(initiator_size, None, None, Some(&[]))?;
     // Add an extra 8 bytes for enclosure and headers.
@@ -189,7 +189,7 @@ pub(crate) fn serialise_accept(initiator_size: &TsduMaximumSize, is_first: Optio
     SessionPduList::new(vec![SessionPduParameter::Accept(session_parameters)], vec![]).serialise()
 }
 
-pub(crate) async fn receive_accept_with_all_user_data(reader: &mut impl CotpReader<SocketAddr>) -> Result<AcceptMessage, CospError> {
+pub(crate) async fn receive_accept_with_all_user_data(reader: &mut impl CotpReader) -> Result<AcceptMessage, CospError> {
     let message = receive_message(reader).await?;
     let accept_message = match message {
         CospMessage::AC(accept_message) => accept_message,
@@ -223,7 +223,7 @@ pub(crate) async fn receive_accept_with_all_user_data(reader: &mut impl CotpRead
     Ok(AcceptMessage::new(false, *accept_message.maximum_size_to_responder(), user_data))
 }
 
-pub(crate) async fn receive_message(reader: &mut impl CotpReader<SocketAddr>) -> Result<CospMessage, CospError> {
+pub(crate) async fn receive_message(reader: &mut impl CotpReader) -> Result<CospMessage, CospError> {
     let data = match reader.recv().await? {
         CotpRecvResult::Closed => return Err(CospError::ProtocolError("The transport connection was closed before the conection could be established.".into())),
         CotpRecvResult::Data(data) => data,

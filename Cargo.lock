@@ -398,6 +398,7 @@ dependencies = [
  "num-derive",
  "rand",
  "rusty-cotp",
+ "rusty-tpkt",
  "strum",
  "thiserror",
  "tokio",
