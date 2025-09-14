@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, net::SocketAddr};
+use std::collections::VecDeque;
 
 use rusty_cotp::{CotpReader, CotpRecvResult, CotpWriter};
 

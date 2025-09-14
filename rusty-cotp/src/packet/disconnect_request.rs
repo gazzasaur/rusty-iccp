@@ -21,26 +21,6 @@ impl DisconnectRequest {
             user_data: user_data.into(),
         }
     }
-
-    pub fn source_reference(&self) -> u16 {
-        self.source_reference
-    }
-
-    pub fn destination_reference(&self) -> u16 {
-        self.destination_reference
-    }
-
-    pub fn reason(&self) -> &DisconnectReason {
-        &self.reason
-    }
-
-    pub fn parameters(&self) -> &[CotpParameter] {
-        &self.parameters
-    }
-
-    pub fn user_data(&self) -> &[u8] {
-        &self.user_data
-    }
 }
 
 #[derive(Debug, PartialEq)]

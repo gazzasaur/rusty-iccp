@@ -14,16 +14,8 @@ impl TpduError {
         Self { destination_reference, reason, parameters }
     }
 
-    pub fn destination_reference(&self) -> u16 {
-        self.destination_reference
-    }
-
     pub fn reason(&self) -> &RejectCause {
         &self.reason
-    }
-
-    pub fn parameters(&self) -> &[CotpParameter] {
-        &self.parameters
     }
 }
 

@@ -3,7 +3,6 @@ use bytes::BytesMut;
 use crate::api::TpktError;
 
 pub const HEADER_LENGTH: usize = 4;
-pub const TPKT_MAGIC_START_NUMBER: u8 = 0x03u8;
 pub const MAX_PACKET_LENGTH: usize = 2usize.pow(16) - 1;
 pub const MAX_PAYLOAD_LENGTH: usize = MAX_PACKET_LENGTH - HEADER_LENGTH;
 
