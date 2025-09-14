@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use bitfield::bitfield;
 use strum::IntoStaticStr;
 
-use crate::{api::CospError, packet::{constants::REASON_CODE_PARAMETER_CODE}};
+use crate::{api::CospError, packet::constants::REASON_CODE_PARAMETER_CODE};
 
 #[derive(Debug, IntoStaticStr)]
 pub(crate) enum SessionPduParameter {
@@ -137,7 +137,7 @@ impl ReasonCode {
 
 impl TryFrom<&ReasonCode> for Vec<u8> {
     type Error = CospError;
-    
+
     fn try_from(value: &ReasonCode) -> Result<Self, Self::Error> {
         let mut buffer = VecDeque::new();
 
@@ -198,8 +198,7 @@ impl Clone for SessionUserRequirementsField {
     }
 }
 
-impl Copy for SessionUserRequirementsField {
-}
+impl Copy for SessionUserRequirementsField {}
 
 impl Default for SessionUserRequirementsField {
     fn default() -> Self {
@@ -224,8 +223,7 @@ impl Clone for DataOverflowField {
     }
 }
 
-impl Copy for DataOverflowField {
-}
+impl Copy for DataOverflowField {}
 
 impl Default for DataOverflowField {
     fn default() -> Self {
@@ -251,8 +249,7 @@ impl Clone for EnclosureField {
     }
 }
 
-impl Copy for EnclosureField {
-}
+impl Copy for EnclosureField {}
 
 impl Default for EnclosureField {
     fn default() -> Self {

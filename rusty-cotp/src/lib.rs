@@ -16,16 +16,37 @@ mod tests {
     use tokio::{join, time::timeout};
     use tracing_test::traced_test;
 
-    use crate::{
-        api::{CotpAcceptor, CotpConnection, CotpConnectionInformation, CotpReader, CotpWriter}
-    };
+    use crate::api::{CotpAcceptor, CotpConnection, CotpConnectInformation, CotpReader, CotpWriter};
 
     use super::*;
 
     #[tokio::test]
     #[traced_test]
     async fn it_transfers_data() -> Result<(), anyhow::Error> {
-        let (cotp_client, cotp_server) = create_cotp_connection_pair().await?;
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None).await?;
+
+        let (mut client_read, mut client_writer) = cotp_client.split().await?;
+        let (mut server_read, mut server_writer) = cotp_server.split().await?;
+
+        client_writer.send("ABCD".as_bytes()).await?;
+        match server_read.recv().await? {
+            api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
+            api::CotpRecvResult::Data(items) => assert_eq!(items, "ABCD".as_bytes().to_vec()),
+        }
+
+        server_writer.send("EFGH".as_bytes()).await?;
+        match client_read.recv().await? {
+            api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
+            api::CotpRecvResult::Data(items) => assert_eq!(items, "EFGH".as_bytes().to_vec()),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_transfers_data_with_tsaps() -> Result<(), anyhow::Error> {
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(Some(vec![1u8, 2u8, 3u8]), Some(vec![4u8, 5u8, 6u8])).await?;
 
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
@@ -48,7 +69,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_transfers_data_over_multiple_segments() -> Result<(), anyhow::Error> {
-        let (cotp_client, cotp_server) = create_cotp_connection_pair().await?;
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None).await?;
 
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
@@ -76,7 +97,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_flushes_correctly() -> Result<(), anyhow::Error> {
-        let (cotp_client, cotp_server) = create_cotp_connection_pair().await?;
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None).await?;
 
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
@@ -129,17 +150,31 @@ mod tests {
         Ok(())
     }
 
-    async fn create_cotp_connection_pair() -> Result<(TcpCotpConnection<impl TpktReader, impl TpktWriter>, impl CotpConnection), anyhow::Error> {
-        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+    async fn create_cotp_connection_pair(calling_tsap_id: Option<Vec<u8>>, called_tsap_id: Option<Vec<u8>>) -> Result<(TcpCotpConnection<impl TpktReader, impl TpktWriter>, impl CotpConnection), anyhow::Error> {
+        //        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
 
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
 
-        let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, CotpConnectOptions {}).await }, async {
-            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::receive(tpkt_server?.0).await?;
-            assert_eq!(remote, CotpConnectionInformation::default());
-            acceptor.accept().await
-        });
+        let (cotp_initiator, cotp_acceptor) = join!(
+            async {
+                TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(
+                    tpkt_client?,
+                    CotpConnectInformation {
+                        calling_tsap_id,
+                        called_tsap_id,
+                        ..Default::default()
+                    },
+                )
+                .await
+            },
+            async {
+                let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::receive(tpkt_server?.0).await?;
+                assert_eq!(remote, CotpConnectInformation::default());
+                acceptor.accept(CotpAcceptInformation::default()).await
+            }
+        );
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;

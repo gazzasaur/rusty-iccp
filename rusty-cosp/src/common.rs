@@ -32,7 +32,6 @@ pub fn slice_tlv_data(data: &[u8]) -> Result<(u8, &[u8], usize), CospError> {
     return Ok((tag, &data[data_offset..(data_offset + data_length)], data_offset + data_length));
 }
 
-
 #[cfg(test)]
 mod tests {
     use tracing_test::traced_test;

@@ -16,15 +16,27 @@ pub enum CotpError {
     InternalError(String),
 }
 
-#[derive(PartialEq, Debug)]
-pub struct CotpConnectionInformation {
-    pub calling_tsap: Option<Vec<u8>>,
-    pub called_tsap: Option<Vec<u8>>,
+#[derive(PartialEq, Clone, Debug)]
+pub struct CotpConnectInformation {
+    pub initiator_reference: u16,
+    pub calling_tsap_id: Option<Vec<u8>>,
+    pub called_tsap_id: Option<Vec<u8>>,
 }
 
-impl Default for CotpConnectionInformation {
+impl Default for CotpConnectInformation {
     fn default() -> Self {
-        Self { calling_tsap: None, called_tsap: None }
+        Self { initiator_reference: rand::random(), calling_tsap_id: None, called_tsap_id: None }
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub struct CotpAcceptInformation {
+    pub responder_reference: u16,
+}
+
+impl Default for CotpAcceptInformation {
+    fn default() -> Self {
+        Self { responder_reference: rand::random() }
     }
 }
 
@@ -34,7 +46,7 @@ pub enum CotpRecvResult {
 }
 
 pub trait CotpAcceptor: Send {
-    fn accept(self) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
+    fn accept(self, options: CotpAcceptInformation) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
 }
 
 pub trait CotpConnection: Send {

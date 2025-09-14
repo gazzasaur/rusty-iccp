@@ -12,9 +12,13 @@ pub(crate) struct AcceptMessage {
 
 impl AcceptMessage {
     pub(crate) fn new(has_more_data: bool, maximum_size_to_responder: TsduMaximumSize, user_data: Option<Vec<u8>>) -> Self {
-        Self { has_more_data, user_data, maximum_size_to_responder }
+        Self {
+            has_more_data,
+            user_data,
+            maximum_size_to_responder,
+        }
     }
-    
+
     pub(crate) fn user_data(&self) -> Option<&Vec<u8>> {
         self.user_data.as_ref()
     }

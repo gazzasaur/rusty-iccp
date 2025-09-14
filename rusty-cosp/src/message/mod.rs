@@ -7,14 +7,14 @@ use crate::{
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
 };
 
-pub(crate) mod connect;
-pub(crate) mod data_transfer;
 pub(crate) mod accept;
+pub(crate) mod connect;
 pub(crate) mod connect_data_overflow;
+pub(crate) mod data_transfer;
 pub(crate) mod overflow_accept;
 
 #[derive(IntoStaticStr)]
-pub(crate)  enum CospMessage {
+pub(crate) enum CospMessage {
     CN(ConnectMessage),
     AC(AcceptMessage),
     CDO(ConnectDataOverflowMessage),
@@ -49,11 +49,21 @@ impl CospMessage {
     fn process_basic_concatenated(header_parameter: &SessionPduParameter, message_parameter: &SessionPduParameter, user_information: &[u8]) -> Result<Self, CospError> {
         match header_parameter {
             SessionPduParameter::GiveTokens() => (),
-            _ => return Err(CospError::ProtocolError(format!("Unsupported SPDU as concatenated token header: {}", <&SessionPduParameter as Into<&'static str>>::into(header_parameter)))),
+            _ => {
+                return Err(CospError::ProtocolError(format!(
+                    "Unsupported SPDU as concatenated token header: {}",
+                    <&SessionPduParameter as Into<&'static str>>::into(header_parameter)
+                )));
+            }
         };
         Ok(match message_parameter {
             SessionPduParameter::DataTransfer(parameters) => CospMessage::DT(DataTransferMessage::from_parameters(parameters.as_slice(), user_information.to_vec())?),
-            _ => return Err(CospError::ProtocolError(format!("Unsupported SPDU as concatenated body: {}", <&SessionPduParameter as Into<&'static str>>::into(message_parameter)))),
+            _ => {
+                return Err(CospError::ProtocolError(format!(
+                    "Unsupported SPDU as concatenated body: {}",
+                    <&SessionPduParameter as Into<&'static str>>::into(message_parameter)
+                )));
+            }
         })
     }
 }

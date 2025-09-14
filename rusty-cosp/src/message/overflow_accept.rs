@@ -1,8 +1,4 @@
-use crate::{
-    api::CospError,
-    common::TsduMaximumSize,
-    packet::parameters::SessionPduParameter,
-};
+use crate::{api::CospError, common::TsduMaximumSize, packet::parameters::SessionPduParameter};
 
 pub(crate) struct OverflowAcceptMessage {
     maximum_size_to_responder: TsduMaximumSize,
