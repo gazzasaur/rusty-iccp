@@ -1,6 +1,6 @@
 use crate::{
     api::CotpError,
-    packet::parameters::{ALTERNATIVE_CLASS_PARAMETER_CODE, ConnectionClass, CotpParameter, TPDU_SIZE_PARAMETER_CODE, TpduSize},
+    packet::parameters::{ConnectionClass, CotpParameter, TpduSize, ALTERNATIVE_CLASS_PARAMETER_CODE, CALLED_TSAP_PARAMETER_CODE, CALLING_TSAP_PARAMETER_CODE, TPDU_SIZE_PARAMETER_CODE},
 };
 
 pub fn parse_parameters(buffer: &[u8]) -> Result<Vec<CotpParameter>, CotpError> {
@@ -31,6 +31,8 @@ pub fn parse_parameter(buffer: &[u8]) -> Result<(CotpParameter, usize), CotpErro
     }
 
     match parameter_code {
+        CALLING_TSAP_PARAMETER_CODE => Ok((parse_calling_tsap_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
+        CALLED_TSAP_PARAMETER_CODE => Ok((parse_called_tsap_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
         TPDU_SIZE_PARAMETER_CODE => Ok((parse_tpdu_size_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
         ALTERNATIVE_CLASS_PARAMETER_CODE => Ok((parse_alternative_class_parameter(&buffer[2..(2 + parameter_value_length)])?, 2 + parameter_value_length)),
         _ => Ok((CotpParameter::UnknownParameter(parameter_code, Vec::from(&buffer[2..(2 + parameter_value_length)])), 2 + parameter_value_length)),
@@ -42,6 +44,14 @@ pub fn parse_tpdu_size_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpErr
         return Err(CotpError::ProtocolError(format!("Invalid TPDU length: {}", buffer.len())));
     }
     Ok(CotpParameter::TpduLengthParameter(TpduSize::from(buffer[0])))
+}
+
+pub fn parse_calling_tsap_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpError> {
+    Ok(CotpParameter::CallingTsap(buffer.to_vec()))
+}
+
+pub fn parse_called_tsap_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpError> {
+    Ok(CotpParameter::CalledTsap(buffer.to_vec()))
 }
 
 pub fn parse_alternative_class_parameter(buffer: &[u8]) -> Result<CotpParameter, CotpError> {

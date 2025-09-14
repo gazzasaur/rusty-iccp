@@ -16,7 +16,7 @@ mod tests {
     use tokio::{join, time::timeout};
     use tracing_test::traced_test;
 
-    use crate::api::{CotpAcceptor, CotpConnection, CotpConnectInformation, CotpReader, CotpWriter};
+    use crate::api::{CotpAcceptor, CotpConnectInformation, CotpConnection, CotpReader, CotpWriter};
 
     use super::*;
 
@@ -156,24 +156,20 @@ mod tests {
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
 
-        let (cotp_initiator, cotp_acceptor) = join!(
-            async {
-                TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(
-                    tpkt_client?,
-                    CotpConnectInformation {
-                        calling_tsap_id,
-                        called_tsap_id,
-                        ..Default::default()
-                    },
-                )
-                .await
-            },
-            async {
-                let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::receive(tpkt_server?.0).await?;
-                assert_eq!(remote, CotpConnectInformation::default());
-                acceptor.accept(CotpAcceptInformation::default()).await
-            }
-        );
+        let connect_information = CotpConnectInformation {
+            calling_tsap_id: calling_tsap_id.clone(),
+            called_tsap_id: called_tsap_id.clone(),
+            ..Default::default()
+        };
+        let accept_information = CotpAcceptInformation {
+            ..Default::default()
+        };
+
+        let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(),).await }, async {
+            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::receive(tpkt_server?.0).await?;
+            assert_eq!(remote, connect_information);
+            acceptor.accept(accept_information).await
+        });
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;

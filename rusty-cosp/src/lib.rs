@@ -216,7 +216,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_negotiate_a_version_2_unlimited_size_connection() -> Result<(), anyhow::Error> {
-        let (client_connection, server_connection) = create_cotp_connection_pair(None, None).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(None, None).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -238,7 +238,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_pass_small_connect_and_accept_data() -> Result<(), anyhow::Error> {
-        let (client_connection, server_connection) = create_cotp_connection_pair(Some(&[5, 6, 7]), Some(&[5, 4, 3])).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(Some(&[5, 6, 7]), Some(&[5, 4, 3])).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -266,7 +266,7 @@ mod tests {
         let mut init_accept_data = vec![0x8; 65510];
         rand::fill(init_accept_data.as_mut_slice());
 
-        let (client_connection, server_connection) = create_cotp_connection_pair(Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -296,7 +296,7 @@ mod tests {
         let mut init_accept_data = vec![0x00u8; 65510 + 65510 + 100];
         rand::fill(init_accept_data.as_mut_slice());
 
-        let (client_connection, server_connection) = create_cotp_connection_pair(Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -315,7 +315,7 @@ mod tests {
         Ok(())
     }
 
-    async fn create_cotp_connection_pair(connect_data: Option<&[u8]>, accept_data: Option<&[u8]>) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
+    async fn create_cosp_connection_pair(connect_data: Option<&[u8]>, accept_data: Option<&[u8]>) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
 
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;

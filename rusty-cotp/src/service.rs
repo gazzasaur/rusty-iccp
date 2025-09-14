@@ -22,6 +22,8 @@ pub struct TcpCotpAcceptor<R: TpktReader, W: TpktWriter> {
     initiator_reference: u16,
     max_payload_size: usize,
     max_payload_indicator: TpduSize,
+    called_tsap_id: Option<Vec<u8>>,
+    calling_tsap_id: Option<Vec<u8>>,
 }
 
 impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
@@ -49,6 +51,8 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
                 writer,
                 max_payload_size,
                 max_payload_indicator,
+                called_tsap_id: called_tsap_id.clone(),
+                calling_tsap_id: calling_tsap_id.clone(),
                 initiator_reference: connection_request.source_reference(),
             },
             CotpConnectInformation {
@@ -62,7 +66,7 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
 
 impl<R: TpktReader, W: TpktWriter> CotpAcceptor for TcpCotpAcceptor<R, W> {
     async fn accept(mut self, options: CotpAcceptInformation) -> Result<impl CotpConnection, CotpError> {
-        send_connection_confirm(&mut self.writer, options.responder_reference, self.initiator_reference, self.max_payload_indicator).await?;
+        send_connection_confirm(&mut self.writer, options.responder_reference, self.initiator_reference, self.max_payload_indicator, self.calling_tsap_id, self.called_tsap_id).await?;
         Ok(TcpCotpConnection::new(self.reader, self.writer, self.max_payload_size).await)
     }
 }
@@ -260,14 +264,22 @@ async fn calculate_remote_size_payload(parameters: &[CotpParameter]) -> Result<(
     })
 }
 
-async fn send_connection_confirm<W: TpktWriter>(writer: &mut W, source_reference: u16, destination_reference: u16, size: TpduSize) -> Result<(), CotpError> {
+async fn send_connection_confirm<W: TpktWriter>(writer: &mut W, source_reference: u16, destination_reference: u16, size: TpduSize, calling_tsap_id: Option<Vec<u8>>, called_tsap_id: Option<Vec<u8>>) -> Result<(), CotpError> {
+    let mut parameters = vec![CotpParameter::TpduLengthParameter(size)];
+    if let Some(tsap_id) = calling_tsap_id {
+        parameters.push(CotpParameter::CallingTsap(tsap_id));
+    }
+    if let Some(tsap_id) = called_tsap_id {
+        parameters.push(CotpParameter::CalledTsap(tsap_id));
+    }
+
     let payload = serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
         0,
         source_reference,
         destination_reference,
         ConnectionClass::Class0,
         vec![],
-        vec![CotpParameter::TpduLengthParameter(size)],
+        parameters,
         &[],
     )))?;
     Ok(writer.send(&payload.as_slice()).await?)

@@ -14,9 +14,6 @@ pub fn serialise_connection_confirm(data: &ConnectionConfirm) -> Result<Vec<u8>,
     if data.user_data().len() != 0 {
         return Err(CotpError::ProtocolError("User data is not supported on Class 0 connection confirms.".into()));
     }
-    if data.parameters().len() > 1 {
-        return Err(CotpError::ProtocolError("Only a single parameter specifying TPDU length is supported.".into()));
-    }
     if data.parameters().len() == 1 {
         match data.parameters().get(0) {
             Some(&CotpParameter::TpduLengthParameter(TpduSize::Size128)) => (),
