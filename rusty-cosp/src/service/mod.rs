@@ -1,11 +1,13 @@
+pub(crate) mod connect;
+pub(crate) mod overflow;
+
 use std::collections::VecDeque;
 
 use rusty_cotp::{CotpReader, CotpRecvResult, CotpWriter};
 
 use crate::{
     api::CospError,
-    common::TsduMaximumSize,
-    message::{CospMessage, accept::AcceptMessage, overflow_accept::OverflowAcceptMessage},
+    message::{accept::AcceptMessage, overflow_accept::OverflowAcceptMessage, parameters::TsduMaximumSize, CospMessage},
     packet::{
         parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
@@ -13,116 +15,6 @@ use crate::{
 };
 
 const MAX_PAYLOAD_SIZE: usize = 65510; // Technically the maximum is 65528 but it seems to be an issue with some frameworks. Leaving buffer with this one.
-
-pub(crate) enum SendConnectionRequestResult {
-    Complete,
-    Overflow(usize),
-}
-
-pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
-    const MAX_USER_DATA_PAYLOAD_SIZE: usize = 512;
-    const MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE: usize = 10240;
-
-    let mut parameters = vec![
-        SessionPduParameter::ConnectAcceptItemParameter(vec![
-            SessionPduParameter::ProtocolOptionsParameter(ProtocolOptionsField(2)), // Only set the duplex functionall unit
-            SessionPduParameter::VersionNumberParameter(VersionNumberField(2)),     // Version 2 only
-        ]),
-        SessionPduParameter::SessionUserRequirementsParameter(SessionUserRequirementsField(2)), // Full Duplex only
-    ];
-    let overflow_length = match user_data {
-        Some(user_data) if user_data.len() <= MAX_USER_DATA_PAYLOAD_SIZE => {
-            parameters.push(SessionPduParameter::UserDataParameter(user_data.to_vec()));
-            0
-        }
-        Some(user_data) if user_data.len() <= MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE => {
-            parameters.push(SessionPduParameter::ExtendedUserDataParameter(user_data.to_vec()));
-            0
-        }
-        Some(user_data) => {
-            parameters.push(SessionPduParameter::DataOverflowParameter(DataOverflowField(1)));
-            parameters.push(SessionPduParameter::ExtendedUserDataParameter(user_data[..MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE].to_vec()));
-            MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE
-        }
-        None => 0,
-    };
-
-    let pdus = SessionPduList::new(vec![SessionPduParameter::Connect(parameters)], vec![]);
-    writer.send(&pdus.serialise()?).await?;
-    Ok(match overflow_length {
-        0 => SendConnectionRequestResult::Complete,
-        _ => SendConnectionRequestResult::Overflow(overflow_length),
-    })
-}
-
-pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize) -> Result<(), CospError> {
-    let mut sub_parameters = Vec::new();
-    if let TsduMaximumSize::Size(initiator_size) = initiator_size {
-        // This will set the responder size to 0x0000 to indicate that we (the responder) accept unlimited size. But we also echo back the initiator size.
-        sub_parameters.push(SessionPduParameter::TsduMaximumSizeParameter(TsduMaximumSizeField((*initiator_size as u32) << 16)));
-    }
-    sub_parameters.push(SessionPduParameter::VersionNumberParameter(VersionNumberField(2))); // Accept version 2
-
-    let pdus = SessionPduList::new(vec![SessionPduParameter::OverflowAccept(sub_parameters)], vec![]);
-    Ok(writer.send(&pdus.serialise()?).await?)
-}
-
-// We do not really need to return anything here. We will inspect the accept payload at the end.
-pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader) -> Result<OverflowAcceptMessage, CospError> {
-    let message = receive_message(reader).await?;
-    let overflow_accept_message = match message {
-        CospMessage::OA(accept_message) => accept_message,
-        _ => return Err(CospError::ProtocolError(format!("Expected an Overflow Accept message but got: {}", <CospMessage as Into<&'static str>>::into(message)))),
-    };
-    Ok(overflow_accept_message)
-}
-
-pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter, data: &[u8]) -> Result<(), CospError> {
-    let mut cursor = 0;
-
-    while cursor < data.len() {
-        let start_index = cursor;
-        cursor += MAX_PAYLOAD_SIZE;
-        let mut end_flag: u8 = 0;
-
-        if cursor >= data.len() {
-            cursor = data.len();
-            end_flag = 1
-        };
-
-        writer
-            .send(
-                &SessionPduList::new(
-                    vec![SessionPduParameter::ConnectDataOverflow(vec![
-                        SessionPduParameter::EnclosureParameter(EnclosureField(2 * end_flag)),
-                        SessionPduParameter::UserDataParameter(data[start_index..cursor].to_vec()),
-                    ])],
-                    vec![],
-                )
-                .serialise()?,
-            )
-            .await?;
-    }
-    Ok(())
-}
-
-pub(crate) async fn receive_connect_data_overflow(reader: &mut impl CotpReader) -> Result<Vec<u8>, CospError> {
-    let mut buffer = VecDeque::new();
-
-    let mut has_more_data = true;
-    while has_more_data {
-        let message = receive_message(reader).await?;
-        let cdo_message = match message {
-            CospMessage::CDO(overflow_message) => overflow_message,
-            _ => return Err(CospError::ProtocolError(format!("Expected a Connect Data Overflow message but got: {}", <CospMessage as Into<&'static str>>::into(message)))),
-        };
-        if let Some(user_data) = cdo_message.user_data() {
-            buffer.extend(user_data);
-        }
-        has_more_data = cdo_message.has_more_data();
-    }
-    Ok(buffer.drain(..).collect())
-}
 
 pub(crate) async fn send_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize, user_data: Option<&[u8]>) -> Result<(), CospError> {
     // As we may need to send multiple accept payloads, we will precalculate the size of the header without enclosure.

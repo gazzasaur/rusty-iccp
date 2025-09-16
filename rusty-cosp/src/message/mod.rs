@@ -7,6 +7,7 @@ use crate::{
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
 };
 
+pub(crate) mod parameters;
 pub(crate) mod accept;
 pub(crate) mod connect;
 pub(crate) mod connect_data_overflow;

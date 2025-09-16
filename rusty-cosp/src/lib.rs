@@ -4,51 +4,15 @@ use rusty_cotp::{CotpConnection, CotpReader, CotpRecvResult, CotpWriter};
 
 use crate::{
     api::{CospAcceptor, CospConnection, CospError, CospReader, CospRecvResult, CospWriter},
-    common::TsduMaximumSize,
-    message::CospMessage,
+    message::{parameters::TsduMaximumSize, CospMessage},
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
-    service::{receive_accept_with_all_user_data, receive_connect_data_overflow, receive_message, receive_overflow_accept, send_accept, send_connect_data_overflow, send_connect_reqeust, send_overflow_accept},
+    service::{connect::{send_connect_reqeust, SendConnectionRequestResult}, overflow::{receive_connect_data_overflow, receive_overflow_accept, send_connect_data_overflow, send_overflow_accept}, receive_accept_with_all_user_data, receive_message, send_accept},
 };
 
 pub mod api;
-pub(crate) mod common;
 pub(crate) mod message;
 pub(crate) mod packet;
 pub(crate) mod service;
-
-// impl TcpCospServer {
-//     async fn accept<'a>(&self) -> Result<(impl 'a + CospAcceptor<SocketAddr>, Option<Vec<u8>>), CospError> {
-//         let (mut cotp_reader, mut cotp_writer) = self.cotp_server.accept().await?.split().await?;
-
-//         let connect_request = match receive_message(&mut cotp_reader).await? {
-//             CospMessage::CN(connect_message) => connect_message,
-//             message => return Err(CospError::ProtocolError(format!("Expecting a connect message, but got {}", <CospMessage as Into<&'static str>>::into(message)))),
-//         };
-
-//         let maximum_size_to_initiator = connect_request.maximum_size_to_initiator();
-//         let has_more_data = match &connect_request.data_overflow() {
-//             Some(overflow) => overflow.more_data(),
-//             None => false,
-//         };
-
-//         let mut user_data = VecDeque::new();
-//         let has_user_data = connect_request.user_data().is_some() || connect_request.data_overflow().is_some();
-//         if let Some(request_user_data) = connect_request.user_data() {
-//             user_data.extend(request_user_data);
-//         }
-
-//         if has_more_data {
-//             send_overflow_accept(&mut cotp_writer, &maximum_size_to_initiator).await?;
-//             user_data.extend(receive_connect_data_overflow(&mut cotp_reader).await?);
-//         }
-
-//         let user_data = match has_user_data {
-//             true => Some(user_data.drain(..).collect()),
-//             false => None,
-//         };
-//         Ok((TcpCospAcceptor::new(cotp_reader, cotp_writer, *maximum_size_to_initiator), user_data))
-//     }
-// }
 
 pub struct TcpCospAcceptor<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
@@ -123,13 +87,13 @@ impl<R: CotpReader, W: CotpWriter> TcpCospConnection<R, W> {
         let send_connect_result = send_connect_reqeust(&mut cotp_writer, connect_data).await?;
 
         let accept_message = match (send_connect_result, connect_data) {
-            (service::SendConnectionRequestResult::Complete, _) => receive_accept_with_all_user_data(&mut cotp_reader).await?,
-            (service::SendConnectionRequestResult::Overflow(sent_data), Some(user_data)) => {
+            (SendConnectionRequestResult::Complete, _) => receive_accept_with_all_user_data(&mut cotp_reader).await?,
+            (SendConnectionRequestResult::Overflow(sent_data), Some(user_data)) => {
                 receive_overflow_accept(&mut cotp_reader).await?;
                 send_connect_data_overflow(&mut cotp_writer, &user_data[sent_data..]).await?;
                 receive_accept_with_all_user_data(&mut cotp_reader).await?
             }
-            (service::SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
+            (SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
         };
 
         Ok((

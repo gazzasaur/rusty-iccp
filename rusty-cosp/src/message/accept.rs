@@ -1,7 +1,5 @@
 use crate::{
-    api::CospError,
-    common::TsduMaximumSize,
-    packet::parameters::{EnclosureField, SessionPduParameter, SessionUserRequirementsField},
+    api::CospError, message::parameters::TsduMaximumSize, packet::parameters::{EnclosureField, SessionPduParameter, SessionUserRequirementsField}
 };
 
 pub(crate) struct AcceptMessage {

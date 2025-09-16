@@ -1,7 +1,5 @@
 use crate::{
-    api::CospError,
-    common::TsduMaximumSize,
-    packet::parameters::{DataOverflowField, SessionPduParameter, SessionUserRequirementsField},
+    api::CospError, message::parameters::TsduMaximumSize, packet::parameters::{DataOverflowField, SessionPduParameter, SessionUserRequirementsField}
 };
 
 pub(crate) struct ConnectMessage {
