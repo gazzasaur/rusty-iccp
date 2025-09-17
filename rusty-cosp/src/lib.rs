@@ -4,9 +4,16 @@ use rusty_cotp::{CotpConnection, CotpReader, CotpRecvResult, CotpWriter};
 
 use crate::{
     api::{CospAcceptor, CospConnection, CospError, CospReader, CospRecvResult, CospWriter},
-    message::{parameters::TsduMaximumSize, CospMessage},
-    packet::{parameters::SessionPduParameter, pdu::SessionPduList},
-    service::{connect::{send_connect_reqeust, SendConnectionRequestResult}, overflow::{receive_connect_data_overflow, receive_overflow_accept, send_connect_data_overflow, send_overflow_accept}, receive_accept_with_all_user_data, receive_message, send_accept},
+    message::{CospMessage, parameters::TsduMaximumSize},
+    packet::{
+        parameters::{EnclosureField, SessionPduParameter},
+        pdu::SessionPduList,
+    },
+    service::{
+        connect::{SendConnectionRequestResult, send_connect_reqeust},
+        overflow::{receive_connect_data_overflow, receive_overflow_accept, send_connect_data_overflow, send_overflow_accept},
+        receive_accept_with_all_user_data, receive_message, send_accept,
+    },
 };
 
 pub mod api;
@@ -76,7 +83,7 @@ impl<R: CotpReader, W: CotpWriter> CospAcceptor for TcpCospAcceptor<R, W> {
 pub struct TcpCospConnection<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
     cotp_writer: W,
-    _remote_max_size: TsduMaximumSize,
+    remote_max_size: TsduMaximumSize,
 }
 
 impl<R: CotpReader, W: CotpWriter> TcpCospConnection<R, W> {
@@ -106,7 +113,7 @@ impl<R: CotpReader, W: CotpWriter> TcpCospConnection<R, W> {
         TcpCospConnection {
             cotp_reader,
             cotp_writer,
-            _remote_max_size: remote_max_size,
+            remote_max_size,
         }
     }
 }
@@ -118,7 +125,7 @@ impl<R: CotpReader, W: CotpWriter> CospConnection for TcpCospConnection<R, W> {
                 cotp_reader: self.cotp_reader,
                 _buffer: VecDeque::new(),
             },
-            TcpCospWriter { cotp_writer: self.cotp_writer },
+            TcpCospWriter { cotp_writer: self.cotp_writer, remote_max_size: self.remote_max_size },
         ))
     }
 }
@@ -150,14 +157,42 @@ impl<R: CotpReader> CospReader for TcpCospReader<R> {
 
 pub struct TcpCospWriter<W: CotpWriter> {
     cotp_writer: W,
+    remote_max_size: TsduMaximumSize,
 }
 
 impl<W: CotpWriter> CospWriter for TcpCospWriter<W> {
     async fn send(&mut self, data: &[u8]) -> Result<(), CospError> {
-        // TODO Segmentation
-        //        let payload = SessionPduList::new(vec![], data.to_vec()).serialise()?;
-        let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data.to_vec()).serialise()?;
-        self.cotp_writer.send(&payload).await?;
+        const HEADER_LENGTH_WITHOUT_ENCLOSURE: usize = 4; // GT + DT
+        const HEADER_LENGTH_WITH_ENCLOSURE: usize = 7; // GT + DT + Enclosure
+
+        match self.remote_max_size {
+            TsduMaximumSize::Size(x) if data.len() + HEADER_LENGTH_WITHOUT_ENCLOSURE < x as usize => {
+                let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data.to_vec()).serialise()?;
+                self.cotp_writer.send(&payload).await?;
+            }
+            TsduMaximumSize::Unlimited => {
+                let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data.to_vec()).serialise()?;
+                self.cotp_writer.send(&payload).await?;
+            }
+            TsduMaximumSize::Size(x) => {
+                let mut cursor: usize = 0;
+
+                while cursor < data.len() {
+                    let start = cursor;
+                    cursor = match cursor + x as usize {
+                        cursor if cursor > data.len() => data.len(),
+                        cursor => cursor,
+                    };
+                    let enclosure = EnclosureField(if start == 0 { 1 } else { 0 } + if cursor == data.len() { 2 } else { 0 });
+                    let payload = SessionPduList::new(
+                        vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![SessionPduParameter::EnclosureParameter(enclosure)])],
+                        data[start..cursor].to_vec(),
+                    )
+                    .serialise()?;
+                    self.cotp_writer.send(&payload).await?;
+                }
+            }
+        }
         Ok(())
     }
 
