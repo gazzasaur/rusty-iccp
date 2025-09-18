@@ -1,16 +1,16 @@
 use crate::{api::CospError, message::parameters::TsduMaximumSize, packet::parameters::SessionPduParameter};
 
 pub(crate) struct OverflowAcceptMessage {
-    maximum_size_to_responder: TsduMaximumSize,
+    maximum_tsdu_size: TsduMaximumSize,
 }
 
 impl OverflowAcceptMessage {
-    pub(crate) fn new(maximum_size_to_responder: TsduMaximumSize) -> Self {
-        Self { maximum_size_to_responder }
+    pub(crate) fn new(maximum_tsdu_size: TsduMaximumSize) -> Self {
+        Self { maximum_tsdu_size }
     }
 
     pub(crate) fn maximum_size_to_responder(&self) -> &TsduMaximumSize {
-        &self.maximum_size_to_responder
+        &self.maximum_tsdu_size
     }
 
     pub(crate) fn from_parameters(parameters: &[SessionPduParameter]) -> Result<Self, CospError> {
@@ -32,6 +32,6 @@ impl OverflowAcceptMessage {
             None => return Err(CospError::ProtocolError("Only version 2 is supported but version 1 was implied by the server on accept.".into())),
         }
 
-        Ok(OverflowAcceptMessage { maximum_size_to_responder })
+        Ok(OverflowAcceptMessage::new(maximum_size_to_responder))
     }
 }

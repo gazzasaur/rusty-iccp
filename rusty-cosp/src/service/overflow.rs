@@ -2,7 +2,15 @@ use std::collections::VecDeque;
 
 use rusty_cotp::{CotpReader, CotpWriter};
 
-use crate::{api::CospError, message::{overflow_accept::OverflowAcceptMessage, parameters::TsduMaximumSize, CospMessage}, packet::{parameters::{EnclosureField, SessionPduParameter, TsduMaximumSizeField, VersionNumberField}, pdu::SessionPduList}, service::{receive_message, MAX_PAYLOAD_SIZE}};
+use crate::{
+    api::CospError,
+    message::{CospMessage, overflow_accept::OverflowAcceptMessage, parameters::TsduMaximumSize},
+    packet::{
+        parameters::{EnclosureField, SessionPduParameter, TsduMaximumSizeField, VersionNumberField},
+        pdu::SessionPduList,
+    },
+    service::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
+};
 
 pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize) -> Result<(), CospError> {
     let mut sub_parameters = Vec::new();
@@ -26,12 +34,16 @@ pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader) -> Res
     Ok(overflow_accept_message)
 }
 
-pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter, data: &[u8]) -> Result<(), CospError> {
+pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter, max_tsdu_size: TsduMaximumSize, data: &[u8]) -> Result<(), CospError> {
     let mut cursor = 0;
+    let payload_length = match max_tsdu_size {
+        TsduMaximumSize::Unlimited => MAX_PAYLOAD_SIZE,
+        TsduMaximumSize::Size(x) => usize::max(MIN_PAYLOAD_SIZE, usize::min(x as usize, MAX_PAYLOAD_SIZE)),
+    };
 
     while cursor < data.len() {
         let start_index = cursor;
-        cursor += MAX_PAYLOAD_SIZE;
+        cursor += payload_length;
         let mut end_flag: u8 = 0;
 
         if cursor >= data.len() {

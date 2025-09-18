@@ -1,12 +1,9 @@
-use std::collections::VecDeque;
-
-use rusty_cotp::{CotpReader, CotpRecvResult, CotpWriter};
+use rusty_cotp::CotpWriter;
 
 use crate::{
     api::CospError,
-    message::{CospMessage, accept::AcceptMessage, connect::ConnectMessage, overflow_accept::OverflowAcceptMessage, parameters::TsduMaximumSize},
     packet::{
-        parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
+        parameters::{DataOverflowField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, VersionNumberField},
         pdu::SessionPduList,
     },
 };

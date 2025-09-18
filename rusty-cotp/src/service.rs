@@ -4,6 +4,7 @@ use bytes::BytesMut;
 use rusty_tpkt::{TpktConnection, TpktReader, TpktRecvResult, TpktWriter};
 
 use crate::{
+    CotpAcceptInformation,
     api::{CotpAcceptor, CotpConnectInformation, CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpWriter},
     packet::{
         connection_confirm::ConnectionConfirm,
@@ -13,7 +14,7 @@ use crate::{
         payload::TransportProtocolDataUnit,
     },
     parser::packet::TransportProtocolDataUnitParser,
-    serialiser::packet::serialise, CotpAcceptInformation,
+    serialiser::packet::serialise,
 };
 
 pub struct TcpCotpAcceptor<R: TpktReader, W: TpktWriter> {

@@ -10,7 +10,7 @@ use crate::{
             ACCEPT_SI_CODE, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE,
             GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE,
         },
-        parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, ReasonCode, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField, encode_length},
+        parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField, encode_length},
     },
     serialise_parameter_value,
 };
@@ -66,7 +66,7 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, C
             SessionPduParameter::ProtocolOptionsParameter(field) => serialise_parameter_value!(PROTOCOL_OPTIONS_PARAMETER_CODE, field.0)?,
             SessionPduParameter::TsduMaximumSizeParameter(field) => serialise_parameter_value!(TSDU_MAXIMUM_SIZE_PARAMETER_CODE, field.0)?,
             SessionPduParameter::VersionNumberParameter(field) => serialise_parameter_value!(VERSION_NUMBER_PARAMETER_CODE, field.0)?,
-            SessionPduParameter::ReasonCodeParameter(reason_code) => reason_code.try_into()?,
+            // SessionPduParameter::ReasonCodeParameter(reason_code) => reason_code.try_into()?, TODO
             SessionPduParameter::SessionUserRequirementsParameter(field) => serialise_parameter_value!(SESSION_USER_REQUIREMENTS_PARAMETER_CODE, field.0)?,
             SessionPduParameter::UserDataParameter(data) => serialise_data_parameter(USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::ExtendedUserDataParameter(data) => serialise_data_parameter(EXTENDED_USER_DATA_PARAMETER_CODE, data)?,
@@ -181,15 +181,16 @@ fn parse_enclosure_item(data: &[u8]) -> Result<EnclosureField, CospError> {
     Ok(EnclosureField(data[0]))
 }
 
-fn parse_transport_disconnect(data: &[u8]) -> Result<TransportDisconnect, CospError> {
-    verify_length("Transport Disconnect", 1, data)?;
-    Ok(TransportDisconnect(data[0]))
-}
+// TODO
+// fn parse_transport_disconnect(data: &[u8]) -> Result<TransportDisconnect, CospError> {
+//     verify_length("Transport Disconnect", 1, data)?;
+//     Ok(TransportDisconnect(data[0]))
+// }
 
-fn parse_reason_code(data: &[u8]) -> Result<SessionPduParameter, CospError> {
-    verify_length_greater("Reason Code", 0, data)?;
-    Ok(SessionPduParameter::ReasonCodeParameter(ReasonCode::new(data[1], &data[1..])))
-}
+// fn parse_reason_code(data: &[u8]) -> Result<SessionPduParameter, CospError> {
+//     verify_length_greater("Reason Code", 0, data)?;
+//     Ok(SessionPduParameter::ReasonCodeParameter(ReasonCode::new(data[1], &data[1..])))
+// }
 
 fn verify_length(label: &str, expected_length: usize, data: &[u8]) -> Result<(), CospError> {
     if expected_length != data.len() {
@@ -198,12 +199,13 @@ fn verify_length(label: &str, expected_length: usize, data: &[u8]) -> Result<(),
     Ok(())
 }
 
-fn verify_length_greater(label: &str, expected_length: usize, data: &[u8]) -> Result<(), CospError> {
-    if expected_length >= data.len() {
-        return Err(CospError::ProtocolError(format!("Invalid Length: {} - Expected to be greater than {}, Got {}", label, expected_length, data.len())));
-    }
-    Ok(())
-}
+// TODO
+// fn verify_length_greater(label: &str, expected_length: usize, data: &[u8]) -> Result<(), CospError> {
+//     if expected_length >= data.len() {
+//         return Err(CospError::ProtocolError(format!("Invalid Length: {} - Expected to be greater than {}, Got {}", label, expected_length, data.len())));
+//     }
+//     Ok(())
+// }
 
 bitfield! {
     #[derive(Debug)]

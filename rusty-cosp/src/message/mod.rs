@@ -7,12 +7,12 @@ use crate::{
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
 };
 
-pub(crate) mod parameters;
 pub(crate) mod accept;
 pub(crate) mod connect;
 pub(crate) mod connect_data_overflow;
 pub(crate) mod data_transfer;
 pub(crate) mod overflow_accept;
+pub(crate) mod parameters;
 
 #[derive(IntoStaticStr)]
 pub(crate) enum CospMessage {

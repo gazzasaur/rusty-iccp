@@ -7,14 +7,15 @@ use rusty_cotp::{CotpReader, CotpRecvResult, CotpWriter};
 
 use crate::{
     api::CospError,
-    message::{accept::AcceptMessage, overflow_accept::OverflowAcceptMessage, parameters::TsduMaximumSize, CospMessage},
+    message::{CospMessage, accept::AcceptMessage, parameters::TsduMaximumSize},
     packet::{
-        parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
+        parameters::{EnclosureField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
     },
 };
 
-const MAX_PAYLOAD_SIZE: usize = 65510; // Technically the maximum is 65528 but it seems to be an issue with some frameworks. Leaving buffer with this one.
+pub(crate) const MIN_PAYLOAD_SIZE: usize = 64; // This is mainly here to protect algorithms.
+pub(crate) const MAX_PAYLOAD_SIZE: usize = 65510; // Technically the maximum is 65528 but it seems to be an issue with some frameworks. Leaving buffer with this one.
 
 pub(crate) async fn send_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize, user_data: Option<&[u8]>) -> Result<(), CospError> {
     // As we may need to send multiple accept payloads, we will precalculate the size of the header without enclosure.
