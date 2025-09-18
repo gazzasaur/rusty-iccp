@@ -222,7 +222,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_negotiate_a_version_2_unlimited_size_connection() -> Result<(), anyhow::Error> {
-        let (client_connection, server_connection) = create_cosp_connection_pair(None, None).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, None, None).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -244,7 +244,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_pass_small_connect_and_accept_data() -> Result<(), anyhow::Error> {
-        let (client_connection, server_connection) = create_cosp_connection_pair(Some(&[5, 6, 7]), Some(&[5, 4, 3])).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, Some(&[5, 6, 7]), Some(&[5, 4, 3])).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -272,7 +272,7 @@ mod tests {
         let mut init_accept_data = vec![0x8; 65510];
         rand::fill(init_accept_data.as_mut_slice());
 
-        let (client_connection, server_connection) = create_cosp_connection_pair(Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -291,8 +291,9 @@ mod tests {
         Ok(())
     }
 
-    // Need to fix Accept
-    // Need to take into account the mtu of the peer
+    // TODO Need to fix Accept
+    // TODO Need to take into account the mtu of the peer
+    // TODO Need to DT a lot bigger data
     #[tokio::test]
     #[traced_test]
     async fn it_should_pass_jumbo_connect_and_accept_data() -> Result<(), anyhow::Error> {
@@ -302,7 +303,7 @@ mod tests {
         let mut init_accept_data = vec![0x00u8; 65510 + 65510 + 100];
         rand::fill(init_accept_data.as_mut_slice());
 
-        let (client_connection, server_connection) = create_cosp_connection_pair(Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -321,13 +322,42 @@ mod tests {
         Ok(())
     }
 
-    async fn create_cosp_connection_pair(connect_data: Option<&[u8]>, accept_data: Option<&[u8]>) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
-        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_negotiate_honour_mtu_sizes() -> Result<(), anyhow::Error> {
+        let mut initial_connect_data = vec![0x00u8; 10240 + 65520 + 65520 + 100];
+        rand::fill(initial_connect_data.as_mut_slice());
+
+        let mut init_accept_data = vec![0x00u8; 65510 + 65510 + 100];
+        rand::fill(init_accept_data.as_mut_slice());
+
+        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
+
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
+
+        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        match server_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
+        }
+        server_writer.send(&[1, 2, 3, 4]).await?;
+        match client_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
+        }
+
+        Ok(())
+    }
+
+    async fn create_cosp_connection_pair(initiator_tsdu: TsduMaximumSize, connect_data: Option<&[u8]>, accept_data: Option<&[u8]>) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
+
+        let connect_information = CotpConnectInformation::default();
 
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
-
-        let connect_information = CotpConnectInformation::default();
 
         let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone()).await }, async {
             let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::receive(tpkt_server?.0).await?;
