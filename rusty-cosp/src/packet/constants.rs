@@ -19,6 +19,8 @@ pub(crate) const EXTENDED_USER_DATA_PARAMETER_CODE: u8 = 194;
 // pub(crate) const TRANSPORT_DISCONNECT_PARAMETER_CODE: u8 = 17;
 
 pub(crate) const SESSION_USER_REQUIREMENTS_PARAMETER_CODE: u8 = 20;
+pub(crate) const CALLING_SESSION_SELECTOR: u8 = 51;
+pub(crate) const CALLED_SESSION_SELECTOR: u8 = 52;
 pub(crate) const DATA_OVERFLOW_PARAMETER_CODE: u8 = 60;
 pub(crate) const ENCLOSURE_PARAMETER_CODE: u8 = 25;
 // TODO

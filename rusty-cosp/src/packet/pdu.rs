@@ -7,10 +7,9 @@ use crate::{
     api::CospError,
     packet::{
         constants::{
-            ACCEPT_SI_CODE, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE,
-            GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE,
+            ACCEPT_SI_CODE, CALLED_SESSION_SELECTOR, CALLING_SESSION_SELECTOR, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE
         },
-        parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField, encode_length},
+        parameters::{encode_length, DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
     },
     serialise_parameter_value,
 };
@@ -68,6 +67,8 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, C
             SessionPduParameter::VersionNumberParameter(field) => serialise_parameter_value!(VERSION_NUMBER_PARAMETER_CODE, field.0)?,
             // SessionPduParameter::ReasonCodeParameter(reason_code) => reason_code.try_into()?, TODO
             SessionPduParameter::SessionUserRequirementsParameter(field) => serialise_parameter_value!(SESSION_USER_REQUIREMENTS_PARAMETER_CODE, field.0)?,
+            SessionPduParameter::CallingSessionSelectorParameter(value) => serialise_parameter_value!(CALLING_SESSION_SELECTOR, value)?,
+            SessionPduParameter::CalledSessionSelectorParameter(value) => serialise_parameter_value!(CALLED_SESSION_SELECTOR, value)?,
             SessionPduParameter::UserDataParameter(data) => serialise_data_parameter(USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::ExtendedUserDataParameter(data) => serialise_data_parameter(EXTENDED_USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::DataOverflowParameter(field) => serialise_parameter_value!(DATA_OVERFLOW_PARAMETER_CODE, field.0)?,

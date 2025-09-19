@@ -16,6 +16,23 @@ pub enum CospError {
     InternalError(String),
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub struct CospConnectionInformation {
+    pub tsdu_maximum_size: Option<u16>,
+    pub calling_session_selector: Option<u128>,
+    pub called_session_selector: Option<u128>,
+}
+
+impl Default for CospConnectionInformation {
+    fn default() -> Self {
+        Self {
+            tsdu_maximum_size: None,
+            calling_session_selector: None,
+            called_session_selector: None,
+        }
+    }
+}
+
 pub enum CospRecvResult {
     Closed,
     Data(Vec<u8>),

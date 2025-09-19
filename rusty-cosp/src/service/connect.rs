@@ -1,9 +1,10 @@
+use bitfield::BitRangeMut;
 use rusty_cotp::CotpWriter;
 
 use crate::{
-    api::CospError,
+    api::{CospConnectionInformation, CospError},
     packet::{
-        parameters::{DataOverflowField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, VersionNumberField},
+        parameters::{DataOverflowField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
     },
 };
@@ -13,17 +14,28 @@ pub(crate) enum SendConnectionRequestResult {
     Overflow(usize),
 }
 
-pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
+pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: CospConnectionInformation, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
     const MAX_USER_DATA_PAYLOAD_SIZE: usize = 512;
     const MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE: usize = 10240;
 
+    let mut connect_accept_parameters = vec![
+        SessionPduParameter::ProtocolOptionsParameter(ProtocolOptionsField(2)), // Only set the duplex functionall unit
+        SessionPduParameter::VersionNumberParameter(VersionNumberField(2)),     // Version 2 only
+    ];
+    if let Some(size) = options.tsdu_maximum_size {
+        connect_accept_parameters.push(SessionPduParameter::TsduMaximumSizeParameter(TsduMaximumSizeField::new(size, 0)));
+    }
+
     let mut parameters = vec![
-        SessionPduParameter::ConnectAcceptItemParameter(vec![
-            SessionPduParameter::ProtocolOptionsParameter(ProtocolOptionsField(2)), // Only set the duplex functionall unit
-            SessionPduParameter::VersionNumberParameter(VersionNumberField(2)),     // Version 2 only
-        ]),
+        SessionPduParameter::ConnectAcceptItemParameter(connect_accept_parameters),
         SessionPduParameter::SessionUserRequirementsParameter(SessionUserRequirementsField(2)), // Full Duplex only
     ];
+    if let Some(calling_session) = options.calling_session_selector {
+        parameters.push(SessionPduParameter::CallingSessionSelectorParameter(calling_session));
+    }
+    if let Some(called_session) = options.called_session_selector {
+        parameters.push(SessionPduParameter::CalledSessionSelectorParameter(called_session));
+    }
     let overflow_length = match user_data {
         Some(user_data) if user_data.len() <= MAX_USER_DATA_PAYLOAD_SIZE => {
             parameters.push(SessionPduParameter::UserDataParameter(user_data.to_vec()));

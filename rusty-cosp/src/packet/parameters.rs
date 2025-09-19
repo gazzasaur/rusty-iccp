@@ -21,6 +21,8 @@ pub(crate) enum SessionPduParameter {
     VersionNumberParameter(VersionNumberField),
     // ReasonCodeParameter(ReasonCode), TODO
     SessionUserRequirementsParameter(SessionUserRequirementsField),
+    CallingSessionSelectorParameter(u128),
+    CalledSessionSelectorParameter(u128),
     UserDataParameter(Vec<u8>),
     ExtendedUserDataParameter(Vec<u8>),
     DataOverflowParameter(DataOverflowField),
@@ -81,8 +83,8 @@ bitfield! {
     impl Debug;
 
     u16;
-    pub(crate) to_initiator, _ : 15, 0;
-    pub(crate) to_responder, _ : 31, 16;
+    pub(crate) to_initiator, set_to_initiator : 15, 0;
+    pub(crate) to_responder, set_to_responder : 31, 16;
 }
 
 // ---

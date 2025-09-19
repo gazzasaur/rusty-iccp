@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use rusty_cotp::{CotpConnection, CotpReader, CotpRecvResult, CotpWriter};
 
 use crate::{
-    api::{CospAcceptor, CospConnection, CospError, CospReader, CospRecvResult, CospWriter},
+    api::{CospAcceptor, CospConnection, CospConnectionInformation, CospError, CospReader, CospRecvResult, CospWriter},
     message::{CospMessage, parameters::TsduMaximumSize},
     packet::{
         parameters::{EnclosureField, SessionPduParameter},
@@ -89,10 +89,10 @@ pub struct TcpCospConnection<R: CotpReader, W: CotpWriter> {
 
 impl<R: CotpReader, W: CotpWriter> TcpCospConnection<R, W> {
     // TODO Also need to handle refuse which will just generically error at the moment.
-    pub async fn connect(cotp_connection: impl CotpConnection, connect_data: Option<&[u8]>) -> Result<(TcpCospConnection<impl CotpReader, impl CotpWriter>, Option<Vec<u8>>), CospError> {
+    pub async fn connect(cotp_connection: impl CotpConnection, options: CospConnectionInformation, connect_data: Option<&[u8]>) -> Result<(TcpCospConnection<impl CotpReader, impl CotpWriter>, Option<Vec<u8>>), CospError> {
         let (mut cotp_reader, mut cotp_writer) = cotp_connection.split().await?;
 
-        let send_connect_result = send_connect_reqeust(&mut cotp_writer, connect_data).await?;
+        let send_connect_result = send_connect_reqeust(&mut cotp_writer, options, connect_data).await?;
 
         let accept_message = match (send_connect_result, connect_data) {
             (SendConnectionRequestResult::Complete, _) => receive_accept_with_all_user_data(&mut cotp_reader).await?,
@@ -222,7 +222,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_negotiate_a_version_2_unlimited_size_connection() -> Result<(), anyhow::Error> {
-        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, None, None).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(None, None).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -244,7 +244,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_pass_small_connect_and_accept_data() -> Result<(), anyhow::Error> {
-        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, Some(&[5, 6, 7]), Some(&[5, 4, 3])).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(Some(&[5, 6, 7]), Some(&[5, 4, 3])).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -272,7 +272,7 @@ mod tests {
         let mut init_accept_data = vec![0x8; 65510];
         rand::fill(init_accept_data.as_mut_slice());
 
-        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -303,7 +303,7 @@ mod tests {
         let mut init_accept_data = vec![0x00u8; 65510 + 65510 + 100];
         rand::fill(init_accept_data.as_mut_slice());
 
-        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair(Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -324,14 +324,23 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    async fn it_should_negotiate_honour_mtu_sizes() -> Result<(), anyhow::Error> {
+    async fn it_should_pass_and_honour_options() -> Result<(), anyhow::Error> {
         let mut initial_connect_data = vec![0x00u8; 10240 + 65520 + 65520 + 100];
         rand::fill(initial_connect_data.as_mut_slice());
 
         let mut init_accept_data = vec![0x00u8; 65510 + 65510 + 100];
         rand::fill(init_accept_data.as_mut_slice());
 
-        let (client_connection, server_connection) = create_cosp_connection_pair(TsduMaximumSize::Unlimited, Some(initial_connect_data.as_slice()), Some(init_accept_data.as_slice())).await?;
+        let (client_connection, server_connection) = create_cosp_connection_pair_with_options(
+            Some(initial_connect_data.as_slice()),
+            CospConnectionInformation {
+                tsdu_maximum_size: Some(512),
+                calling_session_selector: 12345678901,
+                called_session_selector: 10987654321,
+            },
+            Some(init_accept_data.as_slice()),
+        )
+        .await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -350,7 +359,7 @@ mod tests {
         Ok(())
     }
 
-    async fn create_cosp_connection_pair(initiator_tsdu: TsduMaximumSize, connect_data: Option<&[u8]>, accept_data: Option<&[u8]>) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
+    async fn create_cosp_connection_pair(connect_data: Option<&[u8]>, accept_data: Option<&[u8]>) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
         // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let test_address = "127.0.0.1:10002".parse()?;
 
@@ -368,11 +377,44 @@ mod tests {
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
 
-        let (cosp_client, cosp_server) = join!(async { TcpCospConnection::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::connect(cotp_client, connect_data).await }, async {
-            let (acceptor, user_data) = TcpCospAcceptor::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::receive(cotp_server).await?;
-            assert_eq!(connect_data.map(|x| x.to_vec()), user_data);
-            acceptor.accept(accept_data).await
+        let (cosp_client, cosp_server) = join!(
+            async { TcpCospConnection::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::connect(cotp_client, CospConnectionInformation::default(), connect_data).await },
+            async {
+                let (acceptor, user_data) = TcpCospAcceptor::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::receive(cotp_server).await?;
+                assert_eq!(connect_data.map(|x| x.to_vec()), user_data);
+                acceptor.accept(accept_data).await
+            }
+        );
+
+        Ok((cosp_client?.0, cosp_server?))
+    }
+
+    async fn create_cosp_connection_pair_with_options(connect_data: Option<&[u8]>, options: CospConnectionInformation, accept_data: Option<&[u8]>) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
+
+        let connect_information = CotpConnectInformation::default();
+
+        let tpkt_listener = TcpTpktServer::listen(test_address).await?;
+        let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
+
+        let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone()).await }, async {
+            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::receive(tpkt_server?.0).await?;
+            assert_eq!(remote, connect_information);
+            acceptor.accept(CotpAcceptInformation::default()).await
         });
+
+        let cotp_client = cotp_initiator?;
+        let cotp_server = cotp_acceptor?;
+
+        let (cosp_client, cosp_server) = join!(
+            async { TcpCospConnection::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::connect(cotp_client, options, connect_data).await },
+            async {
+                let (acceptor, user_data) = TcpCospAcceptor::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::receive(cotp_server).await?;
+                assert_eq!(connect_data.map(|x| x.to_vec()), user_data);
+                acceptor.accept(accept_data).await
+            }
+        );
 
         Ok((cosp_client?.0, cosp_server?))
     }
