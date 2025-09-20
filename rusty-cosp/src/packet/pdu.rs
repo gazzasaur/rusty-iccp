@@ -67,8 +67,8 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, C
             SessionPduParameter::VersionNumberParameter(field) => serialise_parameter_value!(VERSION_NUMBER_PARAMETER_CODE, field.0)?,
             // SessionPduParameter::ReasonCodeParameter(reason_code) => reason_code.try_into()?, TODO
             SessionPduParameter::SessionUserRequirementsParameter(field) => serialise_parameter_value!(SESSION_USER_REQUIREMENTS_PARAMETER_CODE, field.0)?,
-            SessionPduParameter::CallingSessionSelectorParameter(value) => serialise_parameter_value!(CALLING_SESSION_SELECTOR, value)?,
-            SessionPduParameter::CalledSessionSelectorParameter(value) => serialise_parameter_value!(CALLED_SESSION_SELECTOR, value)?,
+            SessionPduParameter::CallingSessionSelectorParameter(value) => serialise_data_parameter(CALLING_SESSION_SELECTOR, value)?,
+            SessionPduParameter::CalledSessionSelectorParameter(value) => serialise_data_parameter(CALLED_SESSION_SELECTOR, value)?,
             SessionPduParameter::UserDataParameter(data) => serialise_data_parameter(USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::ExtendedUserDataParameter(data) => serialise_data_parameter(EXTENDED_USER_DATA_PARAMETER_CODE, data)?,
             SessionPduParameter::DataOverflowParameter(field) => serialise_parameter_value!(DATA_OVERFLOW_PARAMETER_CODE, field.0)?,

@@ -19,8 +19,8 @@ pub enum CospError {
 #[derive(PartialEq, Clone, Debug)]
 pub struct CospConnectionInformation {
     pub tsdu_maximum_size: Option<u16>,
-    pub calling_session_selector: Option<u128>,
-    pub called_session_selector: Option<u128>,
+    pub calling_session_selector: Option<Vec<u8>>,
+    pub called_session_selector: Option<Vec<u8>>,
 }
 
 impl Default for CospConnectionInformation {
@@ -38,7 +38,11 @@ pub enum CospRecvResult {
     Data(Vec<u8>),
 }
 
-pub trait CospAcceptor {
+pub trait CospConnector {
+    fn receive(self) -> impl std::future::Future<Output = Result<(impl CospResponder, CospConnectionInformation, Option<Vec<u8>>), CospError>> + Send;
+}
+
+pub trait CospResponder {
     fn accept(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
 }
 

@@ -49,7 +49,7 @@ pub enum CotpRecvResult {
     Data(Vec<u8>),
 }
 
-pub trait CotpAcceptor: Send {
+pub trait CotpResponder: Send {
     fn accept(self, options: CotpAcceptInformation) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
 }
 

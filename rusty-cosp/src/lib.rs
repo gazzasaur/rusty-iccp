@@ -1,9 +1,9 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, marker::PhantomData};
 
 use rusty_cotp::{CotpConnection, CotpReader, CotpRecvResult, CotpWriter};
 
 use crate::{
-    api::{CospAcceptor, CospConnection, CospConnectionInformation, CospError, CospReader, CospRecvResult, CospWriter},
+    api::{CospConnection, CospConnectionInformation, CospConnector, CospError, CospReader, CospRecvResult, CospResponder, CospWriter},
     message::{CospMessage, parameters::TsduMaximumSize},
     packet::{
         parameters::{EnclosureField, SessionPduParameter},
@@ -22,16 +22,26 @@ pub(crate) mod message;
 pub(crate) mod packet;
 pub(crate) mod service;
 
-pub struct TcpCospAcceptor<R: CotpReader, W: CotpWriter> {
-    cotp_reader: R,
-    cotp_writer: W,
-    maximum_size_to_initiator: TsduMaximumSize,
+pub struct TcpCospConnector<T: CotpConnection, R: CotpReader, W: CotpWriter> {
+    cotp_connection: T,
+    _phantom_reader: PhantomData<R>,
+    _phantom_writer: PhantomData<W>,
 }
 
-impl<R: CotpReader, W: CotpWriter> TcpCospAcceptor<R, W> {
+impl<T: CotpConnection, R: CotpReader, W: CotpWriter> TcpCospConnector<T, R, W> {
+    fn new(cotp_connection: T) -> TcpCospConnector<T, R, W> {
+        TcpCospConnector::<T, R, W> {
+            cotp_connection,
+            _phantom_reader: PhantomData::default(),
+            _phantom_writer: PhantomData::default(),
+        }
+    }
+}
+
+impl<T: CotpConnection, R: CotpReader, W: CotpWriter> CospConnector for TcpCospConnector<T, R, W> {
     // TODO Return Connection Information alongside user data.
-    pub async fn receive(cotp_connection: impl CotpConnection) -> Result<(TcpCospAcceptor<impl CotpReader, impl CotpWriter>, Option<Vec<u8>>), CospError> {
-        let (mut cotp_reader, mut cotp_writer) = cotp_connection.split().await?;
+    async fn receive(self) -> Result<(impl CospResponder, CospConnectionInformation, Option<Vec<u8>>), CospError> {
+        let (mut cotp_reader, mut cotp_writer) = self.cotp_connection.split().await?;
 
         let connect_request = match receive_message(&mut cotp_reader).await? {
             CospMessage::CN(connect_message) => connect_message,
@@ -59,9 +69,25 @@ impl<R: CotpReader, W: CotpWriter> TcpCospAcceptor<R, W> {
             true => Some(user_data.drain(..).collect()),
             false => None,
         };
-        Ok((TcpCospAcceptor::<R, W>::new(cotp_reader, cotp_writer, *maximum_size_to_initiator), user_data))
+        Ok((
+            TcpCospAcceptor::<R, W>::new(cotp_reader, cotp_writer, *maximum_size_to_initiator),
+            CospConnectionInformation {
+                tsdu_maximum_size: if let TsduMaximumSize::Size(x) = maximum_size_to_initiator { Some(*x) } else { None },
+                called_session_selector: None,
+                calling_session_selector: None,
+            },
+            user_data,
+        ))
     }
+}
 
+pub struct TcpCospAcceptor<R: CotpReader, W: CotpWriter> {
+    cotp_reader: R,
+    cotp_writer: W,
+    maximum_size_to_initiator: TsduMaximumSize,
+}
+
+impl<R: CotpReader, W: CotpWriter> TcpCospAcceptor<R, W> {
     fn new(cotp_reader: impl CotpReader, cotp_writer: impl CotpWriter, maximum_size_to_initiator: TsduMaximumSize) -> TcpCospAcceptor<impl CotpReader, impl CotpWriter> {
         TcpCospAcceptor {
             cotp_reader,
@@ -71,7 +97,7 @@ impl<R: CotpReader, W: CotpWriter> TcpCospAcceptor<R, W> {
     }
 }
 
-impl<R: CotpReader, W: CotpWriter> CospAcceptor for TcpCospAcceptor<R, W> {
+impl<R: CotpReader, W: CotpWriter> CospResponder for TcpCospAcceptor<R, W> {
     async fn accept(self, accept_data: Option<&[u8]>) -> Result<impl CospConnection, CospError> {
         let cotp_reader = self.cotp_reader;
         let mut cotp_writer = self.cotp_writer;
@@ -212,7 +238,7 @@ impl<W: CotpWriter> CospWriter for TcpCospWriter<W> {
 mod tests {
     use std::ops::Range;
 
-    use rusty_cotp::{CotpAcceptInformation, CotpAcceptor, CotpConnectInformation, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
+    use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -335,8 +361,8 @@ mod tests {
             Some(initial_connect_data.as_slice()),
             CospConnectionInformation {
                 tsdu_maximum_size: Some(512),
-                calling_session_selector: 12345678901,
-                called_session_selector: 10987654321,
+                calling_session_selector: Some(vec![0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc]),
+                called_session_selector: Some(vec![0xcb, 0xa9, 0x87, 0x65, 0x43, 0x21]),
             },
             Some(init_accept_data.as_slice()),
         )
@@ -369,7 +395,7 @@ mod tests {
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
 
         let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone()).await }, async {
-            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::receive(tpkt_server?.0).await?;
+            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::respond(tpkt_server?.0).await?;
             assert_eq!(remote, connect_information);
             acceptor.accept(CotpAcceptInformation::default()).await
         });
@@ -380,7 +406,7 @@ mod tests {
         let (cosp_client, cosp_server) = join!(
             async { TcpCospConnection::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::connect(cotp_client, CospConnectionInformation::default(), connect_data).await },
             async {
-                let (acceptor, user_data) = TcpCospAcceptor::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::receive(cotp_server).await?;
+                let (acceptor, user_data) = TcpCospConnector::<TcpCotpConnection<TcpTpktReader>, TcpTpktWriter>, TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_server).await?;
                 assert_eq!(connect_data.map(|x| x.to_vec()), user_data);
                 acceptor.accept(accept_data).await
             }
@@ -399,7 +425,7 @@ mod tests {
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
 
         let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone()).await }, async {
-            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::receive(tpkt_server?.0).await?;
+            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::respond(tpkt_server?.0).await?;
             assert_eq!(remote, connect_information);
             acceptor.accept(CotpAcceptInformation::default()).await
         });

@@ -21,8 +21,8 @@ pub(crate) enum SessionPduParameter {
     VersionNumberParameter(VersionNumberField),
     // ReasonCodeParameter(ReasonCode), TODO
     SessionUserRequirementsParameter(SessionUserRequirementsField),
-    CallingSessionSelectorParameter(u128),
-    CalledSessionSelectorParameter(u128),
+    CallingSessionSelectorParameter(Vec<u8>),
+    CalledSessionSelectorParameter(Vec<u8>),
     UserDataParameter(Vec<u8>),
     ExtendedUserDataParameter(Vec<u8>),
     DataOverflowParameter(DataOverflowField),

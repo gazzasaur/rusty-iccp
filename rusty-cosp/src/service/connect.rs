@@ -1,4 +1,3 @@
-use bitfield::BitRangeMut;
 use rusty_cotp::CotpWriter;
 
 use crate::{
@@ -30,9 +29,10 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: 
         SessionPduParameter::ConnectAcceptItemParameter(connect_accept_parameters),
         SessionPduParameter::SessionUserRequirementsParameter(SessionUserRequirementsField(2)), // Full Duplex only
     ];
-    if let Some(calling_session) = options.calling_session_selector {
-        parameters.push(SessionPduParameter::CallingSessionSelectorParameter(calling_session));
-    }
+    match options.calling_session_selector {
+        Some(calling_session) => parameters.push(SessionPduParameter::CallingSessionSelectorParameter(calling_session)),
+        None => todo!(),
+    };
     if let Some(called_session) = options.called_session_selector {
         parameters.push(SessionPduParameter::CalledSessionSelectorParameter(called_session));
     }

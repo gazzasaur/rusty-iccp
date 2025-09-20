@@ -5,7 +5,7 @@ use rusty_tpkt::{TpktConnection, TpktReader, TpktRecvResult, TpktWriter};
 
 use crate::{
     CotpAcceptInformation,
-    api::{CotpAcceptor, CotpConnectInformation, CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpWriter},
+    api::{CotpResponder, CotpConnectInformation, CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpWriter},
     packet::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
@@ -16,6 +16,45 @@ use crate::{
     parser::packet::TransportProtocolDataUnitParser,
     serialiser::packet::serialise,
 };
+
+pub struct TcpCotpConnection<R: TpktReader, W: TpktWriter> {
+    reader: R,
+    writer: W,
+
+    max_payload_size: usize,
+    parser: TransportProtocolDataUnitParser,
+}
+
+impl<R: TpktReader, W: TpktWriter> TcpCotpConnection<R, W> {
+    pub async fn initiate(connection: impl TpktConnection, options: CotpConnectInformation) -> Result<TcpCotpConnection<impl TpktReader, impl TpktWriter>, CotpError> {
+        let source_reference: u16 = options.initiator_reference;
+        let parser = TransportProtocolDataUnitParser::new();
+        let (mut reader, mut writer) = connection.split().await?;
+
+        send_connection_request(&mut writer, source_reference, options).await?;
+        let connection_confirm = receive_connection_confirm(&mut reader, &parser).await?;
+        let (_, max_payload_size) = calculate_remote_size_payload(connection_confirm.parameters()).await?;
+
+        Ok(TcpCotpConnection::new(reader, writer, max_payload_size).await)
+    }
+
+    async fn new(reader: R, writer: W, max_payload_size: usize) -> TcpCotpConnection<R, W> {
+        TcpCotpConnection {
+            reader,
+            writer,
+            max_payload_size,
+            parser: TransportProtocolDataUnitParser::new(),
+        }
+    }
+}
+
+impl<R: TpktReader, W: TpktWriter> CotpConnection for TcpCotpConnection<R, W> {
+    async fn split(self) -> Result<(impl CotpReader, impl CotpWriter), CotpError> {
+        let reader = self.reader;
+        let writer = self.writer;
+        Ok((TcpCotpReader::new(reader, self.parser), TcpCotpWriter::new(writer, self.max_payload_size)))
+    }
+}
 
 pub struct TcpCotpAcceptor<R: TpktReader, W: TpktWriter> {
     reader: R,
@@ -28,7 +67,7 @@ pub struct TcpCotpAcceptor<R: TpktReader, W: TpktWriter> {
 }
 
 impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
-    pub async fn receive(tpkt_connection: impl TpktConnection) -> Result<(TcpCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpConnectInformation), CotpError> {
+    pub async fn respond(tpkt_connection: impl TpktConnection) -> Result<(TcpCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpConnectInformation), CotpError> {
         let parser = TransportProtocolDataUnitParser::new();
         let (mut reader, writer) = tpkt_connection.split().await?;
 
@@ -65,49 +104,10 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
     }
 }
 
-impl<R: TpktReader, W: TpktWriter> CotpAcceptor for TcpCotpAcceptor<R, W> {
+impl<R: TpktReader, W: TpktWriter> CotpResponder for TcpCotpAcceptor<R, W> {
     async fn accept(mut self, options: CotpAcceptInformation) -> Result<impl CotpConnection, CotpError> {
         send_connection_confirm(&mut self.writer, options.responder_reference, self.initiator_reference, self.max_payload_indicator, self.calling_tsap_id, self.called_tsap_id).await?;
         Ok(TcpCotpConnection::new(self.reader, self.writer, self.max_payload_size).await)
-    }
-}
-
-pub struct TcpCotpConnection<R: TpktReader, W: TpktWriter> {
-    reader: R,
-    writer: W,
-
-    max_payload_size: usize,
-    parser: TransportProtocolDataUnitParser,
-}
-
-impl<R: TpktReader, W: TpktWriter> CotpConnection for TcpCotpConnection<R, W> {
-    async fn split(self) -> Result<(impl CotpReader, impl CotpWriter), CotpError> {
-        let reader = self.reader;
-        let writer = self.writer;
-        Ok((TcpCotpReader::new(reader, self.parser), TcpCotpWriter::new(writer, self.max_payload_size)))
-    }
-}
-
-impl<R: TpktReader, W: TpktWriter> TcpCotpConnection<R, W> {
-    pub async fn initiate(connection: impl TpktConnection, options: CotpConnectInformation) -> Result<TcpCotpConnection<impl TpktReader, impl TpktWriter>, CotpError> {
-        let source_reference: u16 = options.initiator_reference;
-        let parser = TransportProtocolDataUnitParser::new();
-        let (mut reader, mut writer) = connection.split().await?;
-
-        send_connection_request(&mut writer, source_reference, options).await?;
-        let connection_confirm = receive_connection_confirm(&mut reader, &parser).await?;
-        let (_, max_payload_size) = calculate_remote_size_payload(connection_confirm.parameters()).await?;
-
-        Ok(TcpCotpConnection::new(reader, writer, max_payload_size).await)
-    }
-
-    async fn new(reader: R, writer: W, max_payload_size: usize) -> TcpCotpConnection<R, W> {
-        TcpCotpConnection {
-            reader,
-            writer,
-            max_payload_size,
-            parser: TransportProtocolDataUnitParser::new(),
-        }
     }
 }
 
