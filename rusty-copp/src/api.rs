@@ -1,0 +1,58 @@
+use rusty_cosp::api::CospError;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum CoppError {
+    #[error("COPP Protocol Error - {}", .0)]
+    ProtocolError(String),
+
+    #[error("COPP over COSP Protocol Stack Error - {}", .0)]
+    ProtocolStackError(#[from] CospError),
+
+    #[error("COPP IO Error: {:?}", .0)]
+    IoError(#[from] std::io::Error),
+
+    #[error("COPP Error: {}", .0)]
+    InternalError(String),
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct CoppConnectionInformation {
+    pub calling_presentation_selector: Option<Vec<u8>>,
+    pub called_presentation_selector: Option<Vec<u8>>,
+}
+
+impl Default for CoppConnectionInformation {
+    fn default() -> Self {
+        Self {
+            calling_presentation_selector: None,
+            called_presentation_selector: None,
+        }
+    }
+}
+
+pub enum CoppRecvResult {
+    Closed,
+    Data(Vec<u8>),
+}
+
+pub trait CoppConnector {
+    fn receive(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError>> + Send;
+}
+
+pub trait CoppResponder: Send {
+    fn accept(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
+}
+
+pub trait CoppConnection: Send {
+    fn split(self) -> impl std::future::Future<Output = Result<(impl CoppReader, impl CoppWriter), CoppError>> + Send;
+}
+
+pub trait CoppReader: Send {
+    fn recv(&mut self) -> impl std::future::Future<Output = Result<CoppRecvResult, CoppError>> + Send;
+}
+
+pub trait CoppWriter: Send {
+    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+}

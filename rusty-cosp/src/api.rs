@@ -38,23 +38,24 @@ pub enum CospRecvResult {
     Data(Vec<u8>),
 }
 
-pub trait CospConnector {
-    fn receive(self) -> impl std::future::Future<Output = Result<(impl CospResponder, CospConnectionInformation, Option<Vec<u8>>), CospError>> + Send;
+pub trait CospConnector: Send {
+    fn initiator(self, options: CospConnectionInformation, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CospConnection, Option<Vec<u8>>), CospError>> + Send;
+    fn responder(self) -> impl std::future::Future<Output = Result<(impl CospResponder, CospConnectionInformation, Option<Vec<u8>>), CospError>> + Send;
 }
 
-pub trait CospResponder {
+pub trait CospResponder: Send {
     fn accept(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
 }
 
-pub trait CospConnection {
+pub trait CospConnection: Send {
     fn split(self) -> impl std::future::Future<Output = Result<(impl CospReader, impl CospWriter), CospError>> + Send;
 }
 
-pub trait CospReader {
+pub trait CospReader: Send {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<CospRecvResult, CospError>> + Send;
 }
 
-pub trait CospWriter {
+pub trait CospWriter: Send {
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }

@@ -6,6 +6,8 @@ use crate::{
 
 pub(crate) struct ConnectMessage {
     user_data: Option<Vec<u8>>,
+    called_session_selector: Option<Vec<u8>>,
+    calling_session_selector: Option<Vec<u8>>,
     data_overflow: Option<DataOverflowField>,
     maximum_size_to_initiator: TsduMaximumSize,
 }
@@ -22,11 +24,21 @@ impl ConnectMessage {
     pub(crate) fn maximum_size_to_initiator(&self) -> &TsduMaximumSize {
         &self.maximum_size_to_initiator
     }
+    
+    pub(crate) fn called_session_selector(&self) -> Option<&Vec<u8>> {
+        self.called_session_selector.as_ref()
+    }
+    
+    pub(crate) fn calling_session_selector(&self) -> Option<&Vec<u8>> {
+        self.calling_session_selector.as_ref()
+    }
 
     pub(crate) fn from_parameters(parameters: &[SessionPduParameter]) -> Result<Self, CospError> {
         let mut user_data = None;
         let mut data_overflow = None;
         let mut extended_user_data = None;
+        let mut called_session_selector = None;
+        let mut calling_session_selector = None;
         let mut version_number = None;
         let mut maximum_size_to_initiator = TsduMaximumSize::Unlimited;
         let mut session_user_requirements = SessionUserRequirementsField::default();
@@ -52,6 +64,8 @@ impl ConnectMessage {
                 SessionPduParameter::UserDataParameter(data) => user_data = Some(data),
                 SessionPduParameter::DataOverflowParameter(field) if field.more_data() => data_overflow = Some(*field), // Ignore it if there is no more data.
                 SessionPduParameter::ExtendedUserDataParameter(data) => extended_user_data = Some(data),
+                SessionPduParameter::CallingSessionSelectorParameter(data) => calling_session_selector = Some(data.clone()),
+                SessionPduParameter::CalledSessionSelectorParameter(data) => called_session_selector = Some(data.clone()),
                 _ => (), // Ignore everything else.
             };
         }
@@ -75,6 +89,8 @@ impl ConnectMessage {
         Ok(ConnectMessage {
             user_data,
             data_overflow,
+            called_session_selector,
+            calling_session_selector,
             maximum_size_to_initiator,
         })
     }

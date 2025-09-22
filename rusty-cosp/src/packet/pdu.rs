@@ -126,11 +126,14 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
             TSDU_MAXIMUM_SIZE_PARAMETER_CODE => SessionPduParameter::TsduMaximumSizeParameter(parse_tsdu_maximum_size(payload)?),
             SESSION_USER_REQUIREMENTS_PARAMETER_CODE => SessionPduParameter::SessionUserRequirementsParameter(parse_session_user_requirements(payload)?),
             VERSION_NUMBER_PARAMETER_CODE => SessionPduParameter::VersionNumberParameter(parse_version_number(payload)?),
+            CALLING_SESSION_SELECTOR => SessionPduParameter::CallingSessionSelectorParameter(payload.to_vec()),
+            CALLED_SESSION_SELECTOR => SessionPduParameter::CalledSessionSelectorParameter(payload.to_vec()),
 
             USER_DATA_PARAMETER_CODE => SessionPduParameter::UserDataParameter(payload.to_vec()),
             EXTENDED_USER_DATA_PARAMETER_CODE => SessionPduParameter::ExtendedUserDataParameter(payload.to_vec()),
             DATA_OVERFLOW_PARAMETER_CODE => SessionPduParameter::DataOverflowParameter(parse_data_overflow(payload)?),
             ENCLOSURE_PARAMETER_CODE => SessionPduParameter::EnclosureParameter(parse_enclosure_item(payload)?),
+
 
             // TRANSPORT_DISCONNECT_PARAMETER_CODE => SessionPduParameter::TransportDisconnectItem(parse_transport_disconnect(data)?),
             // REASON_CODE_PARAMETER_CODE => parse_reason_code(data)?,
