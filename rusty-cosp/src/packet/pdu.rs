@@ -7,9 +7,11 @@ use crate::{
     api::CospError,
     packet::{
         constants::{
-            ACCEPT_SI_CODE, CALLED_SESSION_SELECTOR, CALLING_SESSION_SELECTOR, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE
+            ACCEPT_SI_CODE, CALLED_SESSION_SELECTOR, CALLING_SESSION_SELECTOR, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE,
+            ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE,
+            USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE,
         },
-        parameters::{encode_length, DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
+        parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField, encode_length},
     },
     serialise_parameter_value,
 };
@@ -133,7 +135,6 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
             EXTENDED_USER_DATA_PARAMETER_CODE => SessionPduParameter::ExtendedUserDataParameter(payload.to_vec()),
             DATA_OVERFLOW_PARAMETER_CODE => SessionPduParameter::DataOverflowParameter(parse_data_overflow(payload)?),
             ENCLOSURE_PARAMETER_CODE => SessionPduParameter::EnclosureParameter(parse_enclosure_item(payload)?),
-
 
             // TRANSPORT_DISCONNECT_PARAMETER_CODE => SessionPduParameter::TransportDisconnectItem(parse_transport_disconnect(data)?),
             // REASON_CODE_PARAMETER_CODE => parse_reason_code(data)?,

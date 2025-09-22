@@ -31,7 +31,7 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: 
     ];
     match options.calling_session_selector {
         Some(calling_session) => parameters.push(SessionPduParameter::CallingSessionSelectorParameter(calling_session)),
-        None => todo!(),
+        None => (),
     };
     if let Some(called_session) = options.called_session_selector {
         parameters.push(SessionPduParameter::CalledSessionSelectorParameter(called_session));

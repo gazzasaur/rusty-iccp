@@ -1,7 +1,7 @@
-pub(crate) mod api;
-pub(crate) mod parser;
-pub(crate) mod serialiser;
-pub(crate) mod service;
+mod api;
+mod parser;
+mod serialiser;
+mod service;
 
 pub use crate::api::*;
 pub use crate::service::*;

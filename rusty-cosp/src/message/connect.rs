@@ -24,11 +24,11 @@ impl ConnectMessage {
     pub(crate) fn maximum_size_to_initiator(&self) -> &TsduMaximumSize {
         &self.maximum_size_to_initiator
     }
-    
+
     pub(crate) fn called_session_selector(&self) -> Option<&Vec<u8>> {
         self.called_session_selector.as_ref()
     }
-    
+
     pub(crate) fn calling_session_selector(&self) -> Option<&Vec<u8>> {
         self.calling_session_selector.as_ref()
     }

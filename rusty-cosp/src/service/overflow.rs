@@ -9,7 +9,7 @@ use crate::{
         parameters::{EnclosureField, SessionPduParameter, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
     },
-    service::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
+    service::message::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
 };
 
 pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize) -> Result<(), CospError> {

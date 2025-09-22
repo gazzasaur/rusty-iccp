@@ -1,27 +1,30 @@
-use rusty_cosp::api::{CospConnection, CospReader, CospWriter};
-use rusty_cotp::CotpConnection;
+use rusty_cosp::{CospConnection, CospReader, CospWriter};
 
 use crate::{CoppConnection, CoppConnectionInformation, CoppConnector, CoppError, CoppReader, CoppRecvResult, CoppResponder, CoppWriter};
 
-pub(crate) struct RustyCoppConnector<R: CospReader, W: CospWriter> {
+pub struct RustyCoppConnector<R: CospReader, W: CospWriter> {
     cosp_reader: R,
     cosp_writer: W,
 }
 
 impl<R: CospReader, W: CospWriter> RustyCoppConnector<R, W> {
-    pub(crate) async fn new(cosp_connection: impl CospConnection) -> Result<RustyCoppConnector<impl CospReader, impl CospWriter>, CoppError> {
+    pub async fn new(cosp_connection: impl CospConnection) -> Result<RustyCoppConnector<impl CospReader, impl CospWriter>, CoppError> {
         let (cosp_reader, cosp_writer) = cosp_connection.split().await?;
         Ok(RustyCoppConnector { cosp_reader, cosp_writer })
     }
 }
 
 impl<R: CospReader, W: CospWriter> CoppConnector for RustyCoppConnector<R, W> {
-    async fn receive(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError> {
-        Ok((RustyCoppResponder::new(self.cosp_reader, self.cosp_writer), CoppConnectionInformation::default(), None))
+    async fn initiator(self, _options: CoppConnectionInformation, _user_data: Option<Vec<u8>>) -> Result<(impl CoppConnection, Option<Vec<u8>>), rusty_cosp::CospError> {
+        Ok((RustyCoppConnection::new(self.cosp_reader, self.cosp_writer), None))
+    }
+    
+    async fn responder(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), rusty_cosp::CospError> {
+        Ok((RustyCoppResponder::new(self.cosp_reader, self.cosp_writer), Default::default(), None))
     }
 }
 
-pub(crate) struct RustyCoppResponder<R: CospReader, W: CospWriter> {
+pub struct RustyCoppResponder<R: CospReader, W: CospWriter> {
     cosp_reader: R,
     cosp_writer: W,
 }
@@ -33,21 +36,17 @@ impl<R: CospReader, W: CospWriter> RustyCoppResponder<R, W> {
 }
 
 impl<R: CospReader, W: CospWriter> CoppResponder for RustyCoppResponder<R, W> {
-    async fn accept(self, accept_data: Option<&[u8]>) -> Result<impl CoppConnection, CoppError> {
+    async fn accept(self, _accept_data: Option<&[u8]>) -> Result<impl CoppConnection, CoppError> {
         Ok(RustyCoppConnection::new(self.cosp_reader, self.cosp_writer))
     }
 }
 
-pub(crate) struct RustyCoppConnection<R: CospReader, W: CospWriter> {
+pub struct RustyCoppConnection<R: CospReader, W: CospWriter> {
     cosp_reader: R,
     cosp_writer: W,
 }
 
 impl<R: CospReader, W: CospWriter> RustyCoppConnection<R, W> {
-    pub(crate) fn initiate(cotp_connection: impl CotpConnection) {
-
-    }
-
     fn new(cosp_reader: R, cosp_writer: W) -> RustyCoppConnection<impl CospReader, impl CospWriter> {
         RustyCoppConnection { cosp_reader, cosp_writer }
     }
@@ -59,7 +58,7 @@ impl<R: CospReader, W: CospWriter> CoppConnection for RustyCoppConnection<R, W> 
     }
 }
 
-pub(crate) struct RustyCoppReader<R: CospReader> {
+pub struct RustyCoppReader<R: CospReader> {
     cosp_reader: R,
 }
 
@@ -75,7 +74,7 @@ impl<R: CospReader> CoppReader for RustyCoppReader<R> {
     }
 }
 
-pub(crate) struct RustyCoppWriter<W: CospWriter> {
+pub struct RustyCoppWriter<W: CospWriter> {
     cosp_writer: W,
 }
 
@@ -86,7 +85,7 @@ impl<W: CospWriter> RustyCoppWriter<W> {
 }
 
 impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
-    async fn send(&mut self, data: &[u8]) -> Result<(), CoppError> {
+    async fn send(&mut self, _data: &[u8]) -> Result<(), CoppError> {
         todo!()
     }
 

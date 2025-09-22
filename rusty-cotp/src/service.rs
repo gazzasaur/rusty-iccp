@@ -5,7 +5,7 @@ use rusty_tpkt::{TpktConnection, TpktReader, TpktRecvResult, TpktWriter};
 
 use crate::{
     CotpAcceptInformation,
-    api::{CotpResponder, CotpConnectInformation, CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpWriter},
+    api::{CotpConnectInformation, CotpConnection, CotpError, CotpReader, CotpRecvResult, CotpResponder, CotpWriter},
     packet::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,

@@ -1,4 +1,4 @@
-use rusty_cosp::api::CospError;
+use rusty_cosp::CospError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -37,7 +37,8 @@ pub enum CoppRecvResult {
 }
 
 pub trait CoppConnector {
-    fn receive(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError>> + Send;
+    fn initiator(self, options: CoppConnectionInformation, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<Vec<u8>>), CospError>> + Send;
+    fn responder(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CospError>> + Send;
 }
 
 pub trait CoppResponder: Send {

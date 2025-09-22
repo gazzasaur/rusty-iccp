@@ -1,8 +1,8 @@
-pub(crate) mod api;
-pub(crate) mod packet;
-pub(crate) mod parser;
-pub(crate) mod serialiser;
-pub(crate) mod service;
+mod api;
+mod packet;
+mod parser;
+mod serialiser;
+mod service;
 
 pub use crate::api::*;
 pub use crate::service::*;
@@ -16,7 +16,7 @@ mod tests {
     use tokio::{join, time::timeout};
     use tracing_test::traced_test;
 
-    use crate::api::{CotpResponder, CotpConnectInformation, CotpConnection, CotpReader, CotpWriter};
+    use crate::api::{CotpConnectInformation, CotpConnection, CotpReader, CotpResponder, CotpWriter};
 
     use super::*;
 
