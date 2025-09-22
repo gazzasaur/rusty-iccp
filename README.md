@@ -43,8 +43,8 @@ This is a rough roadmap based on what I know so far. I am using the open version
 
 * [COMPLETE] ITOT / TPKT / RFC2126 - ISO Transport Service on top of TCP
 * [COMPLETE] COTP / RFC905 / ISO 8073 - Connection Orientated Transport Protocol (Class 0 only)
-* [IN PROGRESS] ISO Session Protocol (ISO SP) / X.225 / ISO 8327 -  Version 2 implementing the Kernel and Duplex functional units
-* [NOT STARTED] ISO Presentation Protocol (ISO PP) / X.226 / ISO 8823 - Kernel only
+* [TESTING] ISO Session Protocol (ISO SP) / X.225 / ISO 8327 -  Version 2 implementing the Kernel and Duplex functional units
+* [IN PROGRESS] ISO Presentation Protocol (ISO PP) / X.226 / ISO 8823 - Kernel only
 * [NOT STARTED] ACSE / X.227 / ISO 8650 - Association Control Service Element
 * [NOT STARTED] MMS / ISO 9506 - Manufacturing Message Specification
 * [NOT STARTED] ICCP / TASE.2 - Inter-Control Center Communication Protocol
