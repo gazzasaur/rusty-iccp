@@ -18,7 +18,7 @@ impl<R: CospReader, W: CospWriter> CoppConnector for RustyCoppConnector<R, W> {
     async fn initiator(self, _options: CoppConnectionInformation, _user_data: Option<Vec<u8>>) -> Result<(impl CoppConnection, Option<Vec<u8>>), rusty_cosp::CospError> {
         Ok((RustyCoppConnection::new(self.cosp_reader, self.cosp_writer), None))
     }
-    
+
     async fn responder(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), rusty_cosp::CospError> {
         Ok((RustyCoppResponder::new(self.cosp_reader, self.cosp_writer), Default::default(), None))
     }
