@@ -1,5 +1,7 @@
 pub(crate) mod api;
 pub(crate) mod service;
+pub(crate) mod message;
+pub(crate) mod serialise;
 
 pub use api::*;
 pub use service::*;
@@ -12,7 +14,7 @@ pub fn add(left: u64, right: u64) -> u64 {
 mod tests {
     use std::ops::Range;
 
-    use rusty_cosp::{CospConnectionInformation, CospConnector, CospResponder, TcpCospConnector, TcpCospReader, TcpCospWriter};
+    use rusty_cosp::{CospConnectionInformation, CospListener, CospResponder, TcpCospConnector, TcpCospReader, TcpCospWriter};
     use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
@@ -22,12 +24,13 @@ mod tests {
     #[tokio::test]
     async fn it_should_create_connection() -> Result<(), anyhow::Error> {
         let (_c, _s) = create_copp_connection_pair_with_options(None, Default::default(), None).await?;
+        
         Ok(())
     }
 
-    async fn create_copp_connection_pair_with_options(connect_data: Option<&[u8]>, options: CospConnectionInformation, accept_data: Option<&[u8]>) -> Result<(impl CoppConnection, impl CoppConnection), anyhow::Error> {
-        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        // let test_address = "127.0.0.1:10002".parse()?;
+    async fn create_copp_connection_pair_with_options(connect_data: Option<Vec<u8>>, options: CospConnectionInformation, accept_data: Option<&[u8]>) -> Result<(impl CoppConnection, impl CoppConnection), anyhow::Error> {
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
 
         let connect_information = CotpConnectInformation::default();
 
@@ -45,9 +48,9 @@ mod tests {
         let cosp_client_connector = TcpCospConnector::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client).await?;
         let cosp_server_connector = TcpCospConnector::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_server).await?;
 
-        let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiator(options.clone(), connect_data.map(|o| o.to_vec())).await }, async {
+        let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiator(options.clone(), connect_data.clone()).await }, async {
             let (acceptor, connection_information, user_data) = cosp_server_connector.responder().await?;
-            assert_eq!(connect_data.map(|x| x.to_vec()), user_data);
+            assert_eq!(connect_data, user_data);
             assert_eq!(connection_information.called_session_selector, options.called_session_selector);
             acceptor.accept(accept_data).await
         });

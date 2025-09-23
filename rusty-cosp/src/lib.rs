@@ -176,10 +176,10 @@ mod tests {
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
-        let cosp_client_connector = TcpCospConnector::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client).await?;
+        let cosp_client_connector = TcpCospInitiator::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client, options.clone()).await?;
         let cosp_server_connector = TcpCospConnector::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_server).await?;
 
-        let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiator(options.clone(), connect_data.map(|o| o.to_vec())).await }, async {
+        let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(connect_data.map(|o| o.to_vec())).await }, async {
             let (acceptor, connection_information, user_data) = cosp_server_connector.responder().await?;
             assert_eq!(connect_data.map(|x| x.to_vec()), user_data);
             assert_eq!(connection_information.called_session_selector, options.called_session_selector);

@@ -1,25 +1,36 @@
-use rusty_cosp::{CospConnection, CospReader, CospWriter};
+use std::marker::PhantomData;
 
-use crate::{CoppConnection, CoppConnectionInformation, CoppConnector, CoppError, CoppReader, CoppRecvResult, CoppResponder, CoppWriter};
+use rusty_cosp::{CospConnection, CospListener, CospReader, CospWriter};
+
+use crate::{message::ConnectPresentation, serialise::serialise_connect, CoppConnection, CoppConnectionInformation, CoppConnector, CoppError, CoppReader, CoppRecvResult, CoppResponder, CoppWriter};
 
 pub struct RustyCoppConnector<R: CospReader, W: CospWriter> {
-    cosp_reader: R,
-    cosp_writer: W,
+    cosp_reader: PhantomData<R>,
+    cosp_writer: PhantomData<W>,
 }
 
 impl<R: CospReader, W: CospWriter> RustyCoppConnector<R, W> {
-    pub async fn new(cosp_connection: impl CospConnection) -> Result<RustyCoppConnector<impl CospReader, impl CospWriter>, CoppError> {
+    pub async fn new(cosp_connector: impl CospListener) -> Result<RustyCoppConnector<impl CospReader, impl CospWriter>, CoppError> {
+        cosp_connector.res
         let (cosp_reader, cosp_writer) = cosp_connection.split().await?;
         Ok(RustyCoppConnector { cosp_reader, cosp_writer })
     }
 }
 
 impl<R: CospReader, W: CospWriter> CoppConnector for RustyCoppConnector<R, W> {
-    async fn initiator(self, _options: CoppConnectionInformation, _user_data: Option<Vec<u8>>) -> Result<(impl CoppConnection, Option<Vec<u8>>), rusty_cosp::CospError> {
-        Ok((RustyCoppConnection::new(self.cosp_reader, self.cosp_writer), None))
+    async fn initiator(self, _options: CoppConnectionInformation, _user_data: Option<Vec<u8>>) -> Result<(impl CoppConnection, Option<Vec<u8>>), CoppError> {
+        let cosp_reader = self.cosp_reader;
+        let mut cosp_writer = self.cosp_writer;
+
+        let message = ConnectPresentation {};
+        let data = serialise_connect(message)?;
+
+        cosp_writer.send(&data).await?;
+
+        Ok((RustyCoppConnection::new(cosp_reader, cosp_writer), None))
     }
 
-    async fn responder(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), rusty_cosp::CospError> {
+    async fn responder(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError> {
         Ok((RustyCoppResponder::new(self.cosp_reader, self.cosp_writer), Default::default(), None))
     }
 }

@@ -38,8 +38,11 @@ pub enum CospRecvResult {
     Data(Vec<u8>),
 }
 
-pub trait CospConnector: Send {
-    fn initiator(self, options: CospConnectionInformation, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CospConnection, Option<Vec<u8>>), CospError>> + Send;
+pub trait CospInitiator: Send {
+    fn initiate(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CospConnection, Option<Vec<u8>>), CospError>> + Send;
+}
+
+pub trait CospListener: Send {
     fn responder(self) -> impl std::future::Future<Output = Result<(impl CospResponder, CospConnectionInformation, Option<Vec<u8>>), CospError>> + Send;
 }
 
