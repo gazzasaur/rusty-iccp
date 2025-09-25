@@ -36,8 +36,11 @@ pub enum CoppRecvResult {
     Data(Vec<u8>),
 }
 
-pub trait CoppConnector: Send {
-    fn initiator(self, options: CoppConnectionInformation, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<Vec<u8>>), CoppError>> + Send;
+pub trait CoppInitiator: Send {
+    fn initiate(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<Vec<u8>>), CoppError>> + Send;
+}
+
+pub trait CoppListener: Send {
     fn responder(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError>> + Send;
 }
 

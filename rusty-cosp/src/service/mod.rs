@@ -3,15 +3,18 @@ use std::collections::VecDeque;
 use rusty_cotp::{CotpConnection, CotpReader, CotpRecvResult, CotpWriter};
 
 use crate::{
-    message::{parameters::TsduMaximumSize, CospMessage}, packet::{
+    CospConnection, CospConnectionInformation, CospError, CospInitiator, CospListener, CospReader, CospRecvResult, CospResponder, CospWriter,
+    message::{CospMessage, parameters::TsduMaximumSize},
+    packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    }, service::{
+    },
+    service::{
         accept::{receive_accept_with_all_user_data, send_accept},
-        connect::{send_connect_reqeust, SendConnectionRequestResult},
-        message::{receive_message, MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE},
+        connect::{SendConnectionRequestResult, send_connect_reqeust},
+        message::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
         overflow::{receive_connect_data_overflow, receive_overflow_accept, send_connect_data_overflow, send_overflow_accept},
-    }, CospConnection, CospConnectionInformation, CospError, CospInitiator, CospListener, CospReader, CospRecvResult, CospResponder, CospWriter
+    },
 };
 
 pub(crate) mod accept;
@@ -49,26 +52,23 @@ impl<R: CotpReader, W: CotpWriter> CospInitiator for TcpCospInitiator<R, W> {
             (SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
         };
 
-        Ok((TcpCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder()), accept_message.user_data().map(|data| data.clone())))
+        Ok((
+            TcpCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder()),
+            accept_message.user_data().map(|data| data.clone()),
+        ))
     }
 }
 
-pub struct TcpCospConnector<R: CotpReader, W: CotpWriter> {
+pub struct TcpCospListener<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
     cotp_writer: W,
+    user_data: Option<Vec<u8>>,
+    cosp_connection_information: CospConnectionInformation,
 }
 
-impl<R: CotpReader, W: CotpWriter> TcpCospConnector<R, W> {
-    pub async fn new(cotp_connection: impl CotpConnection) -> Result<TcpCospConnector<impl CotpReader, impl CotpWriter>, CospError> {
-        let (cotp_reader, cotp_writer) = cotp_connection.split().await?;
-        Ok(TcpCospConnector { cotp_reader, cotp_writer })
-    }
-}
-
-impl<R: CotpReader, W: CotpWriter> CospListener for TcpCospConnector<R, W> {
-    async fn responder(self) -> Result<(impl CospResponder, CospConnectionInformation, Option<Vec<u8>>), CospError> {
-        let mut cotp_reader = self.cotp_reader;
-        let mut cotp_writer = self.cotp_writer;
+impl<R: CotpReader, W: CotpWriter> TcpCospListener<R, W> {
+    pub async fn new(cotp_connection: impl CotpConnection) -> Result<(TcpCospListener<impl CotpReader, impl CotpWriter>, CospConnectionInformation), CospError> {
+        let (mut cotp_reader, mut cotp_writer) = cotp_connection.split().await?;
 
         let connect_request = match receive_message(&mut cotp_reader).await? {
             CospMessage::CN(connect_message) => connect_message,
@@ -96,15 +96,34 @@ impl<R: CotpReader, W: CotpWriter> CospListener for TcpCospConnector<R, W> {
             true => Some(user_data.drain(..).collect()),
             false => None,
         };
+        let cosp_connection_information = CospConnectionInformation {
+            tsdu_maximum_size: if let TsduMaximumSize::Size(x) = maximum_size_to_initiator { Some(*x) } else { None },
+            called_session_selector: connect_request.called_session_selector().map(|x| x.clone()),
+            calling_session_selector: connect_request.calling_session_selector().map(|x| x.clone()),
+        };
         Ok((
-            TcpCospResponder::<R, W>::new(cotp_reader, cotp_writer, *maximum_size_to_initiator),
-            CospConnectionInformation {
-                tsdu_maximum_size: if let TsduMaximumSize::Size(x) = maximum_size_to_initiator { Some(*x) } else { None },
-                called_session_selector: connect_request.called_session_selector().map(|x| x.clone()),
-                calling_session_selector: connect_request.calling_session_selector().map(|x| x.clone()),
+            TcpCospListener {
+                cotp_reader,
+                cotp_writer,
+                user_data,
+                cosp_connection_information: cosp_connection_information.clone(),
             },
-            user_data,
+            cosp_connection_information,
         ))
+    }
+}
+
+impl<R: CotpReader, W: CotpWriter> CospListener for TcpCospListener<R, W> {
+    async fn responder(self) -> Result<(impl CospResponder, CospConnectionInformation, Option<Vec<u8>>), CospError> {
+        let cotp_reader = self.cotp_reader;
+        let cotp_writer = self.cotp_writer;
+
+        let maximum_size_to_initiator = match self.cosp_connection_information.tsdu_maximum_size {
+            Some(x) => TsduMaximumSize::Size(x),
+            None => TsduMaximumSize::Unlimited,
+        };
+
+        Ok((TcpCospResponder::<R, W>::new(cotp_reader, cotp_writer, maximum_size_to_initiator), self.cosp_connection_information, self.user_data))
     }
 }
 

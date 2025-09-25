@@ -15,7 +15,7 @@ mod tests {
     use tokio::join;
     use tracing_test::traced_test;
 
-    use crate::service::TcpCospConnector;
+    use crate::service::TcpCospListener;
 
     use super::*;
 
@@ -159,6 +159,7 @@ mod tests {
         Ok(())
     }
 
+    // TODO verify connect info
     async fn create_cosp_connection_pair_with_options(connect_data: Option<&[u8]>, options: CospConnectionInformation, accept_data: Option<&[u8]>) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         // let test_address = "127.0.0.1:10002".parse()?;
@@ -177,9 +178,9 @@ mod tests {
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
         let cosp_client_connector = TcpCospInitiator::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client, options.clone()).await?;
-        let cosp_server_connector = TcpCospConnector::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_server).await?;
 
         let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(connect_data.map(|o| o.to_vec())).await }, async {
+            let (cosp_server_connector, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_server).await?;
             let (acceptor, connection_information, user_data) = cosp_server_connector.responder().await?;
             assert_eq!(connect_data.map(|x| x.to_vec()), user_data);
             assert_eq!(connection_information.called_session_selector, options.called_session_selector);
