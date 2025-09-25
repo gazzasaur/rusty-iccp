@@ -41,7 +41,7 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppListener for RustyCoppListener<T, R, W> {
     async fn responder(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError> {
-        Ok((RustyCoppResponder::new(self.cosp_responder), CoppConnectionInformation::default(), None))
+        Ok((RustyCoppResponder::<T, R, W>::new(self.cosp_responder), CoppConnectionInformation::default(), None))
     }
 
 
@@ -69,7 +69,8 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppResponder<T, R, W>
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppResponder for RustyCoppResponder<T, R, W> {
     async fn accept(self, _accept_data: Option<&[u8]>) -> Result<impl CoppConnection, CoppError> {
-        Ok(RustyCoppConnection::new(self.cosp_reader, self.cosp_writer))
+        let (cosp_reader, cosp_writer) = self.cosp_responder.accept(None).await?.split().await?;
+        Ok(RustyCoppConnection::new(cosp_reader, cosp_writer))
     }
 }
 
