@@ -8,18 +8,21 @@ pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
     cosp_initiator: T,
     cosp_reader: PhantomData<R>,
     cosp_writer: PhantomData<W>,
+    options: CoppConnectionInformation,
 }
 
 impl<T: CospInitiator, R: CospReader, W: CospWriter> RustyCoppInitiator<T, R, W> {
-    pub fn new(cosp_initiator: impl CospInitiator) -> RustyCoppInitiator<impl CospInitiator, impl CospReader, impl CospWriter> {
-        RustyCoppInitiator { cosp_initiator, cosp_reader: PhantomData::<R>, cosp_writer: PhantomData::<W> }
+    pub fn new(cosp_initiator: impl CospInitiator, options: CoppConnectionInformation) -> RustyCoppInitiator<impl CospInitiator, impl CospReader, impl CospWriter> {
+        RustyCoppInitiator { cosp_initiator, cosp_reader: PhantomData::<R>, cosp_writer: PhantomData::<W>, options }
     }
 }
 
 impl<T: CospInitiator, R: CospReader, W: CospWriter> CoppInitiator for RustyCoppInitiator<T, R, W> {
     async fn initiate(self, user_data: Option<Vec<u8>>) -> Result<(impl CoppConnection, Option<Vec<u8>>), CoppError> {
         let cosp_initiator = self.cosp_initiator;
-        let (cosp_connection, _) = cosp_initiator.initiate(user_data).await?;
+
+        let data = der_parser::ber::BerObject::from_set(vec![]).to_vec().map_err(|e| CoppError::InternalError(e.to_string()))?;
+        let (cosp_connection, _) = cosp_initiator.initiate(Some(data)).await?;
         let (cosp_reader, cosp_writer) = cosp_connection.split().await?;
         Ok((RustyCoppConnection::new(cosp_reader, cosp_writer), None))
     }
@@ -43,16 +46,6 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> CoppListener for RustyCoppL
     async fn responder(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError> {
         Ok((RustyCoppResponder::<T, R, W>::new(self.cosp_responder), CoppConnectionInformation::default(), None))
     }
-
-
-    // async fn responder(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError> {
-    //     // let message = ConnectPresentation {};
-    //     // let data = serialise_connect(message)?;
-
-    //     // cosp_writer.send(&data).await?;
-
-    //     Ok((RustyCoppResponder::new(self.cosp_responder), CoppConnectionInformation::default(), None))
-    // }
 }
 
 pub struct RustyCoppResponder<T: CospResponder, R: CospReader, W: CospWriter> {

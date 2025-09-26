@@ -67,7 +67,7 @@ pub struct TcpCotpAcceptor<R: TpktReader, W: TpktWriter> {
 }
 
 impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
-    pub async fn respond(tpkt_connection: impl TpktConnection) -> Result<(TcpCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpConnectInformation), CotpError> {
+    pub async fn new(tpkt_connection: impl TpktConnection) -> Result<(TcpCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpConnectInformation), CotpError> {
         let parser = TransportProtocolDataUnitParser::new();
         let (mut reader, writer) = tpkt_connection.split().await?;
 

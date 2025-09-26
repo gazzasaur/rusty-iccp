@@ -164,7 +164,7 @@ mod tests {
         let accept_information = CotpAcceptInformation { ..Default::default() };
 
         let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(),).await }, async {
-            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::respond(tpkt_server?.0).await?;
+            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?.0).await?;
             assert_eq!(remote, connect_information);
             acceptor.accept(accept_information).await
         });
