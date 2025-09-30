@@ -1,6 +1,7 @@
 pub(crate) mod api;
 pub(crate) mod service;
 pub(crate) mod messages;
+pub(crate) mod error;
 
 pub use api::*;
 pub use service::*;

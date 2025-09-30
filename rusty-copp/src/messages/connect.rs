@@ -1,9 +1,11 @@
+use std::any::Any;
+
 use der_parser::{
     ber::BitStringObject,
     der::{Class, Header, Tag},
 };
 
-use crate::{CoppError, PresentationContext};
+use crate::{error::protocol_error, CoppError, PresentationContext};
 
 pub(crate) struct ConnectMessage {
     calling_presentation_selector: Option<Vec<u8>>,
@@ -18,11 +20,17 @@ impl ConnectMessage {
     }
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<ConnectMessage, CoppError> {
-        let (_, ber) = der_parser::parse_ber(data.as_slice()).map_err(|e| CoppError::ProtocolError(format!("Failed to parse presentation payload: {}", e.to_string())))?;
-        ber.header.assert_class(Class::Universal)?;
-        match ber.content {
-            der_parser::ber::BerObjectContent::Set(ber_objects) => todo!(),
+        let (_, ber) = der_parser::parse_ber(data.as_slice()).map_err(|e| protocol_error("", e))?;
+
+        match ber.header.raw_tag() {
+            Some(x) if x.len() == 1 && x[0] == 49 => (),
+            Some(x) => return Err(CoppError::ProtocolError(format!("Cannot parse payload. Expecting Connect PPDU with a tag of 49 but got: {:?}", x))),
+            _ => return Err(CoppError::ProtocolError("Cannot parse payload. Not tag detected on root element of Connect PPDU.".into())),
         }
+        let outer_payload = match ber.content {
+            der_parser::ber::BerObjectContent::Set(ber_objects) => ber_objects,
+            _ => return Err(CoppError::ProtocolError(format!("Cannot parse payload. Expected Set but found {:?}", ber.content))),
+        };
     }
 
     // TODO Default Context
@@ -105,5 +113,26 @@ impl ConnectMessage {
         ])
         .to_vec()
         .map_err(|e| CoppError::InternalError(e.to_string()))?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{ops::Range, time::Duration};
+
+    use der_parser::Oid;
+    use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
+    use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
+    use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
+    use tokio::join;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn it_should_parse_connect() -> Result<(), anyhow::Error> {
+        let subject = ConnectMessage::new(None, None, None, None);
+        let data = subject.serialise()?;
+        let _result = ConnectMessage::parse(data)?;
+        Ok(())
     }
 }
