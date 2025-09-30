@@ -1,0 +1,109 @@
+use der_parser::{
+    ber::BitStringObject,
+    der::{Class, Header, Tag},
+};
+
+use crate::{CoppError, PresentationContext};
+
+pub(crate) struct ConnectMessage {
+    calling_presentation_selector: Option<Vec<u8>>,
+    called_presentation_selector: Option<Vec<u8>>,
+    context_definition_list: Option<Vec<PresentationContext>>,
+    user_data: Option<Vec<u8>>,
+}
+
+impl ConnectMessage {
+    pub(crate) fn new(calling_presentation_selector: Option<Vec<u8>>, called_presentation_selector: Option<Vec<u8>>, context_definition_list: Option<Vec<PresentationContext>>, user_data: Option<Vec<u8>>) -> Self {
+        Self { calling_presentation_selector, called_presentation_selector, context_definition_list, user_data }
+    }
+
+    pub(crate) fn parse(data: Vec<u8>) -> Result<ConnectMessage, CoppError> {
+        let (_, ber) = der_parser::parse_ber(data.as_slice()).map_err(|e| CoppError::ProtocolError(format!("Failed to parse presentation payload: {}", e.to_string())))?;
+        ber.header.assert_class(Class::Universal)?;
+        match ber.content {
+            der_parser::ber::BerObjectContent::Set(ber_objects) => todo!(),
+        }
+    }
+
+    // TODO Default Context
+    pub(crate) fn serialise(&self) -> Result<Vec<u8>, CoppError> {
+        Ok(der_parser::ber::BerObject::from_set(vec![
+            // Version defaults to 1, omitting.
+            // Normal Mode
+            der_parser::ber::BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
+                der_parser::ber::BerObjectContent::Set(vec![der_parser::ber::BerObject::from_header_and_content(
+                    Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
+                    der_parser::ber::BerObjectContent::Integer(&[1]),
+                )]),
+            ),
+            // Normal Mode Parameters
+            der_parser::ber::BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, true, Tag::from(2), der_parser::ber::Length::Definite(0)),
+                der_parser::ber::BerObjectContent::Sequence(
+                    vec![
+                        // Calling Presentation Selector
+                        match self.calling_presentation_selector.as_ref() {
+                            Some(x) => Some(der_parser::ber::BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, false, Tag::from(1), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::OctetString(x.as_slice()),
+                            )),
+                            None => None,
+                        },
+                        // Called Presentation Selector
+                        match self.called_presentation_selector.as_ref() {
+                            Some(x) => Some(der_parser::ber::BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, false, Tag::from(2), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::OctetString(x.as_slice()),
+                            )),
+                            None => None,
+                        },
+                        // Context Definition List
+                        match &self.context_definition_list {
+                            Some(contexts) => Some(der_parser::ber::BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(4), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(
+                                    contexts
+                                        .iter()
+                                        .map(|context| {
+                                            der_parser::ber::BerObject::from_seq(vec![
+                                                der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::Integer(context.indentifier.as_slice())),
+                                                der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(context.abstract_syntax_name.clone())),
+                                                der_parser::ber::BerObject::from_seq(
+                                                    context
+                                                        .transfer_syntax_name_list
+                                                        .iter()
+                                                        .map(|transfer| der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(transfer.clone())))
+                                                        .collect(),
+                                                ),
+                                            ])
+                                        })
+                                        .collect(),
+                                ),
+                            )),
+                            None => None,
+                        },
+                        // Presentation Requirements
+                        Some(der_parser::ber::BerObject::from_header_and_content(
+                            Header::new(Class::ContextSpecific, false, Tag::from(8), der_parser::ber::Length::Definite(0)),
+                            der_parser::ber::BerObjectContent::BitString(6, BitStringObject { data: &[0] }),
+                        )),
+                        // User Data
+                        match self.user_data.as_ref() {
+                            Some(x) => Some(der_parser::ber::BerObject::from_header_and_content(
+                                Header::new(Class::Application, false, Tag::from(1), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::OctetString(x.as_slice()),
+                            )),
+                            None => None,
+                        },
+                    ]
+                    .into_iter()
+                    .filter_map(|i| i)
+                    .collect(),
+                ),
+            ),
+        ])
+        .to_vec()
+        .map_err(|e| CoppError::InternalError(e.to_string()))?)
+    }
+}

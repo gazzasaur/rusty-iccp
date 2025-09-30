@@ -1,3 +1,4 @@
+use der_parser::Oid;
 use rusty_cosp::CospError;
 use thiserror::Error;
 
@@ -14,6 +15,12 @@ pub enum CoppError {
 
     #[error("COPP Error: {}", .0)]
     InternalError(String),
+}
+
+pub struct PresentationContext {
+    pub indentifier: Vec<u8>, // ASN1 Integer
+    pub abstract_syntax_name: Oid<'static>,
+    pub transfer_syntax_name_list: Vec<Oid<'static>>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
