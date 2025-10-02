@@ -1,11 +1,12 @@
 use std::any::Any;
 
 use der_parser::{
-    ber::BitStringObject,
-    der::{Class, Header, Tag},
+    ber::{parse_ber_content, parse_ber_implicit, BitStringObject, Length},
+    der::{parse_der_container, Class, Header, Tag}, parse_ber,
 };
+use tracing::warn;
 
-use crate::{error::protocol_error, CoppError, PresentationContext};
+use crate::{CoppError, PresentationContext, error::protocol_error};
 
 pub(crate) struct ConnectMessage {
     calling_presentation_selector: Option<Vec<u8>>,
@@ -16,7 +17,12 @@ pub(crate) struct ConnectMessage {
 
 impl ConnectMessage {
     pub(crate) fn new(calling_presentation_selector: Option<Vec<u8>>, called_presentation_selector: Option<Vec<u8>>, context_definition_list: Option<Vec<PresentationContext>>, user_data: Option<Vec<u8>>) -> Self {
-        Self { calling_presentation_selector, called_presentation_selector, context_definition_list, user_data }
+        Self {
+            calling_presentation_selector,
+            called_presentation_selector,
+            context_definition_list,
+            user_data,
+        }
     }
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<ConnectMessage, CoppError> {
@@ -31,6 +37,37 @@ impl ConnectMessage {
             der_parser::ber::BerObjectContent::Set(ber_objects) => ber_objects,
             _ => return Err(CoppError::ProtocolError(format!("Cannot parse payload. Expected Set but found {:?}", ber.content))),
         };
+
+        let mut mode: Option<u8> = None;
+        let mut version: Option<u8> = None; // TODO default to 1
+        let mut normal_mode_parameters: Option<u8> = None;
+        for parameter in outer_payload {
+            match parameter.header.raw_tag() {
+                Some(&[160]) => match &parameter.content {
+                    der_parser::ber::BerObjectContent::Unknown(mode_objects) => {
+                        println!("{:?}", parameter);
+                            let b = parse_ber_implicit(
+        mode_objects.data,
+        0,
+        parse_ber_content(Tag::Set),
+    );
+    println!("{:?}", b);
+
+                        // warn!("{:?}", parse_ber(mode_objects.data).map_err(|e| protocol_error("", e))?);
+                        // for mode_object in mode_objects {
+                        //     match mode_object.header.raw_tag() {
+                        //         x => return Err(CoppError::ProtocolError(format!("Unexpected tag on mode parameter {:?}", x))),
+                        //     }
+                        // }
+                    }
+                    x => return Err(CoppError::ProtocolError(format!("Unexpected context in mode {:?}", x))),
+                },
+                Some(x) => warn!("Unsupported tag in outer body of connection: {:?}", x),
+                _ => return Err(CoppError::ProtocolError(format!("No tag was detected in outer payload of connect message"))),
+            }
+        }
+
+        todo!("finish");
     }
 
     // TODO Default Context
@@ -125,10 +162,12 @@ mod tests {
     use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
+    use tracing_test::traced_test;
 
     use super::*;
 
     #[tokio::test]
+    #[traced_test]
     async fn it_should_parse_connect() -> Result<(), anyhow::Error> {
         let subject = ConnectMessage::new(None, None, None, None);
         let data = subject.serialise()?;

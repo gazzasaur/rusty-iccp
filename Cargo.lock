@@ -620,6 +620,7 @@ dependencies = [
  "rusty-tpkt",
  "thiserror",
  "tokio",
+ "tracing",
  "tracing-test",
 ]
 
