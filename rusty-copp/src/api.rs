@@ -17,6 +17,7 @@ pub enum CoppError {
     InternalError(String),
 }
 
+#[derive(Debug)]
 pub struct PresentationContext {
     pub indentifier: Vec<u8>, // ASN1 Integer
     pub abstract_syntax_name: Oid<'static>,
