@@ -17,7 +17,14 @@ pub enum CoppError {
     InternalError(String),
 }
 
-#[derive(Debug)]
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum PresentationContextType {
+    // DefaultContext,
+    ContextDefinitionList(Vec<PresentationContext>),
+}
+
+#[derive(PartialEq, Clone, Debug)]
 pub struct PresentationContext {
     pub indentifier: Vec<u8>, // ASN1 Integer
     pub abstract_syntax_name: Oid<'static>,
@@ -28,6 +35,7 @@ pub struct PresentationContext {
 pub struct CoppConnectionInformation {
     pub calling_presentation_selector: Option<Vec<u8>>,
     pub called_presentation_selector: Option<Vec<u8>>,
+    pub presentation_context: PresentationContextType,
 }
 
 impl Default for CoppConnectionInformation {
@@ -35,6 +43,7 @@ impl Default for CoppConnectionInformation {
         Self {
             calling_presentation_selector: None,
             called_presentation_selector: None,
+            presentation_context: PresentationContextType::ContextDefinitionList(vec![]),
         }
     }
 }
@@ -45,7 +54,7 @@ pub enum CoppRecvResult {
 }
 
 pub trait CoppInitiator: Send {
-    fn initiate(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<Vec<u8>>), CoppError>> + Send;
+    fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<Vec<u8>>), CoppError>> + Send;
 }
 
 pub trait CoppListener: Send {

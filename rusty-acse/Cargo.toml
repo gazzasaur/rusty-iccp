@@ -1,0 +1,10 @@
+[package]
+name = "rusty-acse"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rusty-copp = { path = "../rusty-copp" }
+rusty-cosp = { path = "../rusty-cosp" }
+rusty-cotp = { path = "../rusty-cotp" }
+rusty-tpkt = { path = "../rusty-tpkt" }

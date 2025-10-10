@@ -1,9 +1,11 @@
 use der_parser::{
-    asn1_rs::{Any, BitString, OctetString},
-    ber::{BerObjectContent, BitStringObject},
-    der::Tag,
-    error::BerError,
+    asn1_rs::Any,
+    ber::{parse_ber_any, BerObjectContent, BitStringObject},
+    der::{Class, Tag},
+    error::BerError, Oid,
 };
+
+use crate::{PresentationContext, PresentationContextType};
 
 #[derive(Debug)]
 pub(crate) enum PresentationMode {
@@ -49,76 +51,98 @@ pub(crate) enum NormalModeParameter {
     FunctionalUnits(Vec<FunctionalUnit>),
 }
 
-pub(crate) fn process_implicit_bitstring_or_skip<'a>(raw_tag: &[u8], remainder: &'a [u8], npm_object: Any<'a>) -> Result<(&'a [u8], Any<'a>, Option<BitStringObject<'a>>), BerError> {
-    let mut res = None;
-    if let Some(x) = npm_object.header.raw_tag()
-        && raw_tag == x
-    {
-        let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::BitString)(npm_object.data, &npm_object.header, npm_object.data.len())?;
-        if let BerObjectContent::BitString(_, value) = inner_object {
-            res.replace(value);
+pub(crate) fn process_bitstring<'a>(npm_object: Any<'a>) -> Result<Option<BitStringObject<'a>>, BerError> {
+    let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::BitString)(npm_object.data, &npm_object.header, npm_object.data.len())?;
+    match inner_object {
+        BerObjectContent::BitString(_, value) => Ok(Some(value)),
+        _ => Ok(None),
+    }
+}
+
+pub(crate) fn process_octetstring<'a>(npm_object: Any<'a>) -> Result<Option<Vec<u8>>, BerError> {
+    let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::OctetString)(npm_object.data, &npm_object.header, npm_object.data.len())?;
+    match inner_object {
+        BerObjectContent::OctetString(value) => Ok(Some(value.to_vec())),
+        _ => Ok(None),
+    }
+}
+
+pub(crate) fn process_integer<'a>(npm_object: Any<'a>) -> Result<Option<Vec<u8>>, BerError> {
+    let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::Integer)(npm_object.data, &npm_object.header, npm_object.data.len())?;
+    match inner_object {
+        BerObjectContent::Integer(value) => Ok(Some(value.to_vec())),
+        _ => Ok(None),
+    }
+}
+
+pub(crate) fn process_oid<'a>(npm_object: Any<'a>) -> Result<Option<Oid<'static>>, BerError> {
+    let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::Oid)(npm_object.data, &npm_object.header, npm_object.data.len())?;
+    match inner_object {
+        BerObjectContent::OID(value) => Ok(Some(value.to_owned())),
+        _ => Ok(None),
+    }
+}
+pub(crate) fn process_protocol<'a>(npm_object: Any<'a>) -> Result<Option<Protocol>, BerError> {
+    match process_bitstring(npm_object)? {
+        Some(value) if value.is_set(0) => Ok(Some(Protocol::Version1)),
+        Some(value) => Ok(Some(Protocol::Unknown(value.data.to_vec()))),
+        None => Ok(None),
+    }
+}
+
+pub(crate) fn process_transfer_syntaxt_list<'a>(data: &'a [u8]) -> Result<Vec<Oid<'static>>, BerError> {
+    let mut res = vec![];
+    for item in process_constructed_data(data)? {
+        match process_oid(item)? {
+            Some(oid) => res.push(oid),
+            None => (),
+        }
+    }
+    Ok(res)
+}
+
+pub(crate) fn process_presentation_context<'a>(npm_objects: Vec<Any<'a>>) -> Result<PresentationContext, BerError> {
+    let mut id = None;
+    let mut abstract_syntax_name = None;
+    let mut transfer_syntax_name_list = None;
+
+    for npm_object in npm_objects {
+        match npm_object.header.raw_tag() {
+            Some(&[2]) => id = process_integer(npm_object)?,
+            Some(&[6]) => abstract_syntax_name = process_oid(npm_object)?,
+            Some(&[48]) => transfer_syntax_name_list = Some(process_transfer_syntaxt_list(npm_object.data)?),
+            _ => ()
         };
-        let (remainder, npm_object) = der_parser::ber::parse_ber_any(remainder)?;
-        Ok((remainder, npm_object, res))
-    } else {
-        Ok((remainder, npm_object, res))
     }
+    Ok(
+        PresentationContext {
+            indentifier: id.ok_or_else(|| BerError::BerValueError)?,
+            abstract_syntax_name: abstract_syntax_name.ok_or_else(|| BerError::BerValueError)?,
+            transfer_syntax_name_list: transfer_syntax_name_list.ok_or_else(|| BerError::BerValueError)?,
+        }
+    )
 }
 
-pub(crate) fn process_implicit_octetstring_or_skip<'a>(raw_tag: &[u8], remainder: &'a [u8], npm_object: Any<'a>) -> Result<(&'a [u8], Any<'a>, Option<&'a [u8]>), BerError> {
-    let mut res = None;
-    if let Some(x) = npm_object.header.raw_tag()
-        && raw_tag == x
-    {
-        let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::OctetString)(npm_object.data, &npm_object.header, npm_object.data.len())?;
-        if let BerObjectContent::OctetString(value) = inner_object {
-            res.replace(value);
-        };
-        let (remainder, npm_object) = der_parser::ber::parse_ber_any(remainder)?;
-        Ok((remainder, npm_object, res))
-    } else {
-        Ok((remainder, npm_object, res))
+pub(crate) fn process_presentation_context_list<'a>(data: &'a [u8]) -> Result<PresentationContextType, BerError> {
+    let mut context_definition_list = vec![];
+    for context_item in process_constructed_data(data)? {
+        context_item.header.assert_constructed()?;
+        context_item.header.assert_tag(Tag::Sequence)?;
+        context_item.header.assert_class(Class::Universal)?;
+
+        context_definition_list.push(process_presentation_context(process_constructed_data(context_item.data)?)?);
     }
+    Ok(PresentationContextType::ContextDefinitionList(context_definition_list))
 }
 
-pub(crate) fn process_protocol_or_skip<'a>(remainder: &'a [u8], npm_object: Any<'a>) -> Result<(&'a [u8], Any<'a>, Option<Protocol>), BerError> {
-    let mut res = None;
-    let (remainder, npm_object, value) = process_implicit_bitstring_or_skip(&[128], remainder, npm_object)?;
-    match value {
-        Some(value) if value.is_set(0) => res = Some(Protocol::Version1),
-        Some(value) => res = Some(Protocol::Unknown(value.data.to_vec())),
-        None => (),
-    };
-    Ok((remainder, npm_object, res))
-}
+pub(crate) fn process_constructed_data<'a>(data: &'a [u8]) -> Result<Vec<Any<'a>>, BerError> {
+    let mut remaining = data;
+    let mut results = vec![];
 
-pub(crate) fn process_calling_selector_or_skip<'a>(remainder: &'a [u8], npm_object: Any<'a>) -> Result<(&'a [u8], Any<'a>, Option<Vec<u8>>), BerError> {
-    let mut res: Option<_> = None;
-    let (remainder, npm_object, value) = process_implicit_octetstring_or_skip(&[129], remainder, npm_object)?;
-    match value {
-        Some(value) => res.replace(value.to_vec()),
-        None => None,
-    };
-    Ok((remainder, npm_object, res))
-}
-
-pub(crate) fn process_called_selector_or_skip<'a>(remainder: &'a [u8], npm_object: Any<'a>) -> Result<(&'a [u8], Any<'a>, Option<Vec<u8>>), BerError> {
-    let mut res = None;
-    let (remainder, npm_object, value) = process_implicit_octetstring_or_skip(&[130], remainder, npm_object)?;
-    match value {
-        Some(value) => res.replace(value.to_vec()),
-        None => None,
-    };
-    Ok((remainder, npm_object, res))
-}
-
-pub(crate) fn process_unknown_and_skip<'a>(raw_tag: &'_ [u8], remainder: &'a [u8], npm_object: Any<'a>) -> Result<(&'a [u8], Any<'a>, Vec<NormalModeParameter>), BerError> {
-    if let Some(x) = npm_object.header.raw_tag()
-        && x == raw_tag
-    {
-        let (remainder, npm_object) = der_parser::ber::parse_ber_any(remainder)?;
-        Ok((remainder, npm_object, vec![]))
-    } else {
-        Ok((remainder, npm_object, vec![]))
+    while remaining.len() > 0 {
+        let (rem, obj) = parse_ber_any(remaining)?;
+        results.push(obj);
+        remaining = rem;
     }
+    Ok(results)
 }
