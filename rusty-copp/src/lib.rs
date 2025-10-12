@@ -8,7 +8,7 @@ pub use service::*;
 
 #[cfg(test)]
 mod tests {
-    use std::{ops::Range, time::Duration};
+    use std::{ops::Range, time::Duration, vec};
 
     use der_parser::Oid;
     use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
@@ -47,7 +47,7 @@ mod tests {
     async fn create_copp_connection_pair_with_options(
         connect_data: Option<Vec<u8>>,
         options: CoppConnectionInformation,
-        accept_data: Option<&[u8]>,
+        accept_data: Option<Vec<u8>>,
         contexts: Vec<PresentationContext>,
     ) -> Result<(impl CoppConnection, impl CoppConnection), anyhow::Error> {
         // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
@@ -75,7 +75,7 @@ mod tests {
             let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
             let (copp_responder, _) = copp_listener.responder().await?;
-            Ok(copp_responder.accept(accept_data).await?)
+            Ok(copp_responder.accept(PresentationContextResultType::ContextDefinitionList(vec![]), accept_data).await?)
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);

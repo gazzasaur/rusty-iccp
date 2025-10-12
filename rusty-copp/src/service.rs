@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use rusty_cosp::{CospConnection, CospInitiator, CospListener, CospReader, CospResponder, CospWriter};
 
 use crate::{
-    messages::{accept::AcceptMessage, connect::ConnectMessage}, CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextType
+    messages::{accept::AcceptMessage, connect::ConnectMessage}, CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
@@ -105,19 +105,19 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppResponder<T, R, W>
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppResponder for RustyCoppResponder<T, R, W> {
-    async fn accept(self, accept_data: Option<&[u8]>) -> Result<impl CoppConnection, CoppError> {
+    async fn accept(self, context_result_list: PresentationContextResultType, accept_data: Option<Vec<u8>>) -> Result<impl CoppConnection, CoppError> {
         let (cosp_reader, cosp_writer) = self.cosp_responder.accept(None).await?.split().await?;
-        let result = match self.connection_information.presentation_context {
-            PresentationContextType::ContextDefinitionList(presentation_contexts) => presentation_contexts.into_iter().map(|context| {
-                PresentationContextResult {
-                    result: PresentationContextResultCause::Acceptance,
-                    transfer_syntax_name: None,
-                    provider_reason: None,
-                }
-            }),
-        };
+        // let result = match self.connection_information.presentation_context {
+        //     PresentationContextType::ContextDefinitionList(presentation_contexts) => presentation_contexts.into_iter().map(|context| {
+        //         PresentationContextResult {
+        //             result: PresentationContextResultCause::Acceptance,
+        //             transfer_syntax_name: None,
+        //             provider_reason: None,
+        //         }
+        //     }),
+        // };
 
-        let accept_message = AcceptMessage::new(None, self.connection_information.called_presentation_selector, result, accept_data);
+        let accept_message = AcceptMessage::new(None, self.connection_information.called_presentation_selector, context_result_list, accept_data);
 
         Ok(RustyCoppConnection::new(cosp_reader, cosp_writer))
     }

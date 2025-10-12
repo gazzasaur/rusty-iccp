@@ -101,7 +101,7 @@ pub trait CoppListener: Send {
 }
 
 pub trait CoppResponder: Send {
-    fn accept(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
+    fn accept(self, context_result_list: PresentationContextResultType, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
 }
 
 pub trait CoppConnection: Send {
