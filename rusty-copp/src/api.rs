@@ -63,6 +63,17 @@ pub enum PresentationContextResultProviderReason {
     LocalLimitOnDcsExceeded,
 }
 
+impl From<PresentationContextResultProviderReason> for &[u8] {
+    fn from(value: PresentationContextResultProviderReason) -> Self {
+        match value {
+            PresentationContextResultProviderReason::ReasonNotSpecified => &[0],
+            PresentationContextResultProviderReason::AbstrctSyntaxNotSupported => &[1],
+            PresentationContextResultProviderReason::ProposedAbstrctSyntaxNotSupported => &[2],
+            PresentationContextResultProviderReason::LocalLimitOnDcsExceeded => &[3],
+        }
+    }
+}
+
 #[derive(PartialEq, Clone, Debug)]
 pub struct PresentationContextResult {
     pub result: PresentationContextResultCause,

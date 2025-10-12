@@ -143,17 +143,31 @@ impl AcceptMessage {
                                     contexts
                                         .iter()
                                         .map(|context| {
-                                            der_parser::ber::BerObject::from_seq(vec![
-                                                Some(der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::Integer(context.result.clone().into()))),
-                                                // if {Some(der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(context.transfer_syntax_name.clone())))} else {None},
-                                                // der_parser::ber::BerObject::from_seq(
-                                                //     context
-                                                //         .transfer_syntax_name_list
-                                                //         .iter()
-                                                //         .map(|transfer| der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(transfer.clone())))
-                                                //         .collect(),
-                                                // ),
-                                            ].into_iter().filter_map(|f| f).collect())
+                                            der_parser::ber::BerObject::from_seq(
+                                                vec![
+                                                    Some(der_parser::ber::BerObject::from_header_and_content(
+                                                        Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
+                                                        der_parser::ber::BerObjectContent::Integer(context.result.clone().into()),
+                                                    )),
+                                                    match &context.transfer_syntax_name {
+                                                        Some(transfer_syntax_name) => Some(der_parser::ber::BerObject::from_header_and_content(
+                                                            Header::new(Class::ContextSpecific, false, Tag::from(1), der_parser::ber::Length::Definite(0)),
+                                                            der_parser::ber::BerObjectContent::OID(transfer_syntax_name.clone()),
+                                                        )),
+                                                        None => None,
+                                                    },
+                                                    match &context.provider_reason {
+                                                        Some(provider_reason) => Some(der_parser::ber::BerObject::from_header_and_content(
+                                                            Header::new(Class::ContextSpecific, false, Tag::from(2), der_parser::ber::Length::Definite(0)),
+                                                            der_parser::ber::BerObjectContent::Integer(provider_reason.clone().into()),
+                                                        )),
+                                                        None => None,
+                                                    },
+                                                ]
+                                                .into_iter()
+                                                .filter_map(|f| f)
+                                                .collect(),
+                                            )
                                         })
                                         .collect(),
                                 ),
