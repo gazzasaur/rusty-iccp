@@ -612,10 +612,17 @@ dependencies = [
 name = "rusty-acse"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "der-parser",
+ "rand",
  "rusty-copp",
  "rusty-cosp",
  "rusty-cotp",
  "rusty-tpkt",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-test",
 ]
 
 [[package]]

@@ -3,8 +3,7 @@ use std::marker::PhantomData;
 use rusty_cosp::{CospConnection, CospInitiator, CospListener, CospReader, CospResponder, CospWriter};
 
 use crate::{
-    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextType,
-    messages::connect::ConnectMessage,
+    messages::{accept::AcceptMessage, connect::ConnectMessage}, CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextType
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
@@ -82,8 +81,8 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppListener for RustyCoppListener<T, R, W> {
-    async fn responder(self) -> Result<(impl CoppResponder, CoppConnectionInformation, Option<Vec<u8>>), CoppError> {
-        Ok((RustyCoppResponder::<T, R, W>::new(self.cosp_responder), self.connection_information, self.user_data))
+    async fn responder(self) -> Result<(impl CoppResponder, Option<Vec<u8>>), CoppError> {
+        Ok((RustyCoppResponder::<T, R, W>::new(self.cosp_responder, self.connection_information), self.user_data))
     }
 }
 
@@ -91,22 +90,35 @@ pub struct RustyCoppResponder<T: CospResponder, R: CospReader, W: CospWriter> {
     cosp_responder: T,
     cosp_reader: PhantomData<R>,
     cosp_writer: PhantomData<W>,
+    connection_information: CoppConnectionInformation,
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppResponder<T, R, W> {
-    fn new(cosp_responder: T) -> RustyCoppResponder<impl CospResponder, impl CospReader, impl CospWriter> {
+    fn new(cosp_responder: T, connection_information: CoppConnectionInformation) -> RustyCoppResponder<impl CospResponder, impl CospReader, impl CospWriter> {
         RustyCoppResponder {
             cosp_responder,
             cosp_reader: PhantomData::<R>,
             cosp_writer: PhantomData::<W>,
+            connection_information,
         }
     }
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppResponder for RustyCoppResponder<T, R, W> {
-    async fn accept(self, _accept_data: Option<&[u8]>) -> Result<impl CoppConnection, CoppError> {
+    async fn accept(self, accept_data: Option<&[u8]>) -> Result<impl CoppConnection, CoppError> {
         let (cosp_reader, cosp_writer) = self.cosp_responder.accept(None).await?.split().await?;
-        // TODO
+        let result = match self.connection_information.presentation_context {
+            PresentationContextType::ContextDefinitionList(presentation_contexts) => presentation_contexts.into_iter().map(|context| {
+                PresentationContextResult {
+                    result: PresentationContextResultCause::Acceptance,
+                    transfer_syntax_name: None,
+                    provider_reason: None,
+                }
+            }),
+        };
+
+        let accept_message = AcceptMessage::new(None, self.connection_information.called_presentation_selector, result, accept_data);
+
         Ok(RustyCoppConnection::new(cosp_reader, cosp_writer))
     }
 }

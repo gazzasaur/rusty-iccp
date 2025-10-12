@@ -1,29 +1,42 @@
 # Rusty ICCP
 This repository was created for the purpose of learning the ICCP stack. If others find it useful, awesome.
 
-## Implementation Decisions
-~~I am going to stick with sync rust. This is so I can add C bindings later. If I feel the need later, I will add async behind a feature.~~
+## API Choices.
 
+Application level decisions have to be made at most layers of the stack. There are convenience builders to assist in this creation.
+
+* TODO List the stack builders.
+
+TPKT and COTP are relatively straight forward. The onlt state TPKT keeps is for fragmented packets. It does not handshake. COTP Does the handshake then transmits data.
+
+COSP, COPP, ACSE and MMS require data transmission and active decision making suring the handshaking process. For this reason, the process is split into several areas.
+
+Initiator:
+* Initiator
+  * The initiator is used to send the initial handshake and receive the response.
+  * Key parameters are passed during construction, like the caller and called addressed.
+  * This is then passed to the higher layer protocol that will invoke `initiate` to complete the handshake.
+
+Responder:
+* Listener
+  * The listener will receive the initial handshake during construction and return key connection information to the API caller. The called may reject the handshake which will consume the listener.
+  * If the connection details are okay, caller will pass the listener to the higher layer protocol.
+  * The higher layer protocol will convert the listener to a responder. This will consume the listener and also return the connect data received during the handshake.
+* Responder
+  * If the connect data from the consumed listener was successfully parsed and processed, the higher level protocol will accept the connection from the responder converting it into a connection. Otherwise it will reject the connection consuming the responder.
+
+## Implementation Decisions
 Using async rust as it is much easier for IO bound operations like the vast majority of this. I will write wrapper libraries with C bindings that create an async runtime at a later point.
 
-This implementation binds the networking stack to TCP Sockets. If a session is disconnected at the ICCP/MMS/Presentation/Session layer, all the lower layers will be disconnected. 
-
-### Size limits
-
-This stack imposes a size limit of 2G on all data.
-This is an attempt to prvent bad actors from overloading a system.
-However, this limit is likely to be far too large for embedded systems to handle.
-Embedded systems should still be constrainted to a secure environment and be connected by secure means.
-Most of this is out of scope of this package.
-
-TLS is not currently supported but will be.
+This implementation binds the networking stack to TCP Sockets. If a session is disconnected at the ICCP/MMS/Presentation/Session layer, all the lower layers will be disconnected.
 
 ### Not actively closing sockets
 
-COTP does not actively close the socket on disconnect.
-It is left to the higher layer to push the reader and writer out of scope.
-The reader and writer could be re-used which might have undersired results.
-This might change at a later point.
+Connections are not actively closed on errors for all protocols below ICCP.
+Errors in processing are bubbled up to the layer above, and eventually to the ICCP layer.
+
+If you are using this stack for any other protocols, it is left to the higher layer to push the reader and writer out of scope and close the connection or use the reject api calls.
+Alternatively, the user may attempt to reuse the connection. Doing this is allowed, but the behaviour is undefined.
 
 ### Cancel Safety
 
@@ -38,7 +51,7 @@ The continue operations are also cancel safe.
 
 * Currently being implemented *
 
-## Roadmap
+# Roadmap
 This is a rough roadmap based on what I know so far. I am using the open version of the standards where possible (X. and RFC) instead of the ISO standards which are generally locked behind a paywall.
 
 * [COMPLETE] ITOT / TPKT / RFC2126 - ISO Transport Service on top of TCP
@@ -49,22 +62,7 @@ This is a rough roadmap based on what I know so far. I am using the open version
 * [NOT STARTED] MMS / ISO 9506 - Manufacturing Message Specification
 * [NOT STARTED] ICCP / TASE.2 - Inter-Control Center Communication Protocol
 * [NOT STARTED] ICCP Simulator Web Application
-
-Future
-For maximum compatability this implementation will include verssion 1 and the half-duplex functional unit for X.225.
-This implementation is more restrictive than annex D of x.225 in the following ways.
-* X.226 connect will not request connect user data to ensure it is compatible with version 1 negotiations.
-
-# Work Arounds
-
-## Using lower layer services as traits
-
-The intention was to use impl<T: TpktXXXXX<...>> CotpXXXXX<...> for TcpCotpXXXXX so the implementation could be easily swapped out.
-However, due to a rust bug https://github.com/rust-lang/rust/issues/100013 it wasn't possible.
-
-This means that, for the implementation, you have to use the lower level services from this library.
-The intention was tp be able to swap out parts. For example, provide a TLS service to Tpkt.
-Instead I will build a TcpSocketFactory at a later point.
+* [NOT STARTED] TLS TPKT Layer
 
 # Development
 

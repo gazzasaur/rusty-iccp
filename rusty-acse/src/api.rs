@@ -1,19 +1,19 @@
 use der_parser::Oid;
-use rusty_cosp::CospError;
+use rusty_copp::CoppError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum CoppError {
-    #[error("COPP Protocol Error - {}", .0)]
+pub enum AcseError {
+    #[error("ACSE Protocol Error - {}", .0)]
     ProtocolError(String),
 
-    #[error("COPP over COSP Protocol Stack Error - {}", .0)]
-    ProtocolStackError(#[from] CospError),
+    #[error("ACSE over COSP Protocol Stack Error - {}", .0)]
+    ProtocolStackError(#[from] CoppError),
 
-    #[error("COPP IO Error: {:?}", .0)]
+    #[error("ACSE IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),
 
-    #[error("COPP Error: {}", .0)]
+    #[error("ACSE Error: {}", .0)]
     InternalError(String),
 }
 
@@ -45,16 +45,6 @@ pub enum PresentationContextResultCause {
     ProviderRejection,
 }
 
-impl From<PresentationContextResultCause> for &[u8] {
-    fn from(value: PresentationContextResultCause) -> Self {
-        match value {
-            PresentationContextResultCause::Acceptance => &[0],
-            PresentationContextResultCause::UserRejection => &[1],
-            PresentationContextResultCause::ProviderRejection => &[2],
-        }
-    }
-}
-
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextResultProviderReason {
     ReasonNotSpecified,
@@ -71,13 +61,13 @@ pub struct PresentationContextResult {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct CoppConnectionInformation {
+pub struct AcseConnectionInformation {
     pub calling_presentation_selector: Option<Vec<u8>>,
     pub called_presentation_selector: Option<Vec<u8>>,
     pub presentation_context: PresentationContextType,
 }
 
-impl Default for CoppConnectionInformation {
+impl Default for AcseConnectionInformation {
     fn default() -> Self {
         Self {
             calling_presentation_selector: None,
@@ -87,32 +77,32 @@ impl Default for CoppConnectionInformation {
     }
 }
 
-pub enum CoppRecvResult {
+pub enum AcseRecvResult {
     Closed,
     Data(Vec<u8>),
 }
 
-pub trait CoppInitiator: Send {
-    fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<Vec<u8>>), CoppError>> + Send;
+pub trait AcseInitiator: Send {
+    fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl AcseConnection, Option<Vec<u8>>), AcseError>> + Send;
 }
 
-pub trait CoppListener: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<Vec<u8>>), CoppError>> + Send;
+pub trait AcseListener: Send {
+    fn responder(self) -> impl std::future::Future<Output = Result<(impl AcseResponder, AcseConnectionInformation, Option<Vec<u8>>), AcseError>> + Send;
 }
 
-pub trait CoppResponder: Send {
-    fn accept(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
+pub trait AcseResponder: Send {
+    fn accept(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl AcseConnection, AcseError>> + Send;
 }
 
-pub trait CoppConnection: Send {
-    fn split(self) -> impl std::future::Future<Output = Result<(impl CoppReader, impl CoppWriter), CoppError>> + Send;
+pub trait AcseConnection: Send {
+    fn split(self) -> impl std::future::Future<Output = Result<(impl AcseReader, impl AcseWriter), AcseError>> + Send;
 }
 
-pub trait CoppReader: Send {
-    fn recv(&mut self) -> impl std::future::Future<Output = Result<CoppRecvResult, CoppError>> + Send;
+pub trait AcseReader: Send {
+    fn recv(&mut self) -> impl std::future::Future<Output = Result<AcseRecvResult, AcseError>> + Send;
 }
 
-pub trait CoppWriter: Send {
-    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
-    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+pub trait AcseWriter: Send {
+    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
+    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
 }
