@@ -231,7 +231,10 @@ mod tests {
             None,
         );
         let data = subject.serialise()?;
-        let _result = ConnectMessage::parse(data)?;
+        let result = ConnectMessage::parse(data)?;
+
+        assert_eq!(result.calling_presentation_selector(), Some(&vec![3u8]));
+        assert_eq!(result.called_presentation_selector(), Some(&vec![4u8]));
         Ok(())
     }
 }

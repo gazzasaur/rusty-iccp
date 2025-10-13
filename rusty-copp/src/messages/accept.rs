@@ -4,8 +4,7 @@ use der_parser::{
 };
 
 use crate::{
-    CoppError, PresentationContextResultType, PresentationContextType,
-    error::protocol_error,
+    CoppError, PresentationContextResultType, error::protocol_error,
     messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_list, process_protocol},
 };
 
@@ -203,7 +202,7 @@ mod tests {
     use der_parser::Oid;
     use tracing_test::traced_test;
 
-    use crate::PresentationContext;
+    use crate::{PresentationContext, PresentationContextResult, PresentationContextResultCause};
 
     use super::*;
 
@@ -214,21 +213,14 @@ mod tests {
             Some(Protocol::Version1),
             Some(vec![0x04]),
             PresentationContextResultType::ContextDefinitionList(vec![
-                // PresentationContext {
-                //     indentifier: vec![1],
-                //     abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
-                //     transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
-                // },
-                // PresentationContext {
-                //     indentifier: vec![1],
-                //     abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
-                //     transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
-                // },
+                PresentationContextResult { result: PresentationContextResultCause::Acceptance, transfer_syntax_name: None, provider_reason: None },
             ]),
             None,
         );
         let data = subject.serialise()?;
-        let _result = AcceptMessage::parse(data)?;
+        let result = AcceptMessage::parse(data)?;
+        assert_eq!(result.responding_presentation_selector(), Some(&vec![4u8]));
+
         Ok(())
     }
 }

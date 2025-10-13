@@ -75,7 +75,7 @@ mod tests {
             let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
             let (copp_responder, _) = copp_listener.responder().await?;
-            Ok(copp_responder.accept(PresentationContextResultType::ContextDefinitionList(vec![]), accept_data).await?)
+            Ok(copp_responder.accept(accept_data).await?)
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
