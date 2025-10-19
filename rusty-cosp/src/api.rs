@@ -47,7 +47,7 @@ pub trait CospListener: Send {
 }
 
 pub trait CospResponder: Send {
-    fn accept(self, accept_data: Option<&[u8]>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
+    fn accept(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
 }
 
 pub trait CospConnection: Send {

@@ -144,7 +144,7 @@ impl<R: CotpReader, W: CotpWriter> TcpCospResponder<R, W> {
 }
 
 impl<R: CotpReader, W: CotpWriter> CospResponder for TcpCospResponder<R, W> {
-    async fn accept(self, accept_data: Option<&[u8]>) -> Result<impl CospConnection, CospError> {
+    async fn accept(self, accept_data: Option<Vec<u8>>) -> Result<impl CospConnection, CospError> {
         let cotp_reader = self.cotp_reader;
         let mut cotp_writer = self.cotp_writer;
 

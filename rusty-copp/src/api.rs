@@ -108,11 +108,7 @@ pub trait CoppInitiator: Send {
 }
 
 pub trait CoppListener: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl CoppContext, Option<Vec<u8>>), CoppError>> + Send;
-}
-
-pub trait CoppContext: Send {
-    fn with_context(self, contexts: PresentationContextResultType) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<Vec<u8>>), CoppError>> + Send;
+    fn responder(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<Vec<u8>>), CoppError>> + Send;
 }
 
 pub trait CoppResponder: Send {

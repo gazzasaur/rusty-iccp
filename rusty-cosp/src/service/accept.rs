@@ -12,24 +12,24 @@ use crate::{
     service::message::{MAX_PAYLOAD_SIZE, receive_message},
 };
 
-pub(crate) async fn send_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize, user_data: Option<&[u8]>) -> Result<(), CospError> {
+pub(crate) async fn send_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
     // As we may need to send multiple accept payloads, we will precalculate the size of the header without enclosure.
     let optimistic_accept = serialise_accept(initiator_size, None, None, Some(&[]))?;
     // Add an extra 8 bytes for enclosure and headers.
-    let optimistic_size = optimistic_accept.len() + user_data.map(|data| data.len()).unwrap_or(0) + 8;
+    let optimistic_size = optimistic_accept.len() + user_data.as_ref().map(|data| data.len()).unwrap_or(0) + 8;
 
     if optimistic_size <= MAX_PAYLOAD_SIZE {
-        return Ok(writer.send(&serialise_accept(initiator_size, None, None, user_data)?).await?);
+        return Ok(writer.send(&serialise_accept(initiator_size, None, None, user_data.as_ref().map(|x| x.as_slice()))?).await?);
     }
 
     let mut cursor = 0;
     let mut beginning = true;
-    let default_user_data = [];
+    let default_user_data = vec![];
     // The -2 accounts a 16-bit encoded length when the size is >254 bytes.
     let maximum_data_size = MAX_PAYLOAD_SIZE;
     let user_data = match user_data {
         Some(user_data) => user_data,
-        None => &default_user_data,
+        None => default_user_data,
     };
     loop {
         let start_index = cursor;
