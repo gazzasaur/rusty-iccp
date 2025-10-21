@@ -43,6 +43,7 @@ pub enum PresentationContextResultCause {
     Acceptance,
     UserRejection,
     ProviderRejection,
+    Unknown,
 }
 
 impl From<PresentationContextResultCause> for &[u8] {

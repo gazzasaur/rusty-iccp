@@ -5,8 +5,7 @@ use der_parser::{
 use tracing::warn;
 
 use crate::{
-    CoppError, PresentationContextResultType, error::protocol_error,
-    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_list, process_protocol},
+    error::protocol_error, messages::parsers::{process_constructed_data, process_octetstring, process_presentation_context_list, process_presentation_context_result_list, process_protocol, PresentationMode, Protocol}, CoppError, PresentationContextResultType
 };
 
 #[derive(Debug)]
@@ -62,7 +61,7 @@ impl AcceptMessage {
                             Some(&[128]) => accept_message.protocol = process_protocol(npm_object)?,
                             Some(&[131]) => accept_message.responding_presentation_selector = process_octetstring(npm_object)?,
                             Some(&[165]) => {
-                                context_definition_list = Some(process_presentation_context_list(npm_object.data)?);
+                                context_definition_list = Some(process_presentation_context_result_list(npm_object.data)?);
                             }
                             _ => (),
                         };

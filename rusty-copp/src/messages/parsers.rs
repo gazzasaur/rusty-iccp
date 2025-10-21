@@ -5,7 +5,7 @@ use der_parser::{
     error::BerError, Oid,
 };
 
-use crate::{PresentationContext, PresentationContextType};
+use crate::{PresentationContext, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType};
 
 #[derive(Debug)]
 pub(crate) enum PresentationMode {
@@ -75,6 +75,15 @@ pub(crate) fn process_integer<'a>(npm_object: Any<'a>) -> Result<Option<Vec<u8>>
     }
 }
 
+pub(crate) fn process_context_result<'a>(npm_object: Any<'a>) -> Result<PresentationContextResultCause, BerError> {
+    match process_integer(npm_object)? {
+        Some(x) if x == vec![0] => Ok(PresentationContextResultCause::Acceptance),
+        Some(x) if x == vec![1] => Ok(PresentationContextResultCause::UserRejection),
+        Some(x) if x == vec![2] => Ok(PresentationContextResultCause::ProviderRejection),
+        _ => Ok(PresentationContextResultCause::Unknown),
+    }
+}
+
 pub(crate) fn process_oid<'a>(npm_object: Any<'a>) -> Result<Option<Oid<'static>>, BerError> {
     let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::Oid)(npm_object.data, &npm_object.header, npm_object.data.len())?;
     match inner_object {
@@ -108,7 +117,7 @@ pub(crate) fn process_presentation_context<'a>(npm_objects: Vec<Any<'a>>) -> Res
 
     for npm_object in npm_objects {
         match npm_object.header.raw_tag() {
-            Some(&[2]) => id = process_integer(npm_object)?,
+            Some(&[2]) => id = process_context_result(npm_object)?,
             Some(&[6]) => abstract_syntax_name = process_oid(npm_object)?,
             Some(&[48]) => transfer_syntax_name_list = Some(process_transfer_syntaxt_list(npm_object.data)?),
             _ => ()
@@ -123,6 +132,27 @@ pub(crate) fn process_presentation_context<'a>(npm_objects: Vec<Any<'a>>) -> Res
     )
 }
 
+pub(crate) fn process_presentation_result_context<'a>(npm_objects: Vec<Any<'a>>) -> Result<PresentationContextResult, BerError> {
+    let mut result = PresentationContextResultCause::Unknown;
+    let mut transfer_syntax_name = None;
+
+    for npm_object in npm_objects {
+        match npm_object.header.raw_tag() {
+            Some(&[0]) => result = process_context_result(npm_object)?,
+            Some(&[1]) => transfer_syntax_name = process_oid(npm_object)?,
+            // Some(&[2]) => provider_reason = Some(process_transfer_syntaxt_list(npm_object.data)?), TODO
+            _ => ()
+        };
+    }
+    Ok(
+        PresentationContextResult {
+            result,
+            transfer_syntax_name,
+            transfer_syntax_name_list: transfer_syntax_name_list.ok_or_else(|| BerError::BerValueError)?,
+        }
+    )
+}
+
 pub(crate) fn process_presentation_context_list<'a>(data: &'a [u8]) -> Result<PresentationContextType, BerError> {
     let mut context_definition_list = vec![];
     for context_item in process_constructed_data(data)? {
@@ -131,6 +161,18 @@ pub(crate) fn process_presentation_context_list<'a>(data: &'a [u8]) -> Result<Pr
         context_item.header.assert_class(Class::Universal)?;
 
         context_definition_list.push(process_presentation_context(process_constructed_data(context_item.data)?)?);
+    }
+    Ok(PresentationContextType::ContextDefinitionList(context_definition_list))
+}
+
+pub(crate) fn process_presentation_context_result_list<'a>(data: &'a [u8]) -> Result<PresentationContextType, BerError> {
+    let mut context_definition_list = vec![];
+    for context_item in process_constructed_data(data)? {
+        context_item.header.assert_constructed()?;
+        context_item.header.assert_tag(Tag::Sequence)?;
+        context_item.header.assert_class(Class::Universal)?;
+
+        context_definition_list.push(process_presentation_result_context(process_constructed_data(context_item.data)?)?);
     }
     Ok(PresentationContextType::ContextDefinitionList(context_definition_list))
 }
