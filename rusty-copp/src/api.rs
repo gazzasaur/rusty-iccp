@@ -52,6 +52,7 @@ impl From<PresentationContextResultCause> for &[u8] {
             PresentationContextResultCause::Acceptance => &[0],
             PresentationContextResultCause::UserRejection => &[1],
             PresentationContextResultCause::ProviderRejection => &[2],
+            PresentationContextResultCause::Unknown => &[1], // Map Unknown to User Rejection
         }
     }
 }

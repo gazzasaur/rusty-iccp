@@ -117,7 +117,7 @@ pub(crate) fn process_presentation_context<'a>(npm_objects: Vec<Any<'a>>) -> Res
 
     for npm_object in npm_objects {
         match npm_object.header.raw_tag() {
-            Some(&[2]) => id = process_context_result(npm_object)?,
+            Some(&[2]) => id = process_integer(npm_object)?,
             Some(&[6]) => abstract_syntax_name = process_oid(npm_object)?,
             Some(&[48]) => transfer_syntax_name_list = Some(process_transfer_syntaxt_list(npm_object.data)?),
             _ => ()
@@ -148,7 +148,7 @@ pub(crate) fn process_presentation_result_context<'a>(npm_objects: Vec<Any<'a>>)
         PresentationContextResult {
             result,
             transfer_syntax_name,
-            transfer_syntax_name_list: transfer_syntax_name_list.ok_or_else(|| BerError::BerValueError)?,
+            provider_reason: None, // TODO Provider Reason
         }
     )
 }
@@ -165,7 +165,7 @@ pub(crate) fn process_presentation_context_list<'a>(data: &'a [u8]) -> Result<Pr
     Ok(PresentationContextType::ContextDefinitionList(context_definition_list))
 }
 
-pub(crate) fn process_presentation_context_result_list<'a>(data: &'a [u8]) -> Result<PresentationContextType, BerError> {
+pub(crate) fn process_presentation_context_result_list<'a>(data: &'a [u8]) -> Result<PresentationContextResultType, BerError> {
     let mut context_definition_list = vec![];
     for context_item in process_constructed_data(data)? {
         context_item.header.assert_constructed()?;
@@ -174,7 +174,7 @@ pub(crate) fn process_presentation_context_result_list<'a>(data: &'a [u8]) -> Re
 
         context_definition_list.push(process_presentation_result_context(process_constructed_data(context_item.data)?)?);
     }
-    Ok(PresentationContextType::ContextDefinitionList(context_definition_list))
+    Ok(PresentationContextResultType::ContextDefinitionList(context_definition_list))
 }
 
 pub(crate) fn process_constructed_data<'a>(data: &'a [u8]) -> Result<Vec<Any<'a>>, BerError> {
