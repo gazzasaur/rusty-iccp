@@ -5,7 +5,7 @@ use der_parser::{
 use tracing::warn;
 
 use crate::{
-    error::protocol_error, messages::parsers::{process_constructed_data, process_octetstring, process_presentation_context_list, process_presentation_context_result_list, process_protocol, PresentationMode, Protocol}, CoppError, PresentationContextResultType
+    error::protocol_error, messages::{parsers::{process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol, PresentationMode, Protocol}, user_data::UserData}, CoppError, PresentationContextResultType
 };
 
 #[derive(Debug)]
@@ -14,11 +14,11 @@ pub(crate) struct AcceptMessage {
     presentation_mode: Option<PresentationMode>,
     responding_presentation_selector: Option<Vec<u8>>,
     context_definition_result_list: PresentationContextResultType,
-    user_data: Option<Vec<u8>>,
+    user_data: Option<UserData>,
 }
 
 impl AcceptMessage {
-    pub(crate) fn new(protocol: Option<Protocol>, responding_presentation_selector: Option<Vec<u8>>, context_definition_result_list: PresentationContextResultType, user_data: Option<Vec<u8>>) -> Self {
+    pub(crate) fn new(protocol: Option<Protocol>, responding_presentation_selector: Option<Vec<u8>>, context_definition_result_list: PresentationContextResultType, user_data: Option<UserData>) -> Self {
         Self {
             protocol,
             presentation_mode: Some(PresentationMode::Normal),
@@ -26,6 +26,10 @@ impl AcceptMessage {
             context_definition_result_list,
             user_data,
         }
+    }
+    
+    pub(crate) fn user_data(self) -> Option<UserData> {
+        self.user_data
     }
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<AcceptMessage, CoppError> {
@@ -84,6 +88,11 @@ impl AcceptMessage {
         if matches!(self.presentation_mode, Some(PresentationMode::X410)) || matches!(self.presentation_mode, Some(PresentationMode::Unknown)) {
             return Err(CoppError::InternalError(format!("Unsupported mode: {:?}", self.presentation_mode)));
         }
+        let user_data = match &self.user_data {
+            Some(user_data) => Some(user_data.to_ber()),
+            None => None,
+        };
+
         Ok(der_parser::ber::BerObject::from_set(vec![
             // Version defaults to 1, omitting.
             // Normal Mode
@@ -160,13 +169,7 @@ impl AcceptMessage {
                             der_parser::ber::BerObjectContent::BitString(6, BitStringObject { data: &[0] }),
                         )),
                         // User Data
-                        match self.user_data.as_ref() {
-                            Some(x) => Some(der_parser::ber::BerObject::from_header_and_content(
-                                Header::new(Class::Application, false, Tag::from(1), der_parser::ber::Length::Definite(0)),
-                                der_parser::ber::BerObjectContent::OctetString(x.as_slice()),
-                            )),
-                            None => None,
-                        },
+                        user_data,
                     ]
                     .into_iter()
                     .filter_map(|i| i)

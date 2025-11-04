@@ -2,6 +2,8 @@ use der_parser::Oid;
 use rusty_cosp::CospError;
 use thiserror::Error;
 
+use crate::messages::user_data::UserData;
+
 #[derive(Error, Debug)]
 pub enum CoppError {
     #[error("COPP Protocol Error - {}", .0)]
@@ -106,15 +108,15 @@ pub enum CoppRecvResult {
 }
 
 pub trait CoppInitiator: Send {
-    fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<Vec<u8>>), CoppError>> + Send;
+    fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<UserData>), CoppError>> + Send;
 }
 
 pub trait CoppListener: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<Vec<u8>>), CoppError>> + Send;
+    fn responder(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<UserData>), CoppError>> + Send;
 }
 
 pub trait CoppResponder: Send {
-    fn accept(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
+    fn accept(self, accept_data: Option<UserData>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
 }
 
 pub trait CoppConnection: Send {

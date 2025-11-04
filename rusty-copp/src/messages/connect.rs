@@ -4,9 +4,7 @@ use der_parser::{
 };
 
 use crate::{
-    CoppError, PresentationContextType,
-    error::protocol_error,
-    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_list, process_protocol},
+    error::protocol_error, messages::{parsers::{process_constructed_data, process_octetstring, process_presentation_context_list, process_protocol, PresentationMode, Protocol}, user_data::UserData}, CoppError, PresentationContextType
 };
 
 #[derive(Debug)]
@@ -16,11 +14,11 @@ pub(crate) struct ConnectMessage {
     calling_presentation_selector: Option<Vec<u8>>,
     called_presentation_selector: Option<Vec<u8>>,
     context_definition_list: PresentationContextType,
-    user_data: Option<Vec<u8>>,
+    user_data: Option<UserData>,
 }
 
 impl ConnectMessage {
-    pub(crate) fn new(protocol: Option<Protocol>, calling_presentation_selector: Option<Vec<u8>>, called_presentation_selector: Option<Vec<u8>>, context_definition_list: PresentationContextType, user_data: Option<Vec<u8>>) -> Self {
+    pub(crate) fn new(protocol: Option<Protocol>, calling_presentation_selector: Option<Vec<u8>>, called_presentation_selector: Option<Vec<u8>>, context_definition_list: PresentationContextType, user_data: Option<UserData>) -> Self {
         Self {
             protocol,
             presentation_mode: Some(PresentationMode::Normal),
@@ -51,7 +49,7 @@ impl ConnectMessage {
         &self.context_definition_list
     }
 
-    pub(crate) fn user_data_mut(&mut self) -> &mut Option<Vec<u8>> {
+    pub(crate) fn user_data_mut(&mut self) -> &mut Option<UserData> {
         &mut self.user_data
     }
 
@@ -182,10 +180,7 @@ impl ConnectMessage {
                         )),
                         // User Data
                         match self.user_data.as_ref() {
-                            Some(x) => Some(der_parser::ber::BerObject::from_header_and_content(
-                                Header::new(Class::Application, false, Tag::from(1), der_parser::ber::Length::Definite(0)),
-                                der_parser::ber::BerObjectContent::OctetString(x.as_slice()),
-                            )),
+                            Some(x) => Some(x.to_ber()),
                             None => None,
                         },
                     ]

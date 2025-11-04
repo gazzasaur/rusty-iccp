@@ -15,6 +15,9 @@ mod tests {
     use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
+    use tracing::error;
+
+    use crate::messages::user_data::{PresentationDataValueList, PresentationDataValues, UserData};
 
     use super::*;
 
@@ -39,15 +42,25 @@ mod tests {
                 transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
             },
         ];
-        let (_c, _s) = create_copp_connection_pair_with_options(Some(vec![0x30, 0x00]), options, None, presentation_contexts).await?;
+        let (_c, _s) = create_copp_connection_pair_with_options(
+            Some(UserData::FullyEncoded(vec![PresentationDataValueList {
+                presentation_context_identifier: vec![0x01],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x30, 0x00]),
+                transfer_syntax_name: None,
+            }])),
+            options,
+            None,
+            presentation_contexts,
+        )
+        .await?;
 
         Ok(())
     }
 
     async fn create_copp_connection_pair_with_options(
-        connect_data: Option<Vec<u8>>,
+        connect_data: Option<UserData>,
         options: CoppConnectionInformation,
-        accept_data: Option<Vec<u8>>,
+        accept_data: Option<UserData>,
         contexts: Vec<PresentationContext>,
     ) -> Result<(impl CoppConnection, impl CoppConnection), anyhow::Error> {
         // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
@@ -84,13 +97,17 @@ mod tests {
                     provider_reason: None,
                 },
             ])));
-            let (copp_responder, _) = copp_listener.responder().await?;
+            let (copp_responder, connect_user_data) = copp_listener.responder().await?;
+            assert!(false, "---- {:?}", connect_user_data);
+
             Ok(copp_responder.accept(accept_data).await?)
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
-        let (copp_client, _) = copp_client?;
+        let (copp_client, accepted_data) = copp_client?;
         let copp_server = copp_server?;
+
+        // assert!(false, "{:?}", accepted_data);
 
         Ok((copp_client, copp_server))
     }
