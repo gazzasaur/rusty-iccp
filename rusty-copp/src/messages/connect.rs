@@ -45,7 +45,7 @@ impl ConnectMessage {
         &mut self.user_data
     }
 
-    pub(crate) fn parse(data: Vec<u8>) -> Result<ConnectMessage, CoppError> {
+    pub(crate) fn parse(data: &[u8]) -> Result<ConnectMessage, CoppError> {
         let mut context_definition_list = None;
         let mut connection_message = ConnectMessage {
             protocol: None,
@@ -57,8 +57,8 @@ impl ConnectMessage {
         };
 
         // This destructively processes the payload directly into the connect message in a single pass. No retrun is required.
-        der_parser::ber::parse_ber_set_of_v(|data| {
-            let (connect_message_remainder, object) = der_parser::ber::parse_ber_any(data)?;
+        der_parser::ber::parse_ber_set_of_v(|seq_data| {
+            let (connect_message_remainder, object) = der_parser::ber::parse_ber_any(seq_data)?;
 
             let (_, connect_message_parameter) = match object.header.raw_tag() {
                 Some(&[160]) => {
@@ -223,7 +223,7 @@ mod tests {
             None,
         );
         let data = subject.serialise()?;
-        let result = ConnectMessage::parse(data)?;
+        let result = ConnectMessage::parse(&data)?;
 
         assert_eq!(result.calling_presentation_selector(), Some(&vec![3u8]));
         assert_eq!(result.called_presentation_selector(), Some(&vec![4u8]));

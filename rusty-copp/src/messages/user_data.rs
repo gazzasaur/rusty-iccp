@@ -1,6 +1,6 @@
 use der_parser::{
     Oid,
-    asn1_rs::{Any, FromBer, Integer},
+    asn1_rs::{Any, FromBer, Integer, ToDer},
     ber::BerObject,
     der::{Class, Header, Tag},
     error::BerError,
@@ -30,21 +30,21 @@ impl UserData {
         }
     }
 
-    pub(crate) fn parse<'a>(data: Any<'_>) -> Result<UserData, BerError> {
+    pub(crate) fn parse(data: Any<'static>) -> Result<UserData, BerError> {
         match data.header.raw_tag() {
             Some(&[97]) => {
-                let presentation_list = vec![];
+                let mut presentation_list = vec![];
                 for pdv_list in process_constructed_data(data.data)? {
                     pdv_list.header.assert_class(Class::Universal)?;
                     pdv_list.header.assert_tag(Tag::Sequence)?;
 
-                    let mut transfer_syntax_name = None;
+                    let mut transfer_syntax_name: Option<Oid<'static>> = None;
                     let mut presentation_contaxt_id = None;
                     let mut presentation_data_values = None;
                     for pdv_list_part in process_constructed_data(pdv_list.data)? {
                         match pdv_list_part.header.raw_tag() {
                             Some(&[6]) => transfer_syntax_name = Some(Oid::from_ber(pdv_list.data)?.1),
-                            Some(&[2]) => presentation_contaxt_id = Some(Integer::from_ber(pdv_list_part.data)?),
+                            Some(&[2]) => presentation_contaxt_id = Some(pdv_list_part.data.to_vec()),
                             Some(&[160]) => presentation_data_values = Some(PresentationDataValues::SingleAsn1Type(pdv_list_part.data.to_vec())),
                             // TODO Other formats
                             x => tracing::warn!("Unknown data in copp user data: {:?}", x),
@@ -52,7 +52,8 @@ impl UserData {
                     }
                     presentation_list.push(PresentationDataValueList {
                         transfer_syntax_name,
-                        presentation_context_identifier: presentation_contaxt_id.ok_or(|| Err(BerError::BerValueError))?.1.
+                        presentation_context_identifier: presentation_contaxt_id.ok_or_else(|| BerError::BerValueError)?,
+                        presentation_data_values: presentation_data_values.ok_or_else(|| BerError::BerValueError)?,
                     });
                 }
                 Ok(UserData::FullyEncoded(presentation_list))
