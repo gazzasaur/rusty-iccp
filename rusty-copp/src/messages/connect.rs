@@ -29,14 +29,6 @@ impl ConnectMessage {
         }
     }
 
-    pub(crate) fn protocol(&self) -> Option<&Protocol> {
-        self.protocol.as_ref()
-    }
-
-    pub(crate) fn presentation_mode(&self) -> Option<&PresentationMode> {
-        self.presentation_mode.as_ref()
-    }
-
     pub(crate) fn calling_presentation_selector(&self) -> Option<&Vec<u8>> {
         self.calling_presentation_selector.as_ref()
     }
@@ -89,10 +81,15 @@ impl ConnectMessage {
                             Some(&[164]) => {
                                 context_definition_list = Some(process_presentation_context_list(npm_object.data)?);
                             }
+                            // Some(&[136]) => connection_message.presentation_requirements = ..., TODO Don't really need to parse but should
+                            // Some(&[137]) => connection_message.user_session_requirements = ..., TODO Really should
+                            // Some(&[96]) => Simply Encoded User Data TODO should
+                            Some(&[97]) => {
+                                connection_message.user_data = Some(UserData::parse(npm_object)?)
+                            }
                             _ => (),
                         };
                     }
-
                     (&[] as &[u8], 0)
                 }
                 _ => (&[] as &[u8], 0),

@@ -1,10 +1,12 @@
 use der_parser::{
     Oid,
-    asn1_rs::Any,
+    asn1_rs::{Any, FromBer, Integer},
     ber::BerObject,
     der::{Class, Header, Tag},
     error::BerError,
 };
+
+use crate::messages::parsers::process_constructed_data;
 
 #[derive(Debug)]
 pub enum UserData {
@@ -28,9 +30,33 @@ impl UserData {
         }
     }
 
-    pub(crate) fn parse<'a>(ber_object: Any<'a>) -> Result<UserData, BerError> {
-        match ber_object.header.raw_tag() {
-            // TODO Change the error to return something meaningful.
+    pub(crate) fn parse<'a>(data: Any<'_>) -> Result<UserData, BerError> {
+        match data.header.raw_tag() {
+            Some(&[97]) => {
+                let presentation_list = vec![];
+                for pdv_list in process_constructed_data(data.data)? {
+                    pdv_list.header.assert_class(Class::Universal)?;
+                    pdv_list.header.assert_tag(Tag::Sequence)?;
+
+                    let mut transfer_syntax_name = None;
+                    let mut presentation_contaxt_id = None;
+                    let mut presentation_data_values = None;
+                    for pdv_list_part in process_constructed_data(pdv_list.data)? {
+                        match pdv_list_part.header.raw_tag() {
+                            Some(&[6]) => transfer_syntax_name = Some(Oid::from_ber(pdv_list.data)?.1),
+                            Some(&[2]) => presentation_contaxt_id = Some(Integer::from_ber(pdv_list_part.data)?),
+                            Some(&[160]) => presentation_data_values = Some(PresentationDataValues::SingleAsn1Type(pdv_list_part.data.to_vec())),
+                            // TODO Other formats
+                            x => tracing::warn!("Unknown data in copp user data: {:?}", x),
+                        }
+                    }
+                    presentation_list.push(PresentationDataValueList {
+                        transfer_syntax_name,
+                        presentation_context_identifier: presentation_contaxt_id.ok_or(|| Err(BerError::BerValueError))?.1.
+                    });
+                }
+                Ok(UserData::FullyEncoded(presentation_list))
+            }
             _ => todo!(),
         }
         // Ok(UserData::FullyEncoded(vec![]))
@@ -71,14 +97,17 @@ impl PresentationDataValues {
         match &self {
             PresentationDataValues::SingleAsn1Type(data) => der_parser::ber::BerObject::from_header_and_content(
                 Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
+                // Shoehorn the BER data into the payload but make it still look like BER data.
                 der_parser::ber::BerObjectContent::OctetString(data),
             ),
-            PresentationDataValues::OctetAligned(data) => {
-                der_parser::ber::BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::OctetString(data))
-            }
-            PresentationDataValues::Arbitrary(data) => {
-                der_parser::ber::BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(2), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::OctetString(data))
-            }
+            PresentationDataValues::OctetAligned(data) => der_parser::ber::BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
+                der_parser::ber::BerObjectContent::OctetString(data),
+            ),
+            PresentationDataValues::Arbitrary(data) => der_parser::ber::BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, true, Tag::from(2), der_parser::ber::Length::Definite(0)),
+                der_parser::ber::BerObjectContent::OctetString(data),
+            ),
         }
     }
 }

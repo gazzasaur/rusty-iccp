@@ -15,13 +15,14 @@ mod tests {
     use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
-    use tracing::error;
+    use tracing_test::traced_test;
 
     use crate::messages::user_data::{PresentationDataValueList, PresentationDataValues, UserData};
 
     use super::*;
 
     #[tokio::test]
+    #[traced_test]
     async fn it_should_create_connection() -> Result<(), anyhow::Error> {
         let options = CoppConnectionInformation {
             calling_presentation_selector: Some(vec![0x00, 0x00, 0x00, 0x23]),
