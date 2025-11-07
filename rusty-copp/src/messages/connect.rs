@@ -1,10 +1,14 @@
 use der_parser::{
-    ber::{BitStringObject, parse_ber_tagged_implicit_g},
+    ber::{BitStringObject, parse_ber_any, parse_ber_tagged_implicit_g},
     der::{Class, Header, Tag},
 };
 
 use crate::{
-    error::protocol_error, messages::{parsers::{process_constructed_data, process_octetstring, process_presentation_context_list, process_protocol, PresentationMode, Protocol}, user_data::UserData}, CoppError, PresentationContextType
+    CoppError, PresentationContextType,
+    messages::{
+        parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_list, process_protocol},
+        user_data::UserData,
+    },
 };
 
 #[derive(Debug)]
@@ -46,7 +50,6 @@ impl ConnectMessage {
     }
 
     pub(crate) fn parse(data: &[u8]) -> Result<ConnectMessage, CoppError> {
-        let mut context_definition_list = None;
         let mut connection_message = ConnectMessage {
             protocol: None,
             presentation_mode: None,
@@ -56,47 +59,45 @@ impl ConnectMessage {
             user_data: None,
         };
 
-        // This destructively processes the payload directly into the connect message in a single pass. No retrun is required.
-        der_parser::ber::parse_ber_set_of_v(|seq_data| {
-            let (connect_message_remainder, object) = der_parser::ber::parse_ber_any(seq_data)?;
+        let (_, container) = parse_ber_any(data).map_err(|e| CoppError::InternalError(e.to_string()))?;
+        container.header.assert_constructed().map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_tag(Tag::Set).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_class(Class::Universal).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
 
-            let (_, connect_message_parameter) = match object.header.raw_tag() {
+        // This destructively processes the payload directly into the connect message in a single pass. No retrun is required.
+        for object in process_constructed_data(container.data).map_err(|e| CoppError::InternalError(e.to_string()))? {
+            match object.header.raw_tag() {
                 Some(&[160]) => {
                     let (_, presentation_mode) = parse_ber_tagged_implicit_g(Tag::from(0), |rem, header, size| {
                         let (_, value) = der_parser::ber::parse_ber_content(Tag::Integer)(rem, &header, size)?;
                         header.assert_class(Class::ContextSpecific)?;
                         header.assert_primitive()?;
                         Ok((&[], PresentationMode::from(value.as_slice()?)))
-                    })(object.data)?;
+                    })(object.data)
+                    .map_err(|e| CoppError::InternalError(e.to_string()))?;
                     connection_message.presentation_mode = Some(presentation_mode);
-                    (&[] as &[u8], 0)
                 }
                 Some(&[162]) => {
                     // This is technically a sequence. But we are going to be relaxed. The standard also says to ignore unknown tags, which can complicate processing. So we treat this as a set.
-                    for npm_object in process_constructed_data(object.data)? {
+                    for npm_object in process_constructed_data(object.data).map_err(|e| CoppError::InternalError(e.to_string()))? {
                         match npm_object.header.raw_tag() {
-                            Some(&[128]) => connection_message.protocol = process_protocol(npm_object)?,
-                            Some(&[129]) => connection_message.calling_presentation_selector = process_octetstring(npm_object)?,
-                            Some(&[130]) => connection_message.called_presentation_selector = process_octetstring(npm_object)?,
+                            Some(&[128]) => connection_message.protocol = process_protocol(npm_object).map_err(|e| CoppError::InternalError(e.to_string()))?,
+                            Some(&[129]) => connection_message.calling_presentation_selector = process_octetstring(npm_object).map_err(|e| CoppError::InternalError(e.to_string()))?,
+                            Some(&[130]) => connection_message.called_presentation_selector = process_octetstring(npm_object).map_err(|e| CoppError::InternalError(e.to_string()))?,
                             Some(&[164]) => {
-                                context_definition_list = Some(process_presentation_context_list(npm_object.data)?);
+                                connection_message.context_definition_list = process_presentation_context_list(npm_object.data).map_err(|e| CoppError::InternalError(e.to_string()))?;
                             }
                             // Some(&[136]) => connection_message.presentation_requirements = ..., TODO Don't really need to parse but should
                             // Some(&[137]) => connection_message.user_session_requirements = ..., TODO Really should
                             // Some(&[96]) => Simply Encoded User Data TODO should
-                            Some(&[97]) => {
-                                connection_message.user_data = Some(UserData::parse(npm_object)?)
-                            }
+                            Some(&[97]) => connection_message.user_data = Some(UserData::parse(npm_object).map_err(|e| CoppError::InternalError(e.to_string()))?),
                             _ => (),
                         };
                     }
-                    (&[] as &[u8], 0)
                 }
-                _ => (&[] as &[u8], 0),
+                _ => (),
             };
-            Ok((connect_message_remainder, connect_message_parameter))
-        })(&data)
-        .map_err(|e| protocol_error("sd", e))?;
+        }
 
         Ok(connection_message)
     }

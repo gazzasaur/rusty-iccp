@@ -104,7 +104,7 @@ impl Default for CoppConnectionInformation {
 
 pub enum CoppRecvResult {
     Closed,
-    Data(Vec<u8>),
+    Data(UserData),
 }
 
 pub trait CoppInitiator: Send {
@@ -128,6 +128,6 @@ pub trait CoppReader: Send {
 }
 
 pub trait CoppWriter: Send {
-    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    fn send(&mut self, data: &UserData) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }

@@ -1,17 +1,18 @@
 use der_parser::{
     Oid,
     asn1_rs::{Any, FromBer, Integer, ToDer},
-    ber::BerObject,
+    ber::{BerObject, parse_ber_any},
     der::{Class, Header, Tag},
     error::BerError,
 };
 
-use crate::messages::parsers::process_constructed_data;
+use crate::{CoppError, messages::parsers::process_constructed_data};
 
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum UserData {
-    // SimplyEncoded(Vec<u8>),
     FullyEncoded(Vec<PresentationDataValueList>),
+    // Not yet supported and not required for MMS/ICCP
+    // SimplyEncoded(Vec<u8>),
 }
 
 impl UserData {
@@ -30,7 +31,7 @@ impl UserData {
         }
     }
 
-    pub(crate) fn parse(data: Any<'static>) -> Result<UserData, BerError> {
+    pub(crate) fn parse(data: Any<'_>) -> Result<UserData, BerError> {
         match data.header.raw_tag() {
             Some(&[97]) => {
                 let mut presentation_list = vec![];
@@ -43,7 +44,7 @@ impl UserData {
                     let mut presentation_data_values = None;
                     for pdv_list_part in process_constructed_data(pdv_list.data)? {
                         match pdv_list_part.header.raw_tag() {
-                            Some(&[6]) => transfer_syntax_name = Some(Oid::from_ber(pdv_list.data)?.1),
+                            Some(&[6]) => transfer_syntax_name = Some(Oid::from_ber(pdv_list.data)?.1.to_owned()),
                             Some(&[2]) => presentation_contaxt_id = Some(pdv_list_part.data.to_vec()),
                             Some(&[160]) => presentation_data_values = Some(PresentationDataValues::SingleAsn1Type(pdv_list_part.data.to_vec())),
                             // TODO Other formats
@@ -62,10 +63,15 @@ impl UserData {
         }
         // Ok(UserData::FullyEncoded(vec![]))
     }
+
+    pub(crate) fn parse_raw(data: &[u8]) -> Result<UserData, BerError> {
+        let (_, packet) = parse_ber_any(data)?;
+        Ok(UserData::parse(packet)?)
+    }
 }
 
 // Technically SingleAsn1Type is only allowed if there is one PDV. But We do not restrict this here.
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct PresentationDataValueList {
     pub transfer_syntax_name: Option<Oid<'static>>,
     pub presentation_context_identifier: Vec<u8>,
@@ -85,12 +91,12 @@ impl PresentationDataValueList {
     }
 }
 
-// Technically SingleAsn1Type is only allowed if there is one PDV. But We do not restrict this here.
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum PresentationDataValues {
     SingleAsn1Type(Vec<u8>),
-    OctetAligned(Vec<u8>),
-    Arbitrary(Vec<u8>),
+    // TODO IMPL Not required for MMS/ICCP
+    // OctetAligned(Vec<u8>),
+    // Arbitrary(Vec<u8>),
 }
 
 impl PresentationDataValues {
@@ -101,14 +107,15 @@ impl PresentationDataValues {
                 // Shoehorn the BER data into the payload but make it still look like BER data.
                 der_parser::ber::BerObjectContent::OctetString(data),
             ),
-            PresentationDataValues::OctetAligned(data) => der_parser::ber::BerObject::from_header_and_content(
-                Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
-                der_parser::ber::BerObjectContent::OctetString(data),
-            ),
-            PresentationDataValues::Arbitrary(data) => der_parser::ber::BerObject::from_header_and_content(
-                Header::new(Class::ContextSpecific, true, Tag::from(2), der_parser::ber::Length::Definite(0)),
-                der_parser::ber::BerObjectContent::OctetString(data),
-            ),
+            // TODO IMPL Not required for MMS/ICCP
+            // PresentationDataValues::OctetAligned(data) => der_parser::ber::BerObject::from_header_and_content(
+            //     Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
+            //     der_parser::ber::BerObjectContent::OctetString(data),
+            // ),
+            // PresentationDataValues::Arbitrary(data) => der_parser::ber::BerObject::from_header_and_content(
+            //     Header::new(Class::ContextSpecific, true, Tag::from(2), der_parser::ber::Length::Definite(0)),
+            //     der_parser::ber::BerObjectContent::OctetString(data),
+            // ),
         }
     }
 }

@@ -5,7 +5,12 @@ use der_parser::{
 use tracing::warn;
 
 use crate::{
-    error::protocol_error, messages::{parsers::{process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol, PresentationMode, Protocol}, user_data::UserData}, CoppError, PresentationContextResultType
+    CoppError, PresentationContextResultType,
+    error::protocol_error,
+    messages::{
+        parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol},
+        user_data::UserData,
+    },
 };
 
 #[derive(Debug)]
@@ -27,7 +32,7 @@ impl AcceptMessage {
             user_data,
         }
     }
-    
+
     pub(crate) fn user_data(self) -> Option<UserData> {
         self.user_data
     }
@@ -67,6 +72,7 @@ impl AcceptMessage {
                             Some(&[165]) => {
                                 context_definition_list = Some(process_presentation_context_result_list(npm_object.data)?);
                             }
+                            Some(&[97]) => accept_message.user_data = Some(UserData::parse(npm_object)?),
                             _ => (),
                         };
                     }
@@ -196,9 +202,11 @@ mod tests {
         let subject = AcceptMessage::new(
             Some(Protocol::Version1),
             Some(vec![0x04]),
-            PresentationContextResultType::ContextDefinitionList(vec![
-                PresentationContextResult { result: PresentationContextResultCause::Acceptance, transfer_syntax_name: None, provider_reason: None },
-            ]),
+            PresentationContextResultType::ContextDefinitionList(vec![PresentationContextResult {
+                result: PresentationContextResultCause::Acceptance,
+                transfer_syntax_name: None,
+                provider_reason: None,
+            }]),
             None,
         );
         let data = subject.serialise()?;

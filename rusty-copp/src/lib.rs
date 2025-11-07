@@ -43,17 +43,41 @@ mod tests {
                 transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
             },
         ];
-        let (_c, _s) = create_copp_connection_pair_with_options(
+        let (client_connection, server_connection) = create_copp_connection_pair_with_options(
             Some(UserData::FullyEncoded(vec![PresentationDataValueList {
                 presentation_context_identifier: vec![0x01],
-                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x30, 0x00]),
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x60, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
                 transfer_syntax_name: None,
             }])),
             options,
-            None,
+            Some(UserData::FullyEncoded(vec![PresentationDataValueList {
+                presentation_context_identifier: vec![0x01],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x61, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
+                transfer_syntax_name: None,
+            }])),
             presentation_contexts,
         )
         .await?;
+
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
+
+        client_writer
+            .send(&UserData::FullyEncoded(vec![PresentationDataValueList {
+                presentation_context_identifier: vec![0x03],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x60, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
+                transfer_syntax_name: None,
+            }]))
+            .await?;
+        server_reader.recv().await?;
+        server_writer
+            .send(&UserData::FullyEncoded(vec![PresentationDataValueList {
+                presentation_context_identifier: vec![0x03],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x60, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
+                transfer_syntax_name: None,
+            }]))
+            .await?;
+        client_reader.recv().await?;
 
         Ok(())
     }
@@ -76,7 +100,7 @@ mod tests {
             let cosp_client = TcpCospInitiator::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client, Default::default()).await?;
             let copp_client =
                 RustyCoppInitiator::<TcpCospInitiator<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_client, options);
-            Ok(copp_client.initiate(PresentationContextType::ContextDefinitionList(contexts), connect_data).await?)
+            Ok(copp_client.initiate(PresentationContextType::ContextDefinitionList(contexts), connect_data.clone()).await?)
         };
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;
@@ -99,16 +123,16 @@ mod tests {
                 },
             ])));
             let (copp_responder, connect_user_data) = copp_listener.responder().await?;
-            assert!(false, "---- {:?}", connect_user_data);
 
-            Ok(copp_responder.accept(accept_data).await?)
+            Ok((copp_responder.accept(accept_data.clone()).await?, connect_user_data))
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
         let (copp_client, accepted_data) = copp_client?;
-        let copp_server = copp_server?;
+        let (copp_server, connected_data) = copp_server?;
 
-        // assert!(false, "{:?}", accepted_data);
+        assert_eq!(accept_data, accepted_data);
+        assert_eq!(connect_data, connected_data);
 
         Ok((copp_client, copp_server))
     }

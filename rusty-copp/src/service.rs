@@ -62,7 +62,7 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
         let (cosp_responder, _, user_data) = cosp_listener.responder().await?;
 
         let mut connect_message = match user_data {
-            Some(user_data) => ConnectMessage::parse(user_data)?,
+            Some(user_data) => ConnectMessage::parse(&user_data)?,
             None => return Err(CoppError::ProtocolError("No presentation connection data received.".to_string())),
         };
 
@@ -119,16 +119,6 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppResponder<T, R, W>
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppResponder for RustyCoppResponder<T, R, W> {
     async fn accept(self, accept_data: Option<UserData>) -> Result<impl CoppConnection, CoppError> {
-        // let (cosp_reader, cosp_writer) = self.cosp_responder.accept(None).await?.split().await?;
-        // let result = match self.connection_information.presentation_context {
-        //     PresentationContextType::ContextDefinitionList(presentation_contexts) => presentation_contexts.into_iter().map(|context| {
-        //         PresentationContextResult {
-        //             result: PresentationContextResultCause::Acceptance,
-        //             transfer_syntax_name: None,
-        //             provider_reason: None,
-        //         }
-        //     }),
-        // };
         let results = match self.resultant_contexts {
             Some(results) => results,
             None => PresentationContextResultType::ContextDefinitionList(vec![]),
@@ -171,7 +161,10 @@ impl<R: CospReader> RustyCoppReader<R> {
 
 impl<R: CospReader> CoppReader for RustyCoppReader<R> {
     async fn recv(&mut self) -> Result<CoppRecvResult, CoppError> {
-        Ok(CoppRecvResult::Closed)
+        match self.cosp_reader.recv().await? {
+            rusty_cosp::CospRecvResult::Closed => return Ok(CoppRecvResult::Closed),
+            rusty_cosp::CospRecvResult::Data(items) => Ok(CoppRecvResult::Data(UserData::parse_raw(&items).map_err(|e| CoppError::ProtocolError(e.to_string()))?)),
+        }
     }
 }
 
@@ -186,11 +179,11 @@ impl<W: CospWriter> RustyCoppWriter<W> {
 }
 
 impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
-    async fn send(&mut self, _data: &[u8]) -> Result<(), CoppError> {
-        todo!()
+    async fn send(&mut self, user_data: &UserData) -> Result<(), CoppError> {
+        self.cosp_writer.send(user_data.to_ber().to_vec().map_err(|e| CoppError::ProtocolError(e.to_string()))?.as_slice()).await.map_err(|e| CoppError::ProtocolStackError(e))
     }
 
     async fn continue_send(&mut self) -> Result<(), CoppError> {
-        todo!()
+        Ok(self.cosp_writer.continue_send().await?)
     }
 }
