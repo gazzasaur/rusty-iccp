@@ -2,7 +2,6 @@ use der_parser::{
     ber::{BitStringObject, parse_ber_tagged_implicit_g},
     der::{Class, Header, Tag},
 };
-use tracing::warn;
 
 use crate::{
     CoppError, PresentationContextResultType,
@@ -49,7 +48,6 @@ impl AcceptMessage {
 
         // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
         der_parser::ber::parse_ber_set_of_v(|data| {
-            warn!("here1");
             let (accept_message_remainder, object) = der_parser::ber::parse_ber_any(data)?;
 
             let (_, accept_message_parameter) = match object.header.raw_tag() {
@@ -81,7 +79,6 @@ impl AcceptMessage {
                 }
                 _ => (&[] as &[u8], 0),
             };
-            warn!("here2");
             Ok((accept_message_remainder, accept_message_parameter))
         })(&data)
         .map_err(|e| protocol_error("sd", e))?;

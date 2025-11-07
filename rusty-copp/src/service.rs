@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use rusty_cosp::{CospConnection, CospInitiator, CospListener, CospReader, CospResponder, CospWriter};
 
 use crate::{
-    messages::{accept::AcceptMessage, connect::ConnectMessage, user_data::UserData}, CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType
+    messages::{accept::AcceptMessage, connect::ConnectMessage, user_data::UserData}, CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResultType, PresentationContextType
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {

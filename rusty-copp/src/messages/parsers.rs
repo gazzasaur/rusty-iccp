@@ -25,30 +25,9 @@ impl From<&[u8]> for PresentationMode {
 }
 
 #[derive(Debug)]
-pub(crate) enum ConnectMessageParameter {
-    Mode(PresentationMode),
-    NormalModeParameters(Vec<NormalModeParameter>),
-    Unknown,
-}
-
-#[derive(Debug)]
-pub(crate) enum FunctionalUnit {
-    ContextManagement,
-    Restoration,
-}
-
-#[derive(Debug)]
 pub(crate) enum Protocol {
     Version1,
     Unknown(Vec<u8>),
-}
-
-#[derive(Debug)]
-pub(crate) enum NormalModeParameter {
-    Protocol(Protocol),
-    CallingPresentationSelector(Vec<u8>),
-    CalledPresentationSelector(Vec<u8>),
-    FunctionalUnits(Vec<FunctionalUnit>),
 }
 
 pub(crate) fn process_bitstring<'a>(npm_object: Any<'a>) -> Result<Option<BitStringObject<'a>>, BerError> {

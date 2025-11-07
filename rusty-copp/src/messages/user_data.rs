@@ -1,12 +1,12 @@
 use der_parser::{
     Oid,
-    asn1_rs::{Any, FromBer, Integer, ToDer},
+    asn1_rs::{Any, FromBer},
     ber::{BerObject, parse_ber_any},
     der::{Class, Header, Tag},
     error::BerError,
 };
 
-use crate::{CoppError, messages::parsers::process_constructed_data};
+use crate::messages::parsers::process_constructed_data;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum UserData {
