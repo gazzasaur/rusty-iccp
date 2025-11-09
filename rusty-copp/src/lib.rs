@@ -17,8 +17,6 @@ mod tests {
     use tokio::join;
     use tracing_test::traced_test;
 
-    use crate::messages::user_data::{PresentationDataValueList, PresentationDataValues, UserData};
-
     use super::*;
 
     #[tokio::test]

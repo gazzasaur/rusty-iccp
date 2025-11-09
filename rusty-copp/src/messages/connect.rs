@@ -4,11 +4,8 @@ use der_parser::{
 };
 
 use crate::{
-    CoppError, PresentationContextType,
-    messages::{
-        parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_list, process_protocol},
-        user_data::UserData,
-    },
+    CoppError, PresentationContextType, UserData,
+    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_list, process_protocol},
 };
 
 #[derive(Debug)]

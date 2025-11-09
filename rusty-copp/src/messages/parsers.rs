@@ -1,8 +1,9 @@
 use der_parser::{
+    Oid,
     asn1_rs::Any,
-    ber::{parse_ber_any, BerObjectContent, BitStringObject},
+    ber::{BerObjectContent, BitStringObject, parse_ber_any},
     der::{Class, Tag},
-    error::BerError, Oid,
+    error::BerError,
 };
 
 use crate::{PresentationContext, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType};
@@ -99,16 +100,14 @@ pub(crate) fn process_presentation_context<'a>(npm_objects: Vec<Any<'a>>) -> Res
             Some(&[2]) => id = process_integer(npm_object)?,
             Some(&[6]) => abstract_syntax_name = process_oid(npm_object)?,
             Some(&[48]) => transfer_syntax_name_list = Some(process_transfer_syntaxt_list(npm_object.data)?),
-            _ => ()
+            _ => (),
         };
     }
-    Ok(
-        PresentationContext {
-            indentifier: id.ok_or_else(|| BerError::BerValueError)?,
-            abstract_syntax_name: abstract_syntax_name.ok_or_else(|| BerError::BerValueError)?,
-            transfer_syntax_name_list: transfer_syntax_name_list.ok_or_else(|| BerError::BerValueError)?,
-        }
-    )
+    Ok(PresentationContext {
+        indentifier: id.ok_or_else(|| BerError::BerValueError)?,
+        abstract_syntax_name: abstract_syntax_name.ok_or_else(|| BerError::BerValueError)?,
+        transfer_syntax_name_list: transfer_syntax_name_list.ok_or_else(|| BerError::BerValueError)?,
+    })
 }
 
 pub(crate) fn process_presentation_result_context<'a>(npm_objects: Vec<Any<'a>>) -> Result<PresentationContextResult, BerError> {
@@ -120,16 +119,14 @@ pub(crate) fn process_presentation_result_context<'a>(npm_objects: Vec<Any<'a>>)
             Some(&[0]) => result = process_context_result(npm_object)?,
             Some(&[1]) => transfer_syntax_name = process_oid(npm_object)?,
             // Some(&[2]) => provider_reason = Some(process_transfer_syntaxt_list(npm_object.data)?), TODO
-            _ => ()
+            _ => (),
         };
     }
-    Ok(
-        PresentationContextResult {
-            result,
-            transfer_syntax_name,
-            provider_reason: None, // TODO Provider Reason
-        }
-    )
+    Ok(PresentationContextResult {
+        result,
+        transfer_syntax_name,
+        provider_reason: None, // TODO Provider Reason
+    })
 }
 
 pub(crate) fn process_presentation_context_list<'a>(data: &'a [u8]) -> Result<PresentationContextType, BerError> {

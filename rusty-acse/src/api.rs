@@ -1,4 +1,4 @@
-use der_parser::Oid;
+use der_parser::{Oid, asn1_rs::{GraphicString, Integer}};
 use rusty_copp::CoppError;
 use thiserror::Error;
 
@@ -17,64 +17,68 @@ pub enum AcseError {
     InternalError(String),
 }
 
-// TODO Support Default Context. This library is targeted towards ACSE/MMS which does not require the default context.
-#[derive(PartialEq, Clone, Debug)]
-pub enum PresentationContextType {
-    // DefaultContext,
-    ContextDefinitionList(Vec<PresentationContext>),
+#[derive(PartialEq, Debug)]
+pub struct AcseRequestInformation {
+    pub application_context_name: Oid<'static>,
+
+    pub called_ap_title: Option<ApTitle>,
+    pub called_ae_qualifier: Option<AeQualifier>,
+    pub called_ap_invocation_identifier: Option<Integer<'static>>,
+    pub called_ae_invocation_identifier: Option<Integer<'static>>,
+
+    pub calling_ap_title: Option<ApTitle>,
+    pub calling_ae_qualifier: Option<AeQualifier>,
+    pub calling_ap_invocation_identifier: Option<Integer<'static>>,
+    pub calling_ae_invocation_identifier: Option<Integer<'static>>,
+
+    pub implementation_information: Option<GraphicString<'static>>,
+    pub user_data: Option<Vec<Vec<u8>>>,
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub enum PresentationContextResultType {
-    // DefaultContextAccept,
-    // DefaultContextReject,
-    ContextDefinitionList(Vec<PresentationContextResult>),
+#[derive(PartialEq, Debug)]
+pub struct AcseResponseInformation {
+    pub application_context_name: Oid<'static>,
+
+    pub associate_result: AssociateResult,
+    pub associate_source_diagnostic: AssociateSourceDiagnostic,
+
+    pub called_ap_title: Option<ApTitle>,
+    pub called_ae_qualifier: Option<AeQualifier>,
+    pub called_ap_invocation_identifier: Option<Integer<'static>>,
+    pub called_ae_invocation_identifier: Option<Integer<'static>>,
+
+    pub calling_ap_title: Option<ApTitle>,
+    pub calling_ae_qualifier: Option<AeQualifier>,
+    pub calling_ap_invocation_identifier: Option<Integer<'static>>,
+    pub calling_ae_invocation_identifier: Option<Integer<'static>>,
+
+    pub implementation_information: Option<GraphicString<'static>>,
+    pub user_data: Option<Vec<Vec<u8>>>,
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub struct PresentationContext {
-    pub indentifier: Vec<u8>, // ASN1 Integer
-    pub abstract_syntax_name: Oid<'static>,
-    pub transfer_syntax_name_list: Vec<Oid<'static>>,
+#[derive(PartialEq, Debug)]
+pub enum AssociateResult {
+    Accepted,
+    RejectedPermanent,
+    RejectedTransient,
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub enum PresentationContextResultCause {
-    Acceptance,
-    UserRejection,
-    ProviderRejection,
+#[derive(PartialEq, Debug)]
+pub enum AssociateSourceDiagnostic {
+    User,
+    Provider,
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub enum PresentationContextResultProviderReason {
-    ReasonNotSpecified,
-    AbstrctSyntaxNotSupported,
-    ProposedAbstrctSyntaxNotSupported,
-    LocalLimitOnDcsExceeded,
+#[derive(PartialEq, Debug)]
+pub enum ApTitle {
+    Form1(Vec<u8>), // DN
+    Form2(Oid<'static>),
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub struct PresentationContextResult {
-    pub result: PresentationContextResultCause,
-    pub transfer_syntax_name: Option<Oid<'static>>,
-    pub provider_reason: Option<PresentationContextResultProviderReason>,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct AcseConnectionInformation {
-    pub calling_presentation_selector: Option<Vec<u8>>,
-    pub called_presentation_selector: Option<Vec<u8>>,
-    pub presentation_context: PresentationContextType,
-}
-
-impl Default for AcseConnectionInformation {
-    fn default() -> Self {
-        Self {
-            calling_presentation_selector: None,
-            called_presentation_selector: None,
-            presentation_context: PresentationContextType::ContextDefinitionList(vec![]),
-        }
-    }
+#[derive(PartialEq, Debug)]
+pub enum AeQualifier {
+    Form1(Vec<u8>), // DN
+    Form2(Vec<u8>), // Integer
 }
 
 pub enum AcseRecvResult {

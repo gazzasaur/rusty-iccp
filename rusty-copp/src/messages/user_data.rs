@@ -6,14 +6,7 @@ use der_parser::{
     error::BerError,
 };
 
-use crate::messages::parsers::process_constructed_data;
-
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum UserData {
-    FullyEncoded(Vec<PresentationDataValueList>),
-    // Not yet supported and not required for MMS/ICCP
-    // SimplyEncoded(Vec<u8>),
-}
+use crate::{PresentationDataValueList, PresentationDataValues, UserData, messages::parsers::process_constructed_data};
 
 impl UserData {
     pub(crate) fn to_ber(&self) -> BerObject {
@@ -70,14 +63,6 @@ impl UserData {
     }
 }
 
-// Technically SingleAsn1Type is only allowed if there is one PDV. But We do not restrict this here.
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct PresentationDataValueList {
-    pub transfer_syntax_name: Option<Oid<'static>>,
-    pub presentation_context_identifier: Vec<u8>,
-    pub presentation_data_values: PresentationDataValues,
-}
-
 impl PresentationDataValueList {
     pub(crate) fn to_ber(&self) -> BerObject {
         let mut object_content = vec![];
@@ -89,14 +74,6 @@ impl PresentationDataValueList {
 
         der_parser::ber::BerObject::from_seq(object_content)
     }
-}
-
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum PresentationDataValues {
-    SingleAsn1Type(Vec<u8>),
-    // TODO IMPL Not required for MMS/ICCP
-    // OctetAligned(Vec<u8>),
-    // Arbitrary(Vec<u8>),
 }
 
 impl PresentationDataValues {

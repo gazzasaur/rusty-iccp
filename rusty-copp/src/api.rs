@@ -2,8 +2,6 @@ use der_parser::Oid;
 use rusty_cosp::CospError;
 use thiserror::Error;
 
-use crate::messages::user_data::UserData;
-
 #[derive(Error, Debug)]
 pub enum CoppError {
     #[error("COPP Protocol Error - {}", .0)]
@@ -83,6 +81,29 @@ pub struct PresentationContextResult {
     pub result: PresentationContextResultCause,
     pub transfer_syntax_name: Option<Oid<'static>>,
     pub provider_reason: Option<PresentationContextResultProviderReason>,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum UserData {
+    FullyEncoded(Vec<PresentationDataValueList>),
+    // Not yet supported and not required for MMS/ICCP
+    // SimplyEncoded(Vec<u8>),
+}
+
+// Technically SingleAsn1Type is only allowed if there is one PDV. But We do not restrict this here.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct PresentationDataValueList {
+    pub transfer_syntax_name: Option<Oid<'static>>,
+    pub presentation_context_identifier: Vec<u8>,
+    pub presentation_data_values: PresentationDataValues,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum PresentationDataValues {
+    SingleAsn1Type(Vec<u8>),
+    // TODO IMPL Not required for MMS/ICCP
+    // OctetAligned(Vec<u8>),
+    // Arbitrary(Vec<u8>),
 }
 
 #[derive(PartialEq, Clone, Debug)]

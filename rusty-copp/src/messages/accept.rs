@@ -1,15 +1,12 @@
 use der_parser::{
-    ber::{BitStringObject, parse_ber_tagged_implicit_g},
+    ber::{BitStringObject, parse_ber_graphicstring, parse_ber_tagged_implicit_g},
     der::{Class, Header, Tag},
 };
 
 use crate::{
-    CoppError, PresentationContextResultType,
+    CoppError, PresentationContextResultType, UserData,
     error::protocol_error,
-    messages::{
-        parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol},
-        user_data::UserData,
-    },
+    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol},
 };
 
 #[derive(Debug)]

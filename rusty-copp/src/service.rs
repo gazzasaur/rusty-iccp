@@ -3,7 +3,8 @@ use std::marker::PhantomData;
 use rusty_cosp::{CospConnection, CospInitiator, CospListener, CospReader, CospResponder, CospWriter};
 
 use crate::{
-    messages::{accept::AcceptMessage, connect::ConnectMessage, user_data::UserData}, CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResultType, PresentationContextType
+    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResultType, PresentationContextType, UserData,
+    messages::{accept::AcceptMessage, connect::ConnectMessage},
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
@@ -28,13 +29,7 @@ impl<T: CospInitiator, R: CospReader, W: CospWriter> CoppInitiator for RustyCopp
     async fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<UserData>) -> Result<(impl CoppConnection, Option<UserData>), CoppError> {
         let cosp_initiator = self.cosp_initiator;
 
-        let connect_message = ConnectMessage::new(
-            None,
-            self.options.calling_presentation_selector,
-            self.options.called_presentation_selector,
-            presentation_contexts,
-            user_data,
-        );
+        let connect_message = ConnectMessage::new(None, self.options.calling_presentation_selector, self.options.called_presentation_selector, presentation_contexts, user_data);
         let data = connect_message.serialise()?;
 
         let (cosp_connection, accept_data) = cosp_initiator.initiate(Some(data)).await?;
@@ -180,7 +175,10 @@ impl<W: CospWriter> RustyCoppWriter<W> {
 
 impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
     async fn send(&mut self, user_data: &UserData) -> Result<(), CoppError> {
-        self.cosp_writer.send(user_data.to_ber().to_vec().map_err(|e| CoppError::ProtocolError(e.to_string()))?.as_slice()).await.map_err(|e| CoppError::ProtocolStackError(e))
+        self.cosp_writer
+            .send(user_data.to_ber().to_vec().map_err(|e| CoppError::ProtocolError(e.to_string()))?.as_slice())
+            .await
+            .map_err(|e| CoppError::ProtocolStackError(e))
     }
 
     async fn continue_send(&mut self) -> Result<(), CoppError> {
