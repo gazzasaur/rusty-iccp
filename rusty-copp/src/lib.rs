@@ -3,8 +3,8 @@ pub(crate) mod error;
 pub(crate) mod messages;
 pub(crate) mod service;
 
-pub use api::*;
 pub use service::*;
+pub use api::*;
 
 #[cfg(test)]
 mod tests {

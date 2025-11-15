@@ -6,10 +6,33 @@ use der_parser::{
     error::BerError,
 };
 
-use crate::{PresentationDataValueList, PresentationDataValues, UserData, messages::parsers::process_constructed_data};
+use crate::{messages::parsers::process_constructed_data};
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum UserData {
+    FullyEncoded(Vec<PresentationDataValueList>),
+    // Not yet supported and not required for MMS/ICCP
+    // SimplyEncoded(Vec<u8>),
+}
+
+// Technically SingleAsn1Type is only allowed if there is one PDV. But We do not restrict this here.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct PresentationDataValueList {
+    pub transfer_syntax_name: Option<Oid<'static>>,
+    pub presentation_context_identifier: Vec<u8>,
+    pub presentation_data_values: PresentationDataValues,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum PresentationDataValues {
+    SingleAsn1Type(Vec<u8>),
+    // TODO IMPL Not required for MMS/ICCP
+    // OctetAligned(Vec<u8>),
+    // Arbitrary(Vec<u8>),
+}
 
 impl UserData {
-    pub(crate) fn to_ber(&self) -> BerObject {
+    pub fn to_ber(&self) -> BerObject {
         match &self {
             UserData::FullyEncoded(presentation_data_value_lists) => {
                 let mut pdv_lists = vec![];
@@ -24,7 +47,7 @@ impl UserData {
         }
     }
 
-    pub(crate) fn parse(data: Any<'_>) -> Result<UserData, BerError> {
+    pub fn parse(data: Any<'_>) -> Result<UserData, BerError> {
         match data.header.raw_tag() {
             Some(&[97]) => {
                 let mut presentation_list = vec![];
@@ -57,14 +80,14 @@ impl UserData {
         // Ok(UserData::FullyEncoded(vec![]))
     }
 
-    pub(crate) fn parse_raw(data: &[u8]) -> Result<UserData, BerError> {
+    pub fn parse_raw(data: &[u8]) -> Result<UserData, BerError> {
         let (_, packet) = parse_ber_any(data)?;
         Ok(UserData::parse(packet)?)
     }
 }
 
 impl PresentationDataValueList {
-    pub(crate) fn to_ber(&self) -> BerObject {
+    pub fn to_ber(&self) -> BerObject {
         let mut object_content = vec![];
         if let Some(transfer_syntax_name) = &self.transfer_syntax_name {
             object_content.push(der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(transfer_syntax_name.clone())));
@@ -77,7 +100,7 @@ impl PresentationDataValueList {
 }
 
 impl PresentationDataValues {
-    pub(crate) fn to_ber(&self) -> BerObject {
+    pub fn to_ber(&self) -> BerObject {
         match &self {
             PresentationDataValues::SingleAsn1Type(data) => der_parser::ber::BerObject::from_header_and_content(
                 Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
