@@ -12,7 +12,6 @@ pub type RustyAcseInitiatorIsoStack<R, W> = RustyOsiSingleValueAcseInitiator<Rus
 
 #[cfg(test)]
 mod tests {
-    use der_parser::asn1_rs::Integer;
     use der_parser::num_bigint::BigInt;
     use rusty_copp::CoppConnection;
     use rusty_copp::CoppListener;
@@ -68,7 +67,7 @@ mod tests {
                 Default::default(),
             );
             let acse_client = RustyAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_client, reqeust_options);
-            Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, vec![0x0a, 0x0b, 0x0c]).await?)
+            Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, vec![0xa8, 0x00]).await?)
         };
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;

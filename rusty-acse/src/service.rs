@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 
 use der_parser::{
-    Oid, asn1_rs::{FromBer, FromDer}, ber::{BerObject, BerObjectContent, Length}, der::{Class, Header, Tag}
+    Oid,
+    ber::{BerObject, BerObjectContent},
+    der::{Class, Header, Tag},
 };
 use rusty_copp::{CoppError, CoppInitiator, CoppReader, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
-use rusty_tpkt::TpktReader;
 
 use crate::{
     AcseError, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader,
@@ -112,12 +113,26 @@ impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W
 impl AcseRequestInformation {
     pub fn serialise(&self, user_data: &Option<Vec<u8>>) -> Result<Vec<u8>, AcseError> {
         // There is a bug that prevents creating a tag with a value of 30. Instead we create the header from a raw tag.
-        let implementation_header = Header::from_ber(&[30]).map_err(|e| AcseError::InternalError("Cannot create a header for implementation data. This is a bug.".into()))?.1;
-
+        // https://github.com/rusticata/der-parser/issues/89
         let user_data_structure = user_data
             .iter()
-            .map(|v| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(30), der_parser::ber::Length::Definite(0)), BerObjectContent::OctetString(&v)))
+            .map(|v| {
+                BerObject::from_header_and_content(
+                    Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
+                    der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                        Header::new(Class::Universal, true, Tag::from(8), der_parser::ber::Length::Definite(0)),
+                        der_parser::ber::BerObjectContent::Sequence(vec![
+                            BerObject::from_header_and_content(Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)), BerObjectContent::Integer(&[3])),
+                            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)), BerObjectContent::OctetString(v)),
+                        ]),
+                    )]),
+                )
+            })
             .last();
+        let user_data_length = match &user_data_structure {
+            Some(x) => x.to_vec().map_err(to_acse_error("Failed to serialise ACSE Request User Data"))?.len(),
+            None => 0,
+        };
 
         let payload = BerObject::from_header_and_content(
             Header::new(Class::Application, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
@@ -249,20 +264,24 @@ impl AcseRequestInformation {
                         .iter()
                         .map(|implementation_information| {
                             BerObject::from_header_and_content(
-                                Header::new(Class::ContextSpecific, true, Tag::from(10), der_parser::ber::Length::Definite(0)),
-                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
-                                    implementation_header.clone(),
-                                    BerObjectContent::GraphicString(implementation_information),
-                                )]),
+                                Header::new(Class::ContextSpecific, false, Tag::from(29), der_parser::ber::Length::Definite(0)),
+                                BerObjectContent::GraphicString(implementation_information),
                             )
                         })
                         .last(),
+                    // User Information
+                    user_data_structure,
                 ]
                 .iter()
                 .filter_map(|v| v.to_owned())
                 .collect(),
             ),
         );
-        Ok(payload.to_vec().map_err(to_acse_error("Failed to serialise Application Request Information"))?)
+        let mut data = payload.to_vec().map_err(to_acse_error("Failed to serialise Application Request Information"))?;
+        let tl = data.len();
+        if user_data_length > 0 {
+            data[tl - user_data_length] = 0xbe;
+        }
+        Ok(data)
     }
 }

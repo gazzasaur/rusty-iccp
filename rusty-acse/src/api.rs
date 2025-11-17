@@ -1,7 +1,4 @@
-use der_parser::{
-    Oid,
-    asn1_rs::GraphicString,
-};
+use der_parser::{Oid, asn1_rs::GraphicString};
 use rusty_copp::CoppError;
 use thiserror::Error;
 

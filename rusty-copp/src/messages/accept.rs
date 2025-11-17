@@ -1,5 +1,5 @@
 use der_parser::{
-    ber::{BitStringObject, parse_ber_graphicstring, parse_ber_tagged_implicit_g},
+    ber::{BitStringObject, parse_ber_tagged_implicit_g},
     der::{Class, Header, Tag},
 };
 
