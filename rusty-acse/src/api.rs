@@ -1,10 +1,10 @@
 use der_parser::{
     Oid,
     asn1_rs::{GraphicString, Integer},
-    ber::{BerObject, BerObjectContent, compat::BerObjectHeader},
+    ber::{BerObject, BerObjectContent},
     der::{Class, Header, Tag},
 };
-use rusty_copp::{CoppError, UserData};
+use rusty_copp::{CoppError, PresentationContextType};
 use thiserror::Error;
 
 use crate::messages::parsers::to_acse_error;
@@ -24,6 +24,8 @@ pub enum AcseError {
     InternalError(String),
 }
 
+// Only BER encoding is supported.
+
 #[derive(PartialEq, Debug)]
 pub struct AcseRequestInformation {
     pub application_context_name: Oid<'static>,
@@ -41,16 +43,6 @@ pub struct AcseRequestInformation {
     pub implementation_information: Option<String>,
 }
 
-impl AcseRequestInformation {
-    pub fn serialisee(&self, user_data: &Option<UserData>) -> Result<Vec<u8>, AcseError> {
-        let payload = BerObject::from_header_and_content(Header::new(Class::Application, true, Tag::from(0), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::Sequence(vec![
-            // Version Default 1
-            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), der_parser::ber::Length::Definite(0)), BerObjectContent::OID(self.application_context_name.clone()))
-        ]));
-        Ok(payload.to_vec().map_err(to_acse_error("Failed to serialise Application Request Information"))?)
-    }
-}
-
 #[derive(PartialEq, Debug)]
 pub struct AcseResponseInformation {
     pub application_context_name: Oid<'static>,
@@ -58,15 +50,10 @@ pub struct AcseResponseInformation {
     pub associate_result: AssociateResult,
     pub associate_source_diagnostic: AssociateSourceDiagnostic,
 
-    pub called_ap_title: Option<ApTitle>,
-    pub called_ae_qualifier: Option<AeQualifier>,
-    pub called_ap_invocation_identifier: Option<Integer<'static>>,
-    pub called_ae_invocation_identifier: Option<Integer<'static>>,
-
-    pub calling_ap_title: Option<ApTitle>,
-    pub calling_ae_qualifier: Option<AeQualifier>,
-    pub calling_ap_invocation_identifier: Option<Integer<'static>>,
-    pub calling_ae_invocation_identifier: Option<Integer<'static>>,
+    pub responding_ap_title: Option<ApTitle>,
+    pub responding_ae_qualifier: Option<AeQualifier>,
+    pub responding_ap_invocation_identifier: Option<Vec<u8>>, // Integer
+    pub responding_ae_invocation_identifier: Option<Vec<u8>>, // Integer
 
     pub implementation_information: Option<GraphicString<'static>>,
 }
@@ -78,6 +65,7 @@ pub enum AssociateResult {
     RejectedTransient,
 }
 
+// TODO Incomplete
 #[derive(PartialEq, Debug)]
 pub enum AssociateSourceDiagnostic {
     User,
@@ -86,42 +74,46 @@ pub enum AssociateSourceDiagnostic {
 
 #[derive(PartialEq, Debug)]
 pub enum ApTitle {
-    Form1(Vec<u8>), // DN
+    // Form1(...), Not supporting as this library does not support DN.
     Form2(Oid<'static>),
 }
 
 #[derive(PartialEq, Debug)]
 pub enum AeQualifier {
-    Form1(Vec<u8>), // DN
+    // Form1(...), Not supporting as this library does not support DN.
     Form2(Vec<u8>), // Integer
 }
 
 pub enum AcseRecvResult {
     Closed,
-    Data(UserData),
+    Data(Vec<u8>),
 }
 
-pub trait AcseInitiator: Send {
-    fn initiate(self, user_data: UserData) -> impl std::future::Future<Output = Result<(impl AcseConnection, AcseResponseInformation, UserData), AcseError>> + Send;
+pub enum RequiredContexts {
+    PresentationContextList(PresentationContextType)
 }
 
-pub trait AcseListener: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl AcseResponder, AcseRequestInformation, UserData), AcseError>> + Send;
+pub trait OsiSingleValueAcseInitiator: Send {
+    fn initiate(self, abstract_syntax_name: Oid<'static>, user_data: Vec<u8>) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseConnection, AcseResponseInformation, Vec<u8>), AcseError>> + Send;
 }
 
-pub trait AcseResponder: Send {
-    fn accept(self, response: AcseResponseInformation, user_data: UserData) -> impl std::future::Future<Output = Result<impl AcseConnection, AcseError>> + Send;
+pub trait OsiSingleValueAcseListener: Send {
+    fn responder(self) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseResponder, AcseRequestInformation, Vec<u8>), AcseError>> + Send;
 }
 
-pub trait AcseConnection: Send {
-    fn split(self) -> impl std::future::Future<Output = Result<(impl AcseReader, impl AcseWriter), AcseError>> + Send;
+pub trait OsiSingleValueAcseResponder: Send {
+    fn accept(self, response: AcseResponseInformation, user_data: Vec<u8>) -> impl std::future::Future<Output = Result<impl OsiSingleValueAcseConnection, AcseError>> + Send;
 }
 
-pub trait AcseReader: Send {
+pub trait OsiSingleValueAcseConnection: Send {
+    fn split(self) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter), AcseError>> + Send;
+}
+
+pub trait OsiSingleValueAcseReader: Send {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<AcseRecvResult, AcseError>> + Send;
 }
 
-pub trait AcseWriter: Send {
-    fn send(&mut self, data: UserData) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
+pub trait OsiSingleValueAcseWriter: Send {
+    fn send(&mut self, data: Vec<u8>) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
 }

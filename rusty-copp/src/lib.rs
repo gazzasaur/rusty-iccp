@@ -3,8 +3,14 @@ pub(crate) mod error;
 pub(crate) mod messages;
 pub(crate) mod service;
 
+use rusty_cosp::{TcpCospInitiator, TcpCospReader, TcpCospWriter};
+use rusty_cotp::{TcpCotpReader, TcpCotpWriter};
 pub use service::*;
 pub use api::*;
+
+pub type RustyCoppReaderIsoStack<R> = RustyCoppReader<TcpCospReader<TcpCotpReader<R>>>;
+pub type RustyCoppWriterIsoStack<W> = RustyCoppWriter<TcpCospWriter<TcpCotpWriter<W>>>;
+pub type RustyCoppInitiatorIsoStack<R, W> = RustyCoppInitiator<TcpCospInitiator<TcpCotpReader<R>, TcpCotpWriter<W>>, TcpCospReader<TcpCotpReader<R>>, TcpCospWriter<TcpCotpWriter<W>>>;
 
 #[cfg(test)]
 mod tests {

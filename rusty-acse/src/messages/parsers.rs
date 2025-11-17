@@ -129,7 +129,7 @@ pub(crate) fn process_ap_title<'a>(npm_object: Any<'a>, error_message: &str) -> 
 
     match (ap_title.header.tag(), ap_title.content) {
         (Tag::Oid, BerObjectContent::OID(oid)) => Ok(ApTitle::Form2(oid.to_owned())),
-        (_, _) => Ok(ApTitle::Form1(npm_object.data.to_vec())), // Assume Form 1
+        (_, _) => Err(AcseError::ProtocolError(error_message.into())),
     }
 }
 
@@ -138,6 +138,6 @@ pub(crate) fn process_ae_qualifier<'a>(npm_object: Any<'a>, error_message: &str)
 
     match (ap_title.header.tag(), ap_title.content) {
         (Tag::Integer, BerObjectContent::Integer(qualifier)) => Ok(AeQualifier::Form2(qualifier.to_owned())),
-        (_, _) => Ok(AeQualifier::Form1(npm_object.data.to_vec())), // Assume Form 1
+        (_, _) => Err(AcseError::ProtocolError(error_message.into())),
     }
 }
