@@ -1,15 +1,14 @@
 use std::marker::PhantomData;
 
 use der_parser::{
-    Oid,
-    ber::{BerObject, BerObjectContent},
-    der::{Class, Header, Tag},
+    Oid, asn1_rs::{FromBer, FromDer}, ber::{BerObject, BerObjectContent, Length}, der::{Class, Header, Tag}
 };
 use rusty_copp::{CoppError, CoppInitiator, CoppReader, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
 use rusty_tpkt::TpktReader;
 
 use crate::{
-    AcseError, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader, OsiSingleValueAcseWriter, messages::parsers::to_acse_error
+    AcseError, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader,
+    OsiSingleValueAcseWriter, messages::parsers::to_acse_error,
 };
 
 pub struct RustyOsiSingleValueAcseInitiator<T: CoppInitiator, R: CoppReader, W: CoppWriter> {
@@ -41,7 +40,7 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
                         abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
                         transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
                     },
-                    // MMS
+                    // Requested BER Encoded Protocol
                     PresentationContext {
                         indentifier: vec![3],
                         abstract_syntax_name: abstract_syntax_name,
@@ -52,7 +51,7 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
                     transfer_syntax_name: None,
                     presentation_context_identifier: vec![0x01],
                     presentation_data_values: PresentationDataValues::SingleAsn1Type(self.options.serialise(&Some(user_data))?),
-                }])), // self.options.serialise(user_data)
+                }])),
             )
             .await?;
         Ok((
@@ -112,6 +111,9 @@ impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W
 
 impl AcseRequestInformation {
     pub fn serialise(&self, user_data: &Option<Vec<u8>>) -> Result<Vec<u8>, AcseError> {
+        // There is a bug that prevents creating a tag with a value of 30. Instead we create the header from a raw tag.
+        let implementation_header = Header::from_ber(&[30]).map_err(|e| AcseError::InternalError("Cannot create a header for implementation data. This is a bug.".into()))?.1;
+
         let user_data_structure = user_data
             .iter()
             .map(|v| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(30), der_parser::ber::Length::Definite(0)), BerObjectContent::OctetString(&v)))
@@ -123,51 +125,139 @@ impl AcseRequestInformation {
                 vec![
                     // Version Default 1 - No need to specify
                     // Application Context Name
-                    Some(
-                        BerObject::from_header_and_content(
-                            Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
-                            der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
-                                Header::new(Class::Universal, false, Tag::Oid, der_parser::ber::Length::Definite(0)),
-                                BerObjectContent::OID(self.application_context_name.clone()),
-                            )]),
-                        ),
-                    ),
+                    Some(BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
+                        der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                            Header::new(Class::Universal, false, Tag::Oid, der_parser::ber::Length::Definite(0)),
+                            BerObjectContent::OID(self.application_context_name.clone()),
+                        )]),
+                    )),
                     // Called AP Title
-                    self.called_ap_title.iter().map(|ap_title| {
-                        BerObject::from_header_and_content(
-                            Header::new(Class::ContextSpecific, true, Tag::from(2), der_parser::ber::Length::Definite(0)),
-                            der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
-                                Header::new(Class::Universal, false, Tag::Oid, der_parser::ber::Length::Definite(0)),
-                                BerObjectContent::OID(match ap_title {
-                                    ApTitle::Form2(oid) => oid.to_owned(),
-                                }),
-                            )]),
-                        )
-                    }).last(),
+                    self.called_ap_title
+                        .iter()
+                        .map(|ap_title| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(2), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    Header::new(Class::Universal, false, Tag::Oid, der_parser::ber::Length::Definite(0)),
+                                    BerObjectContent::OID(match ap_title {
+                                        ApTitle::Form2(oid) => oid.to_owned(),
+                                    }),
+                                )]),
+                            )
+                        })
+                        .last(),
                     // Called AE Qualifier
-                    self.called_ae_qualifier.iter().map(|ae_qualifier| {
-                        BerObject::from_header_and_content(
-                            Header::new(Class::ContextSpecific, true, Tag::from(3), der_parser::ber::Length::Definite(0)),
-                            der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
-                                Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)),
-                                BerObjectContent::Integer(match ae_qualifier {
-                                    AeQualifier::Form2(value) => value,
-                                }),
-                            )]),
-                        )
-                    }).last(),
+                    self.called_ae_qualifier
+                        .iter()
+                        .map(|ae_qualifier| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(3), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)),
+                                    BerObjectContent::Integer(match ae_qualifier {
+                                        AeQualifier::Form2(value) => value,
+                                    }),
+                                )]),
+                            )
+                        })
+                        .last(),
                     // Called AP InvocationIdentifier
-                    self.called_ap_invocation_identifier.iter().map(|ap_invocation_id| {
-                        BerObject::from_header_and_content(
-                            Header::new(Class::ContextSpecific, true, Tag::from(4), der_parser::ber::Length::Definite(0)),
-                            der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
-                                Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)),
-                                BerObjectContent::Integer(ap_invocation_id),
-                            )]),
-                        )
-                    }).last(),
-
-                    ]
+                    self.called_ap_invocation_identifier
+                        .iter()
+                        .map(|ap_invocation_id| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(4), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)),
+                                    BerObjectContent::Integer(ap_invocation_id),
+                                )]),
+                            )
+                        })
+                        .last(),
+                    // Called AE InvocationIdentifier
+                    self.called_ae_invocation_identifier
+                        .iter()
+                        .map(|ae_invocation_id| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(5), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)),
+                                    BerObjectContent::Integer(ae_invocation_id),
+                                )]),
+                            )
+                        })
+                        .last(),
+                    // Calling AP Title
+                    self.calling_ap_title
+                        .iter()
+                        .map(|ap_title| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(6), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    Header::new(Class::Universal, false, Tag::Oid, der_parser::ber::Length::Definite(0)),
+                                    BerObjectContent::OID(match ap_title {
+                                        ApTitle::Form2(oid) => oid.to_owned(),
+                                    }),
+                                )]),
+                            )
+                        })
+                        .last(),
+                    // Calling AE Qualifier
+                    self.calling_ae_qualifier
+                        .iter()
+                        .map(|ae_qualifier| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(7), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)),
+                                    BerObjectContent::Integer(match ae_qualifier {
+                                        AeQualifier::Form2(value) => value,
+                                    }),
+                                )]),
+                            )
+                        })
+                        .last(),
+                    // Calling AP InvocationIdentifier
+                    self.calling_ap_invocation_identifier
+                        .iter()
+                        .map(|ap_invocation_id| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(8), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)),
+                                    BerObjectContent::Integer(ap_invocation_id),
+                                )]),
+                            )
+                        })
+                        .last(),
+                    // Calling AE InvocationIdentifier
+                    self.calling_ae_invocation_identifier
+                        .iter()
+                        .map(|ae_invocation_id| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(9), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)),
+                                    BerObjectContent::Integer(ae_invocation_id),
+                                )]),
+                            )
+                        })
+                        .last(),
+                    // Implementation Information
+                    self.implementation_information
+                        .iter()
+                        .map(|implementation_information| {
+                            BerObject::from_header_and_content(
+                                Header::new(Class::ContextSpecific, true, Tag::from(10), der_parser::ber::Length::Definite(0)),
+                                der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                                    implementation_header.clone(),
+                                    BerObjectContent::GraphicString(implementation_information),
+                                )]),
+                            )
+                        })
+                        .last(),
+                ]
                 .iter()
                 .filter_map(|v| v.to_owned())
                 .collect(),

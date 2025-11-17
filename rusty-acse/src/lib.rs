@@ -12,16 +12,15 @@ pub type RustyAcseInitiatorIsoStack<R, W> = RustyOsiSingleValueAcseInitiator<Rus
 
 #[cfg(test)]
 mod tests {
+    use der_parser::asn1_rs::Integer;
+    use der_parser::num_bigint::BigInt;
     use rusty_copp::CoppConnection;
     use rusty_copp::CoppListener;
     use rusty_copp::CoppResponder;
-    use rusty_copp::RustyCoppInitiatorIsoStack;
-    use rusty_copp::RustyCoppReaderIsoStack;
-    use rusty_copp::RustyCoppWriterIsoStack;
     use std::time::Duration;
 
     use der_parser::Oid;
-    use rusty_copp::{CoppError, CoppInitiator, PresentationContext, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType, RustyCoppInitiator, RustyCoppListener, UserData};
+    use rusty_copp::{CoppError, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, RustyCoppInitiator, RustyCoppListener, UserData};
     use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
     use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
@@ -34,7 +33,6 @@ mod tests {
     #[traced_test]
     async fn it_should_create_connection() -> Result<(), anyhow::Error> {
         create_acse_connection_pair_with_options(
-            None,
             AcseRequestInformation {
                 application_context_name: Oid::from(&[1, 0, 9506, 2, 1])?,
                 called_ap_title: Some(ApTitle::Form2(Oid::from(&[1, 2, 3, 4, 5])?)),
@@ -42,9 +40,9 @@ mod tests {
                 called_ap_invocation_identifier: Some(vec![101]),
                 called_ae_invocation_identifier: Some(vec![102]),
                 calling_ap_title: Some(ApTitle::Form2(Oid::from(&[2, 2, 3, 4, 5])?)),
-                calling_ae_qualifier: Some(AeQualifier::Form2(vec![200])),
-                calling_ap_invocation_identifier: Some(vec![201]),
-                calling_ae_invocation_identifier: Some(vec![202]),
+                calling_ae_qualifier: Some(AeQualifier::Form2(BigInt::from(200u32).to_signed_bytes_be())),
+                calling_ap_invocation_identifier: Some(BigInt::from(201u32).to_signed_bytes_be()),
+                calling_ae_invocation_identifier: Some(BigInt::from(202u32).to_signed_bytes_be()),
                 implementation_information: Some("This Guy".into()),
             },
             None,
@@ -54,7 +52,7 @@ mod tests {
         Ok(())
     }
 
-    async fn create_acse_connection_pair_with_options(connect_data: Option<UserData>, options: AcseRequestInformation, accept_data: Option<UserData>) -> Result<(impl OsiSingleValueAcseConnection, impl CoppConnection), anyhow::Error> {
+    async fn create_acse_connection_pair_with_options(reqeust_options: AcseRequestInformation, accept_data: Option<UserData>) -> Result<(impl OsiSingleValueAcseConnection, impl CoppConnection), anyhow::Error> {
         // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let test_address = "127.0.0.1:10002".parse()?;
 
@@ -69,21 +67,7 @@ mod tests {
                 cosp_client,
                 Default::default(),
             );
-            let acse_client = RustyAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(
-                copp_client,
-                AcseRequestInformation {
-                    application_context_name: Oid::from(&[1, 2, 3, 4])?,
-                    called_ap_title: Some(ApTitle::Form2(Oid::from(&[1, 2, 3, 4, 5])?)),
-                    called_ae_qualifier: Some(AeQualifier::Form2(vec![100])),
-                    called_ap_invocation_identifier: Some(vec![101]),
-                    called_ae_invocation_identifier: Some(vec![102]),
-                    calling_ap_title: Some(ApTitle::Form2(Oid::from(&[2, 2, 3, 4, 5])?)),
-                    calling_ae_qualifier: Some(AeQualifier::Form2(vec![200])),
-                    calling_ap_invocation_identifier: Some(vec![201]),
-                    calling_ae_invocation_identifier: Some(vec![202]),
-                    implementation_information: Some("This Guy".into()),
-                },
-            );
+            let acse_client = RustyAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_client, reqeust_options);
             Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, vec![0x0a, 0x0b, 0x0c]).await?)
         };
         let server_path = async {

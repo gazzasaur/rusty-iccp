@@ -1,13 +1,9 @@
 use der_parser::{
     Oid,
-    asn1_rs::{GraphicString, Integer},
-    ber::{BerObject, BerObjectContent},
-    der::{Class, Header, Tag},
+    asn1_rs::GraphicString,
 };
-use rusty_copp::{CoppError, PresentationContextType};
+use rusty_copp::CoppError;
 use thiserror::Error;
-
-use crate::messages::parsers::to_acse_error;
 
 #[derive(Error, Debug)]
 pub enum AcseError {
@@ -87,10 +83,6 @@ pub enum AeQualifier {
 pub enum AcseRecvResult {
     Closed,
     Data(Vec<u8>),
-}
-
-pub enum RequiredContexts {
-    PresentationContextList(PresentationContextType)
 }
 
 pub trait OsiSingleValueAcseInitiator: Send {
