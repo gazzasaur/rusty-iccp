@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use der_parser::{
     Oid,
-    ber::{BerObject, BerObjectContent},
+    ber::{BerObject, BerObjectContent, parse_ber_any},
     der::{Class, Header, Tag},
 };
 use rusty_copp::{CoppError, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
@@ -102,7 +102,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseList
             None => (),
         }
         if copp_presentation_data.presentation_context_identifier != &[1] {
-            return Err(AcseError::ProtocolError(format!("Unexpected presentation contact id on COPP ACES Payload: {}", x)));
+            return Err(AcseError::ProtocolError(format!("Unexpected presentation contact id on COPP ACES Payload: Expecting &[1] but found {:?}", copp_presentation_data.presentation_context_identifier)));
         }
         match copp_presentation_data.presentation_data_values {
             PresentationDataValues::SingleAsn1Type(data) => AcseRequestInformation::parse(data),
@@ -334,6 +334,15 @@ impl AcseRequestInformation {
             data[tl - user_data_length] = 0xbe;
         }
         Ok(data)
+    }
+
+    pub(crate) fn parse(data: &[u8]) -> Result<AcseRequestInformation, AcseError> {
+        let (_, outer) = parse_ber_any(data).map_err(to_acse_error("Failed to parse ACSE Request payload"))?;
+        if outer.header.raw_tag() != Some(&[0xa0]) {
+            return Err(AcseError::ProtocolError(format!("Invalid tag found on ACSE Request Payload: {:?}", outer.header.raw_tag())))?;
+        }
+
+        Ok(())
     }
 }
 
