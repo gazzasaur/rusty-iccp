@@ -44,6 +44,16 @@ mod tests {
                 calling_ae_invocation_identifier: Some(BigInt::from(202u32).to_signed_bytes_be()),
                 implementation_information: Some("This Guy".into()),
             },
+            AcseResponseInformation {
+                associate_result: AssociateResult::Accepted,
+                associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
+                application_context_name: Oid::from(&[1, 0, 9506, 2, 1])?,
+                responding_ap_title: Some(ApTitle::Form2(Oid::from(&[1, 2, 3, 4, 5])?)),
+                responding_ae_qualifier: Some(AeQualifier::Form2(vec![100])),
+                responding_ap_invocation_identifier: Some(vec![101]),
+                responding_ae_invocation_identifier: Some(vec![102]),
+                implementation_information: Some("This Guy".into()),
+            },
             None,
         )
         .await?;
@@ -51,7 +61,11 @@ mod tests {
         Ok(())
     }
 
-    async fn create_acse_connection_pair_with_options(reqeust_options: AcseRequestInformation, accept_data: Option<UserData>) -> Result<(impl OsiSingleValueAcseConnection, impl CoppConnection), anyhow::Error> {
+    async fn create_acse_connection_pair_with_options(
+        reqeust_options: AcseRequestInformation,
+        response_options: AcseResponseInformation,
+        accept_data: Option<UserData>,
+    ) -> Result<(impl OsiSingleValueAcseConnection, impl CoppConnection), anyhow::Error> {
         // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let test_address = "127.0.0.1:10002".parse()?;
 

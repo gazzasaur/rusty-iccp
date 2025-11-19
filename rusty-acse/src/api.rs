@@ -48,7 +48,7 @@ pub struct AcseResponseInformation {
     pub responding_ap_invocation_identifier: Option<Vec<u8>>, // Integer
     pub responding_ae_invocation_identifier: Option<Vec<u8>>, // Integer
 
-    pub implementation_information: Option<GraphicString<'static>>,
+    pub implementation_information: Option<String>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -56,13 +56,41 @@ pub enum AssociateResult {
     Accepted,
     RejectedPermanent,
     RejectedTransient,
+    Unknown(Vec<u8>), // Integer
 }
 
-// TODO Incomplete
 #[derive(PartialEq, Debug)]
 pub enum AssociateSourceDiagnostic {
-    User,
-    Provider,
+    User(AssociateSourceDiagnosticUserCategory),
+    Provider(AssociateSourceDiagnosticProviderCategory),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum AssociateSourceDiagnosticUserCategory {
+    Null,
+    NoReasonGiven,
+    ApplicationContextNameNotSupported,
+    CallingApTitleNotRecognized,
+    CallingApInvocationIdentifierNotRecognized,
+    CallingAeQualifierNotRecognized,
+    CallingAeInvocationIdentifierNotRecognized,
+    CalledApTitleNotRecognized,
+    CalledApInvocationIdentifierNotRecognized,
+    CalledAeQualifierNotRecognized,
+    CalledAeInvocationIdentifierNotRecognized,
+    AuthenticationMechanismNameNotRecognized,
+    AuthenticationMechanismNameRequired,
+    AuthenticationFailure,
+    AuthenticationRequired,
+    Unknown(Vec<u8>), // Integer
+}
+
+#[derive(PartialEq, Debug)]
+pub enum AssociateSourceDiagnosticProviderCategory {
+    Null,
+    NoReasonGiven,
+    NoCommonAcseVersion,
+    Unknown(Vec<u8>), // Integer
 }
 
 #[derive(PartialEq, Debug)]
@@ -91,7 +119,7 @@ pub trait OsiSingleValueAcseListener: Send {
 }
 
 pub trait OsiSingleValueAcseResponder: Send {
-    fn accept(self, response: AcseResponseInformation, user_data: Vec<u8>) -> impl std::future::Future<Output = Result<impl OsiSingleValueAcseConnection, AcseError>> + Send;
+    fn accept(self, user_data: Vec<u8>) -> impl std::future::Future<Output = Result<impl OsiSingleValueAcseConnection, AcseError>> + Send;
 }
 
 pub trait OsiSingleValueAcseConnection: Send {
