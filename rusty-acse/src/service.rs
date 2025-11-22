@@ -158,7 +158,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseResponder
             .copp_responder
             .accept(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
                 transfer_syntax_name: None,
-                presentation_context_identifier: vec![3],
+                presentation_context_identifier: vec![1],
                 presentation_data_values: PresentationDataValues::SingleAsn1Type(acse_data),
             }])))
             .await?;

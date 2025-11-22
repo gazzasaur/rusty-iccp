@@ -56,7 +56,7 @@ mod tests {
                 responding_ae_invocation_identifier: Some(vec![102]),
                 implementation_information: Some("This Guy".into()),
             },
-            vec![],
+            vec![0xa9, 0x00],
         )
         .await?;
 
@@ -93,18 +93,6 @@ mod tests {
             let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
             let (mut copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
-            copp_listener.with_context(Some(PresentationContextResultType::ContextDefinitionList(vec![
-                PresentationContextResult {
-                    result: PresentationContextResultCause::Acceptance,
-                    transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
-                    provider_reason: None,
-                },
-                PresentationContextResult {
-                    result: PresentationContextResultCause::Acceptance,
-                    transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
-                    provider_reason: None,
-                },
-            ])));
             let acse_listener = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
             let (acse_responder, connect_user_data, acse_user_data) = acse_listener.responder(response_options).await?;
 
