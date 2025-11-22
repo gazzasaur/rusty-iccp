@@ -3,14 +3,16 @@ pub(crate) mod error;
 pub(crate) mod messages;
 pub(crate) mod service;
 
-use rusty_cosp::{TcpCospInitiator, TcpCospReader, TcpCospWriter};
+use rusty_cosp::{RustyCospInitiatorIsoStack, RustyCospListenerIsoStack, RustyCospReaderIsoStack, RustyCospResponderIsoStack, RustyCospWriterIsoStack, TcpCospInitiator, TcpCospReader, TcpCospResponder, TcpCospWriter};
 use rusty_cotp::{TcpCotpReader, TcpCotpWriter};
 pub use service::*;
 pub use api::*;
 
-pub type RustyCoppReaderIsoStack<R> = RustyCoppReader<TcpCospReader<TcpCotpReader<R>>>;
-pub type RustyCoppWriterIsoStack<W> = RustyCoppWriter<TcpCospWriter<TcpCotpWriter<W>>>;
-pub type RustyCoppInitiatorIsoStack<R, W> = RustyCoppInitiator<TcpCospInitiator<TcpCotpReader<R>, TcpCotpWriter<W>>, TcpCospReader<TcpCotpReader<R>>, TcpCospWriter<TcpCotpWriter<W>>>;
+pub type RustyCoppReaderIsoStack<R> = RustyCoppReader<RustyCospReaderIsoStack<R>>;
+pub type RustyCoppWriterIsoStack<W> = RustyCoppWriter<RustyCospWriterIsoStack<W>>;
+pub type RustyCoppInitiatorIsoStack<R, W> = RustyCoppInitiator<RustyCospInitiatorIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
+pub type RustyCoppListenerIsoStack<R, W> = RustyCoppListener<RustyCospResponderIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
+pub type RustyCoppResponderIsoStack<R, W> = RustyCoppResponder<RustyCospResponderIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
 
 #[cfg(test)]
 mod tests {

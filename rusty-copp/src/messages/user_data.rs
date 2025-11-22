@@ -5,8 +5,9 @@ use der_parser::{
     der::{Class, Header, Tag},
     error::BerError,
 };
+use tracing::warn;
 
-use crate::{messages::parsers::process_constructed_data};
+use crate::messages::parsers::process_constructed_data;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum UserData {
@@ -77,7 +78,6 @@ impl UserData {
             }
             _ => todo!(),
         }
-        // Ok(UserData::FullyEncoded(vec![]))
     }
 
     pub fn parse_raw(data: &[u8]) -> Result<UserData, BerError> {

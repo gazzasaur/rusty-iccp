@@ -1,15 +1,22 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, thread::sleep, time::Duration};
 
 use der_parser::{
     Oid,
-    ber::{BerObject, BerObjectContent, parse_ber_any},
+    ber::{BerObject, BerObjectContent, BitStringObject, parse_ber_any},
     der::{Class, Header, Tag},
 };
-use rusty_copp::{CoppError, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
+use rusty_copp::CoppConnection;
+use rusty_copp::{
+    CoppError, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, RustyCoppReader, RustyCoppReaderIsoStack,
+    RustyCoppWriterIsoStack, UserData,
+};
+use rusty_tpkt::{TcpTpktReader, TcpTpktWriter};
+use tracing::warn;
 
 use crate::{
     AcseError, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory,
-    OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseWriter, messages::parsers::to_acse_error,
+    OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter, RustyOsiSingleValueAcseResponderIsoStack,
+    messages::parsers::{process_ap_title, process_bitstring, process_constructed_data, process_oid, process_request, to_acse_error},
 };
 
 pub struct RustyOsiSingleValueAcseInitiator<T: CoppInitiator, R: CoppReader, W: CoppWriter> {
@@ -32,7 +39,8 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseInit
 
 impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator for RustyOsiSingleValueAcseInitiator<T, R, W> {
     async fn initiate(self, abstract_syntax_name: Oid<'static>, user_data: Vec<u8>) -> Result<(impl OsiSingleValueAcseConnection, AcseResponseInformation, Vec<u8>), AcseError> {
-        self.copp_initiator
+        let (copp_connection, copp_user_data) = self
+            .copp_initiator
             .initiate(
                 PresentationContextType::ContextDefinitionList(vec![
                     // ACSE
@@ -55,11 +63,9 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
                 }])),
             )
             .await?;
+        let (copp_reader, copp_writer) = copp_connection.split().await?;
         Ok((
-            RustyAcseConnection::<R, W> {
-                copp_reader: PhantomData::<R>,
-                copp_writer: PhantomData::<W>,
-            },
+            RustyAcseConnection { copp_reader, copp_writer },
             AcseResponseInformation {
                 application_context_name: self.options.application_context_name,
                 associate_result: AssociateResult::Accepted,
@@ -79,11 +85,12 @@ pub struct RustyOsiSingleValueAcseListener<T: CoppResponder, R: CoppReader, W: C
     copp_responder: T,
     copp_reader: PhantomData<R>,
     copp_writer: PhantomData<W>,
-    options: AcseResponseInformation,
+    request: AcseRequestInformation,
+    acse_user_data: Vec<u8>,
 }
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseListener<T, R, W> {
-    pub async fn new(copp_listener: impl CoppListener, options: AcseResponseInformation) -> Result<RustyOsiSingleValueAcseListener<impl CoppListener, impl CoppReader, impl CoppWriter>, AcseError> {
+    pub async fn new(copp_listener: impl CoppListener) -> Result<RustyOsiSingleValueAcseListener<impl CoppResponder, impl CoppReader, impl CoppWriter>, AcseError> {
         let (copp_responder, copp_options) = copp_listener.responder().await?;
         let copp_presentation_data_list = match copp_options {
             Some(UserData::FullyEncoded(x)) => x,
@@ -96,39 +103,73 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseList
             Some(x) => x,
             None => return Err(AcseError::ProtocolError("Expected 1 COPP but did not find any".into())),
         };
-        match copp_presentation_data.transfer_syntax_name {
-            Some(x) if x == Oid::from(&[2, 1, 1]).map_err(to_acse_error("Failed to parse BAR transfer syntax."))? => (),
+        match &copp_presentation_data.transfer_syntax_name {
+            Some(x) if x == &Oid::from(&[2, 1, 1]).map_err(to_acse_error("Failed to parse BAR transfer syntax."))? => (),
             Some(x) => return Err(AcseError::ProtocolError(format!("Unsupported transfer syntax: {}", x))),
             None => (),
         }
         if copp_presentation_data.presentation_context_identifier != &[1] {
-            return Err(AcseError::ProtocolError(format!("Unexpected presentation contact id on COPP ACES Payload: Expecting &[1] but found {:?}", copp_presentation_data.presentation_context_identifier)));
+            return Err(AcseError::ProtocolError(format!(
+                "Unexpected presentation contact id on COPP ACES Payload: Expecting &[1] but found {:?}",
+                copp_presentation_data.presentation_context_identifier
+            )));
         }
-        match copp_presentation_data.presentation_data_values {
-            PresentationDataValues::SingleAsn1Type(data) => AcseRequestInformation::parse(data),
-        }
-
-        Ok((
-            RustyOsiSingleValueAcseListener {
-                copp_responder,
-                copp_reader: PhantomData::<R>,
-                copp_writer: PhantomData::<W>,
-                options,
-            },
-            a,
-        ))
+        let (request, acse_user_data) = match &copp_presentation_data.presentation_data_values {
+            PresentationDataValues::SingleAsn1Type(data) => process_request(data)?,
+        };
+        Ok(RustyOsiSingleValueAcseListener {
+            copp_responder,
+            copp_reader: PhantomData::<R>,
+            copp_writer: PhantomData::<W>,
+            request,
+            acse_user_data,
+        })
     }
 }
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseListener for RustyOsiSingleValueAcseListener<T, R, W> {
-    async fn responder(self) -> Result<(impl crate::OsiSingleValueAcseResponder, AcseRequestInformation, Vec<u8>), AcseError> {
-        todo!()
+    async fn responder(self, response: AcseResponseInformation) -> Result<(impl crate::OsiSingleValueAcseResponder, AcseRequestInformation, Vec<u8>), AcseError> {
+        Ok((RustyOsiSingleValueAcseResponder::<T, R, W>::new(self.copp_responder, response), self.request, vec![]))
+    }
+}
+
+pub struct RustyOsiSingleValueAcseResponder<T: CoppResponder, R: CoppReader, W: CoppWriter> {
+    copp_responder: T,
+    copp_reader: PhantomData<R>,
+    copp_writer: PhantomData<W>,
+    response: AcseResponseInformation
+}
+
+impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseResponder<T, R, W> {
+    pub fn new(copp_responder: T, response: AcseResponseInformation) -> Self {
+        RustyOsiSingleValueAcseResponder {
+            copp_responder,
+            copp_reader: PhantomData,
+            copp_writer: PhantomData,
+            response,
+        }
+    }
+}
+
+impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseResponder for RustyOsiSingleValueAcseResponder<T, R, W> {
+    async fn accept(self, user_data: Vec<u8>) -> Result<impl OsiSingleValueAcseConnection, AcseError> {
+        let acse_data = self.response.serialise(&Some(user_data))?;
+        let copp_connection = self
+            .copp_responder
+            .accept(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
+                transfer_syntax_name: None,
+                presentation_context_identifier: vec![3],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(acse_data),
+            }])))
+            .await?;
+        let (copp_reader, copp_writer) = copp_connection.split().await?;
+        Ok(RustyAcseConnection { copp_reader, copp_writer })
     }
 }
 
 pub struct RustyAcseConnection<R: CoppReader, W: CoppWriter> {
-    copp_reader: PhantomData<R>,
-    copp_writer: PhantomData<W>,
+    copp_reader: R,
+    copp_writer: W,
 }
 
 impl<R: CoppReader, W: CoppWriter> OsiSingleValueAcseConnection for RustyAcseConnection<R, W> {
@@ -189,7 +230,11 @@ impl AcseRequestInformation {
             Header::new(Class::Application, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
             der_parser::ber::BerObjectContent::Sequence(
                 vec![
-                    // Version Default 1 - No need to specify
+                    // Version Default 1 - Not really needed, but we will put it anyway
+                    Some(BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
+                        BerObjectContent::BitString(7, BitStringObject { data: &[0x80] }),
+                    )),
                     // Application Context Name
                     Some(BerObject::from_header_and_content(
                         Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
@@ -336,14 +381,44 @@ impl AcseRequestInformation {
         Ok(data)
     }
 
-    pub(crate) fn parse(data: &[u8]) -> Result<AcseRequestInformation, AcseError> {
-        let (_, outer) = parse_ber_any(data).map_err(to_acse_error("Failed to parse ACSE Request payload"))?;
-        if outer.header.raw_tag() != Some(&[0xa0]) {
-            return Err(AcseError::ProtocolError(format!("Invalid tag found on ACSE Request Payload: {:?}", outer.header.raw_tag())))?;
-        }
+    // pub(crate) fn parse(data: &[u8]) -> Result<AcseRequestInformation, AcseError> {
+    //     let (_, outer) = parse_ber_any(data).map_err(to_acse_error("Failed to parse ACSE Request payload"))?;
 
-        Ok(())
-    }
+    //     let mut protocol_version = None;
+    //     let mut application_context_name = None;
+
+    //     if outer.header.raw_tag() != Some(&[0x60]) {
+    //         return Err(AcseError::ProtocolError(format!("Invalid tag found on ACSE Request Payload: {:?}", outer.header.raw_tag())))?;
+    //     }
+    //     let params = process_constructed_data(outer.data).map_err(to_acse_error("Failed to parse CASE Request parameters."))?;
+    //     for param in params {
+    //         // TODO Protocol Version
+    //         match param.header.raw_tag() {
+    //             Some(&[160]) => {
+    //                 protocol_version = Some(process_bitstring(param, "Failed to process Protocol Version on ACSE Request")?);
+    //             },
+    //             Some(&[161]) => {
+    //                 application_context_name = Some(process_oid(param, "Failed to process Context Name on ACSE Request")?);
+    //             }
+    //             Some(&[162]) => {
+    //                 application_context_name = Some(process_ap_title(param, "Failed to process Context Name on ACSE Request")?);
+    //             }
+    //             x => warn!("Ignoring unsupported tag in ACSE Request: {:?}", x),
+    //         }
+    //     }
+    //     Ok(AcseRequestInformation {
+    //         application_context_name: application_context_name.ok_or_else(|| AcseError::ProtocolError("Application Context Name not found on ACSE Request".into()))?,
+    //         called_ap_title: None,
+    //         called_ae_qualifier: None,
+    //         called_ap_invocation_identifier: None,
+    //         called_ae_invocation_identifier: None,
+    //         calling_ap_title: None,
+    //         calling_ae_qualifier: None,
+    //         calling_ap_invocation_identifier: None,
+    //         calling_ae_invocation_identifier: None,
+    //         implementation_information: None,
+    //     })
+    // }
 }
 
 impl AcseResponseInformation {

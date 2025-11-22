@@ -3,12 +3,14 @@ pub(crate) mod messages;
 pub(crate) mod service;
 
 pub use api::*;
-use rusty_copp::{RustyCoppInitiatorIsoStack, RustyCoppReaderIsoStack, RustyCoppWriterIsoStack};
+use rusty_copp::{RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack, RustyCoppReaderIsoStack, RustyCoppResponderIsoStack, RustyCoppWriterIsoStack};
 pub use service::*;
 
-pub type RustyAcseReaderIsoStack<R> = RustyOsiSingleValueAcseReader<RustyCoppReaderIsoStack<R>>;
-pub type RustyAcseWriterIsoStack<W> = RustyOsiSingleValueAcseWriter<RustyCoppWriterIsoStack<W>>;
-pub type RustyAcseInitiatorIsoStack<R, W> = RustyOsiSingleValueAcseInitiator<RustyCoppInitiatorIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
+pub type RustyOsiSingleValueAcseReaderIsoStack<R> = RustyOsiSingleValueAcseReader<R>;
+pub type RustyOsiSingleValueAcseWriterIsoStack<W> = RustyOsiSingleValueAcseWriter<W>;
+pub type RustyOsiSingleValueAcseInitiatorIsoStack<R, W> = RustyOsiSingleValueAcseInitiator<RustyCoppInitiatorIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
+pub type RustyOsiSingleValueAcseListenerIsoStack<R, W> = RustyOsiSingleValueAcseListener<RustyCoppResponderIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
+pub type RustyOsiSingleValueAcseResponderIsoStack<R, W> = RustyOsiSingleValueAcseResponder<RustyCoppResponderIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
 
 #[cfg(test)]
 mod tests {
@@ -54,7 +56,7 @@ mod tests {
                 responding_ae_invocation_identifier: Some(vec![102]),
                 implementation_information: Some("This Guy".into()),
             },
-            None,
+            vec![],
         )
         .await?;
 
@@ -64,8 +66,8 @@ mod tests {
     async fn create_acse_connection_pair_with_options(
         reqeust_options: AcseRequestInformation,
         response_options: AcseResponseInformation,
-        accept_data: Option<UserData>,
-    ) -> Result<(impl OsiSingleValueAcseConnection, impl CoppConnection), anyhow::Error> {
+        accept_data: Vec<u8>,
+    ) -> Result<(impl OsiSingleValueAcseConnection, impl OsiSingleValueAcseConnection), anyhow::Error> {
         // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let test_address = "127.0.0.1:10002".parse()?;
 
@@ -80,7 +82,7 @@ mod tests {
                 cosp_client,
                 Default::default(),
             );
-            let acse_client = RustyAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_client, reqeust_options);
+            let acse_client = RustyOsiSingleValueAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_client, reqeust_options);
             Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, vec![0xa8, 0x00]).await?)
         };
         let server_path = async {
@@ -103,14 +105,15 @@ mod tests {
                     provider_reason: None,
                 },
             ])));
-            let (copp_responder, connect_user_data) = copp_listener.responder().await?;
+            let acse_listener = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
+            let (acse_responder, connect_user_data, acse_user_data) = acse_listener.responder(response_options).await?;
 
-            Ok((copp_responder.accept(accept_data.clone()).await?, connect_user_data))
+            Ok((acse_responder.accept(accept_data.clone()).await?, connect_user_data))
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
-        let (copp_client, accepted_data, user_data) = copp_client?;
         let (copp_server, connected_data) = copp_server?;
+        let (copp_client, accepted_data, user_data) = copp_client?;
 
         // assert_eq!(accept_data, accepted_data);
         // assert_eq!(connect_data, connected_data);

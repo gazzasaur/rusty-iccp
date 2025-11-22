@@ -115,7 +115,7 @@ pub trait OsiSingleValueAcseInitiator: Send {
 }
 
 pub trait OsiSingleValueAcseListener: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseResponder, AcseRequestInformation, Vec<u8>), AcseError>> + Send;
+    fn responder(self, response: AcseResponseInformation) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseResponder, AcseRequestInformation, Vec<u8>), AcseError>> + Send;
 }
 
 pub trait OsiSingleValueAcseResponder: Send {
