@@ -1,22 +1,17 @@
-use std::{marker::PhantomData, thread::sleep, time::Duration};
+use std::marker::PhantomData;
 
 use der_parser::{
     Oid,
-    ber::{BerObject, BerObjectContent, BitStringObject, parse_ber_any},
+    ber::{BerObject, BerObjectContent, BitStringObject},
     der::{Class, Header, Tag},
 };
 use rusty_copp::CoppConnection;
-use rusty_copp::{
-    CoppError, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, RustyCoppReader, RustyCoppReaderIsoStack,
-    RustyCoppWriterIsoStack, UserData,
-};
-use rusty_tpkt::{TcpTpktReader, TcpTpktWriter};
-use tracing::warn;
+use rusty_copp::{CoppError, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
 
 use crate::{
     AcseError, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory,
-    OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter, RustyOsiSingleValueAcseResponderIsoStack,
-    messages::parsers::{process_ap_title, process_bitstring, process_constructed_data, process_oid, process_request, to_acse_error},
+    OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter,
+    messages::parsers::{process_request, to_acse_error},
 };
 
 pub struct RustyOsiSingleValueAcseInitiator<T: CoppInitiator, R: CoppReader, W: CoppWriter> {
@@ -137,7 +132,7 @@ pub struct RustyOsiSingleValueAcseResponder<T: CoppResponder, R: CoppReader, W: 
     copp_responder: T,
     copp_reader: PhantomData<R>,
     copp_writer: PhantomData<W>,
-    response: AcseResponseInformation
+    response: AcseResponseInformation,
 }
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseResponder<T, R, W> {
@@ -189,12 +184,37 @@ impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R
 }
 
 pub struct RustyOsiSingleValueAcseWriter<W: CoppWriter> {
-    copp_writer: PhantomData<W>,
+    copp_writer: W,
+}
+
+impl<W: CoppWriter> RustyOsiSingleValueAcseWriter<W> {
+    pub fn new(copp_writer: W) -> Self {
+        Self { copp_writer }
+    }
 }
 
 impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W> {
     async fn send(&mut self, data: Vec<u8>) -> Result<(), AcseError> {
-        Err(AcseError::InternalError("Not implemented".to_string()))
+        let user_data_structure = BerObject::from_header_and_content(
+            Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
+            der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
+                Header::new(Class::Universal, true, Tag::from(8), der_parser::ber::Length::Definite(0)),
+                der_parser::ber::BerObjectContent::Sequence(vec![
+                    BerObject::from_header_and_content(Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)), BerObjectContent::Integer(&[3])),
+                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)), BerObjectContent::OctetString(&data)),
+                ]),
+            )]),
+        );
+        let mut user_data_bytes = user_data_structure.to_vec().map_err(to_acse_error("Failed to serialise ACSE data".into()))?;
+        user_data_bytes[0] = 0xbe;
+        Ok(self
+            .copp_writer
+            .send(&UserData::FullyEncoded(vec![PresentationDataValueList {
+                transfer_syntax_name: None,
+                presentation_context_identifier: vec![3],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(user_data_bytes),
+            }]))
+            .await?)
     }
 
     async fn continue_send(&mut self) -> Result<(), AcseError> {
@@ -380,45 +400,6 @@ impl AcseRequestInformation {
         }
         Ok(data)
     }
-
-    // pub(crate) fn parse(data: &[u8]) -> Result<AcseRequestInformation, AcseError> {
-    //     let (_, outer) = parse_ber_any(data).map_err(to_acse_error("Failed to parse ACSE Request payload"))?;
-
-    //     let mut protocol_version = None;
-    //     let mut application_context_name = None;
-
-    //     if outer.header.raw_tag() != Some(&[0x60]) {
-    //         return Err(AcseError::ProtocolError(format!("Invalid tag found on ACSE Request Payload: {:?}", outer.header.raw_tag())))?;
-    //     }
-    //     let params = process_constructed_data(outer.data).map_err(to_acse_error("Failed to parse CASE Request parameters."))?;
-    //     for param in params {
-    //         // TODO Protocol Version
-    //         match param.header.raw_tag() {
-    //             Some(&[160]) => {
-    //                 protocol_version = Some(process_bitstring(param, "Failed to process Protocol Version on ACSE Request")?);
-    //             },
-    //             Some(&[161]) => {
-    //                 application_context_name = Some(process_oid(param, "Failed to process Context Name on ACSE Request")?);
-    //             }
-    //             Some(&[162]) => {
-    //                 application_context_name = Some(process_ap_title(param, "Failed to process Context Name on ACSE Request")?);
-    //             }
-    //             x => warn!("Ignoring unsupported tag in ACSE Request: {:?}", x),
-    //         }
-    //     }
-    //     Ok(AcseRequestInformation {
-    //         application_context_name: application_context_name.ok_or_else(|| AcseError::ProtocolError("Application Context Name not found on ACSE Request".into()))?,
-    //         called_ap_title: None,
-    //         called_ae_qualifier: None,
-    //         called_ap_invocation_identifier: None,
-    //         called_ae_invocation_identifier: None,
-    //         calling_ap_title: None,
-    //         calling_ae_qualifier: None,
-    //         calling_ap_invocation_identifier: None,
-    //         calling_ae_invocation_identifier: None,
-    //         implementation_information: None,
-    //     })
-    // }
 }
 
 impl AcseResponseInformation {

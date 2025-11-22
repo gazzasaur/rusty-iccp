@@ -24,8 +24,6 @@ mod tests {
     use tokio::join;
     use tracing_test::traced_test;
 
-    use crate::service::TcpCospListener;
-
     use super::*;
 
     #[tokio::test]

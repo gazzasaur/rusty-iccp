@@ -3,7 +3,7 @@ pub(crate) mod messages;
 pub(crate) mod service;
 
 pub use api::*;
-use rusty_copp::{RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack, RustyCoppReaderIsoStack, RustyCoppResponderIsoStack, RustyCoppWriterIsoStack};
+use rusty_copp::{RustyCoppInitiatorIsoStack, RustyCoppReaderIsoStack, RustyCoppResponderIsoStack, RustyCoppWriterIsoStack};
 pub use service::*;
 
 pub type RustyOsiSingleValueAcseReaderIsoStack<R> = RustyOsiSingleValueAcseReader<R>;
@@ -15,13 +15,10 @@ pub type RustyOsiSingleValueAcseResponderIsoStack<R, W> = RustyOsiSingleValueAcs
 #[cfg(test)]
 mod tests {
     use der_parser::num_bigint::BigInt;
-    use rusty_copp::CoppConnection;
-    use rusty_copp::CoppListener;
-    use rusty_copp::CoppResponder;
     use std::time::Duration;
 
     use der_parser::Oid;
-    use rusty_copp::{CoppError, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, RustyCoppInitiator, RustyCoppListener, UserData};
+    use rusty_copp::{CoppError, RustyCoppInitiator, RustyCoppListener};
     use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
     use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
@@ -54,7 +51,7 @@ mod tests {
                 responding_ae_qualifier: Some(AeQualifier::Form2(vec![100])),
                 responding_ap_invocation_identifier: Some(vec![101]),
                 responding_ae_invocation_identifier: Some(vec![102]),
-                implementation_information: Some("This Guy".into()),
+                implementation_information: Some("This Other Guy".into()),
             },
             vec![0xa9, 0x00],
         )
@@ -91,7 +88,7 @@ mod tests {
             let (cotp_server, _) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection).await?;
             let cotp_connection = cotp_server.accept(CotpAcceptInformation::default()).await?;
             let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
-            let (mut copp_listener, _) =
+            let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
             let acse_listener = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
             let (acse_responder, connect_user_data, acse_user_data) = acse_listener.responder(response_options).await?;

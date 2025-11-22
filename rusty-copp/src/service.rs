@@ -4,7 +4,9 @@ use der_parser::Oid;
 use rusty_cosp::{CospConnection, CospInitiator, CospListener, CospReader, CospResponder, CospWriter};
 
 use crate::{
-    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType, UserData, messages::{accept::AcceptMessage, connect::ConnectMessage}
+    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType,
+    PresentationContextType, UserData,
+    messages::{accept::AcceptMessage, connect::ConnectMessage},
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {

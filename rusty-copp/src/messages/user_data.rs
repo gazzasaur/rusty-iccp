@@ -5,7 +5,6 @@ use der_parser::{
     der::{Class, Header, Tag},
     error::BerError,
 };
-use tracing::warn;
 
 use crate::messages::parsers::process_constructed_data;
 

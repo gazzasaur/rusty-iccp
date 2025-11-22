@@ -3,10 +3,9 @@ pub(crate) mod error;
 pub(crate) mod messages;
 pub(crate) mod service;
 
-use rusty_cosp::{RustyCospInitiatorIsoStack, RustyCospListenerIsoStack, RustyCospReaderIsoStack, RustyCospResponderIsoStack, RustyCospWriterIsoStack, TcpCospInitiator, TcpCospReader, TcpCospResponder, TcpCospWriter};
-use rusty_cotp::{TcpCotpReader, TcpCotpWriter};
-pub use service::*;
 pub use api::*;
+use rusty_cosp::{RustyCospInitiatorIsoStack, RustyCospReaderIsoStack, RustyCospResponderIsoStack, RustyCospWriterIsoStack};
+pub use service::*;
 
 pub type RustyCoppReaderIsoStack<R> = RustyCoppReader<RustyCospReaderIsoStack<R>>;
 pub type RustyCoppWriterIsoStack<W> = RustyCoppWriter<RustyCospWriterIsoStack<W>>;
@@ -114,20 +113,8 @@ mod tests {
             let (cotp_server, _) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection).await?;
             let cotp_connection = cotp_server.accept(CotpAcceptInformation::default()).await?;
             let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
-            let (mut copp_listener, _) =
+            let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
-            // copp_listener.with_context(Some(PresentationContextResultType::ContextDefinitionList(vec![
-            //     PresentationContextResult {
-            //         result: PresentationContextResultCause::Acceptance,
-            //         transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
-            //         provider_reason: None,
-            //     },
-            //     PresentationContextResult {
-            //         result: PresentationContextResultCause::Acceptance,
-            //         transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
-            //         provider_reason: None,
-            //     },
-            // ])));
             let (copp_responder, connect_user_data) = copp_listener.responder().await?;
 
             Ok((copp_responder.accept(accept_data.clone()).await?, connect_user_data))

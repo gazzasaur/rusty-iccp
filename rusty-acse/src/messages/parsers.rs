@@ -8,7 +8,6 @@ use der_parser::{
     error::BerError,
     parse_ber,
 };
-use rusty_copp::UserData;
 use tracing::warn;
 
 use crate::{AcseError, AcseRequestInformation, AeQualifier, ApTitle};
@@ -54,36 +53,39 @@ pub(crate) fn process_request(data: &[u8]) -> Result<(AcseRequestInformation, Ve
 
             Some(&[74]) => implementation_information = Some(process_graphical_string(pdu_part, "Failed to parse Implementation Information in ACSE Request")?),
             Some(&[190]) => {
-                    // let context_id = &[];
-                    warn!("{:?}", pdu_part.data);
-                    for user_data_part in process_constructed_data(pdu_part.data).map_err(to_acse_error("Failed to deconstruct UserInformation on ACSE Request".into()))? {
-                        match user_data_part.header.raw_tag() {
-                            Some(&[40]) => {
-                                for single_value_part in process_constructed_data(user_data_part.data).map_err(to_acse_error("Failed to deconstruct Single Value part in ACSE Request"))? {
-                                    let mut context_id = None;
-                                    match single_value_part.header.raw_tag() {
-                                        Some(&[2]) => context_id = Some(process_integer(single_value_part, "Failed to parse context id from Single Value part in ACSE Request")?),
-                                        Some(&[160]) => payload_user_data = Some(single_value_part.data.to_vec()),
-                                        x => warn!("Unknown tag in ACSE Request User Data Single Value part: {:?}", x),
-                                    }
-                                    if let Some(cid) = context_id
-                                        && cid != &[3]
-                                    {
-                                        return Err(AcseError::ProtocolError(format!("Incorrect context id found for User Data in ACSE Request: Expected [3] but got {:?}", cid)));
-                                    }
+                // let context_id = &[];
+                warn!("{:?}", pdu_part.data);
+                for user_data_part in process_constructed_data(pdu_part.data).map_err(to_acse_error("Failed to deconstruct UserInformation on ACSE Request".into()))? {
+                    match user_data_part.header.raw_tag() {
+                        Some(&[40]) => {
+                            for single_value_part in process_constructed_data(user_data_part.data).map_err(to_acse_error("Failed to deconstruct Single Value part in ACSE Request"))? {
+                                let mut context_id = None;
+                                match single_value_part.header.raw_tag() {
+                                    Some(&[2]) => context_id = Some(process_integer(single_value_part, "Failed to parse context id from Single Value part in ACSE Request")?),
+                                    Some(&[160]) => payload_user_data = Some(single_value_part.data.to_vec()),
+                                    x => warn!("Unknown tag in ACSE Request User Data Single Value part: {:?}", x),
+                                }
+                                if let Some(cid) = context_id
+                                    && cid != &[3]
+                                {
+                                    return Err(AcseError::ProtocolError(format!("Incorrect context id found for User Data in ACSE Request: Expected [3] but got {:?}", cid)));
                                 }
                             }
-                            x => warn!("Unknown tag in ACSE Request User Data: {:?}", x),
-                        };
+                        }
+                        x => warn!("Unknown tag in ACSE Request User Data: {:?}", x),
                     };
+                }
             }
             x => warn!("Unexpected tag in ACSE Request: {:?}", x),
         }
     }
 
+    if !version.is_set(0) {
+        return Err(AcseError::ProtocolError("Unsupported ACSE version requested".into()));
+    }
     let payload_user_data = match payload_user_data {
         Some(payload_user_data) => payload_user_data,
-        None => return Err(AcseError::ProtocolError("No User Data found on ACSE Request".into()))
+        None => return Err(AcseError::ProtocolError("No User Data found on ACSE Request".into())),
     };
 
     Ok((
