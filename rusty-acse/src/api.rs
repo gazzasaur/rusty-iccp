@@ -36,7 +36,7 @@ pub struct AcseRequestInformation {
     pub implementation_information: Option<String>,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct AcseResponseInformation {
     pub application_context_name: Oid<'static>,
 
@@ -51,21 +51,22 @@ pub struct AcseResponseInformation {
     pub implementation_information: Option<String>,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum AssociateResult {
     Accepted,
     RejectedPermanent,
     RejectedTransient,
-    Unknown(Vec<u8>), // Integer
+    Unknown(Vec<u8>),
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum AssociateSourceDiagnostic {
     User(AssociateSourceDiagnosticUserCategory),
     Provider(AssociateSourceDiagnosticProviderCategory),
+    Unknown(Vec<u8>), // Integer
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum AssociateSourceDiagnosticUserCategory {
     Null,
     NoReasonGiven,
@@ -85,7 +86,7 @@ pub enum AssociateSourceDiagnosticUserCategory {
     Unknown(Vec<u8>), // Integer
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum AssociateSourceDiagnosticProviderCategory {
     Null,
     NoReasonGiven,
@@ -105,6 +106,7 @@ pub enum AeQualifier {
     Form2(Vec<u8>), // Integer
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum AcseRecvResult {
     Closed,
     Data(Vec<u8>),

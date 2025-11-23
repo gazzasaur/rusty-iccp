@@ -30,7 +30,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_create_connection() -> Result<(), anyhow::Error> {
-        create_acse_connection_pair_with_options(
+        let (client, server) = create_acse_connection_pair_with_options(
             AcseRequestInformation {
                 application_context_name: Oid::from(&[1, 0, 9506, 2, 1])?,
                 called_ap_title: Some(ApTitle::Form2(Oid::from(&[1, 2, 3, 4, 5])?)),
@@ -57,6 +57,15 @@ mod tests {
             vec![0xa9, 0x00],
         )
         .await?;
+
+        let (mut client_reader, mut client_writer) = client.split().await?;
+        let (mut server_reader, mut server_writer) = server.split().await?;
+
+        client_writer.send(vec![0xa0, 0x03, 0x02, 0x01, 0x01]).await?;
+        assert_eq!(AcseRecvResult::Data(vec![160, 3, 2, 1, 1]), server_reader.recv().await?);
+
+        server_writer.send(vec![0xa0, 0x03, 0x02, 0x01, 0x02]).await?;
+        assert_eq!(AcseRecvResult::Data(vec![160, 3, 2, 1, 2]), client_reader.recv().await?);
 
         Ok(())
     }
@@ -93,18 +102,19 @@ mod tests {
             let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
             let acse_listener = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
-            let (acse_responder, received_request_information, received_connect_data) = acse_listener.responder(response_options).await?;
+            let (acse_responder, received_request_information, received_connect_data) = acse_listener.responder(response_options.clone()).await?;
 
             Ok((acse_responder.accept(accept_data.clone()).await?, received_request_information, received_connect_data))
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
         let (copp_server, received_request_information, received_connect_data) = copp_server?;
-        let (copp_client, accepted_data, user_data) = copp_client?;
+        let (copp_client, received_response_information, received_accept_data) = copp_client?;
 
         assert_eq!(reqeust_options, received_request_information);
         assert_eq!(connect_data, received_connect_data);
-        // assert_eq!(connect_data, connected_data);
+        assert_eq!(response_options, received_response_information);
+        assert_eq!(accept_data, received_accept_data);
 
         Ok((copp_client, copp_server))
     }

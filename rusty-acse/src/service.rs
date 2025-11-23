@@ -9,9 +9,9 @@ use rusty_copp::CoppConnection;
 use rusty_copp::{CoppError, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
 
 use crate::{
-    AcseError, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory,
+    AcseError, AcseRecvResult, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory,
     OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter,
-    messages::parsers::{process_request, to_acse_error},
+    messages::parsers::{process_request, process_response, to_acse_error},
 };
 
 pub struct RustyOsiSingleValueAcseInitiator<T: CoppInitiator, R: CoppReader, W: CoppWriter> {
@@ -34,7 +34,7 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseInit
 
 impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator for RustyOsiSingleValueAcseInitiator<T, R, W> {
     async fn initiate(self, abstract_syntax_name: Oid<'static>, user_data: Vec<u8>) -> Result<(impl OsiSingleValueAcseConnection, AcseResponseInformation, Vec<u8>), AcseError> {
-        let (copp_connection, copp_user_data) = self
+        let (copp_connection, received_user_data) = self
             .copp_initiator
             .initiate(
                 PresentationContextType::ContextDefinitionList(vec![
@@ -59,20 +59,26 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
             )
             .await?;
         let (copp_reader, copp_writer) = copp_connection.split().await?;
-        Ok((
-            RustyAcseConnection { copp_reader, copp_writer },
-            AcseResponseInformation {
-                application_context_name: self.options.application_context_name,
-                associate_result: AssociateResult::Accepted,
-                associate_source_diagnostic: AssociateSourceDiagnostic::Provider(AssociateSourceDiagnosticProviderCategory::Null),
-                responding_ap_title: self.options.called_ap_title,
-                responding_ae_qualifier: self.options.called_ae_qualifier,
-                responding_ap_invocation_identifier: self.options.called_ap_invocation_identifier,
-                responding_ae_invocation_identifier: self.options.calling_ae_invocation_identifier,
-                implementation_information: None,
-            },
-            vec![],
-        ))
+        let (acse_response, acse_response_data) = match received_user_data {
+            Some(UserData::FullyEncoded(pdvs)) => {
+                if pdvs.len() > 1 {
+                    return Err(AcseError::ProtocolError(format!("Expecting a single PDV on ACSE Response but found {}", pdvs.len())));
+                }
+                match pdvs.first() {
+                    Some(pdv) => {
+                        if pdv.presentation_context_identifier != vec![1] {
+                            return Err(AcseError::ProtocolError(format!("Expecting a context id of [1] on ACSE Response but found {:?}", pdv.presentation_context_identifier)));
+                        }
+                        match &pdv.presentation_data_values {
+                            PresentationDataValues::SingleAsn1Type(response_user_data) => process_response(response_user_data)?,
+                        }
+                    }
+                    None => return Err(AcseError::ProtocolError("No PDV was found on ACSE Response".into())),
+                }
+            }
+            None => return Err(AcseError::ProtocolError("No user data was found on ACSE Response".into())),
+        };
+        Ok((RustyAcseConnection { copp_reader, copp_writer }, acse_response, acse_response_data))
     }
 }
 
@@ -169,17 +175,44 @@ pub struct RustyAcseConnection<R: CoppReader, W: CoppWriter> {
 
 impl<R: CoppReader, W: CoppWriter> OsiSingleValueAcseConnection for RustyAcseConnection<R, W> {
     async fn split(self) -> Result<(impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter), AcseError> {
-        Err::<(RustyOsiSingleValueAcseReader<R>, RustyOsiSingleValueAcseWriter<W>), crate::AcseError>(AcseError::InternalError("Not implemented".to_string()))
+        Ok((RustyOsiSingleValueAcseReader::new(self.copp_reader), RustyOsiSingleValueAcseWriter::new(self.copp_writer)))
     }
 }
 
 pub struct RustyOsiSingleValueAcseReader<R: CoppReader> {
-    copp_reader: PhantomData<R>,
+    copp_reader: R,
+}
+
+impl<R: CoppReader> RustyOsiSingleValueAcseReader<R> {
+    pub fn new(copp_reader: R) -> Self {
+        Self { copp_reader }
+    }
 }
 
 impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R> {
-    async fn recv(&mut self) -> Result<crate::AcseRecvResult, AcseError> {
-        Err(AcseError::InternalError("Not implemented".to_string()))
+    async fn recv(&mut self) -> Result<AcseRecvResult, AcseError> {
+        let copp_recv_result = self.copp_reader.recv().await?;
+        match copp_recv_result {
+            rusty_copp::CoppRecvResult::Closed => return Ok(AcseRecvResult::Closed),
+            rusty_copp::CoppRecvResult::Data(user_data) => match user_data {
+                UserData::FullyEncoded(presentation_data_value_lists) => {
+                    if presentation_data_value_lists.len() > 1 {
+                        return Err(AcseError::ProtocolError(format!("Expected one PDV value on ACSE read but found {}", presentation_data_value_lists.len())));
+                    }
+                    match presentation_data_value_lists.first() {
+                        Some(x) => {
+                            if x.presentation_context_identifier != vec![3] {
+                                return Err(AcseError::ProtocolError(format!("Expected a context id of 3 on ACSE read but was {:?}", x.presentation_context_identifier)));
+                            }
+                            match &x.presentation_data_values {
+                                PresentationDataValues::SingleAsn1Type(data) => return Ok(AcseRecvResult::Data(data.to_vec())),
+                            }
+                        }
+                        None => return Err(AcseError::ProtocolError("Expected one PDV value on ACSE read but did not find any".into())),
+                    }
+                }
+            },
+        }
     }
 }
 
@@ -195,30 +228,18 @@ impl<W: CoppWriter> RustyOsiSingleValueAcseWriter<W> {
 
 impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W> {
     async fn send(&mut self, data: Vec<u8>) -> Result<(), AcseError> {
-        let user_data_structure = BerObject::from_header_and_content(
-            Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
-            der_parser::ber::BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
-                Header::new(Class::Universal, true, Tag::from(8), der_parser::ber::Length::Definite(0)),
-                der_parser::ber::BerObjectContent::Sequence(vec![
-                    BerObject::from_header_and_content(Header::new(Class::Universal, false, Tag::Integer, der_parser::ber::Length::Definite(0)), BerObjectContent::Integer(&[3])),
-                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)), BerObjectContent::OctetString(&data)),
-                ]),
-            )]),
-        );
-        let mut user_data_bytes = user_data_structure.to_vec().map_err(to_acse_error("Failed to serialise ACSE data".into()))?;
-        user_data_bytes[0] = 0xbe;
         Ok(self
             .copp_writer
             .send(&UserData::FullyEncoded(vec![PresentationDataValueList {
                 transfer_syntax_name: None,
                 presentation_context_identifier: vec![3],
-                presentation_data_values: PresentationDataValues::SingleAsn1Type(user_data_bytes),
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(data),
             }]))
             .await?)
     }
 
     async fn continue_send(&mut self) -> Result<(), AcseError> {
-        Err(AcseError::InternalError("Not implemented".to_string()))
+        Ok(self.copp_writer.continue_send().await?)
     }
 }
 
@@ -492,6 +513,7 @@ impl AcseResponseInformation {
                                     }),
                                 )]),
                             ),
+                            AssociateSourceDiagnostic::Unknown(_) => return Err(AcseError::InternalError("Cannot serialise Unknown diagnostic on ACSE Response".into())),
                         }]),
                     )),
                     // Called AP Title
