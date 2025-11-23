@@ -678,6 +678,19 @@ dependencies = [
 [[package]]
 name = "rusty-mms"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "der-parser",
+ "rand",
+ "rusty-copp",
+ "rusty-cosp",
+ "rusty-cotp",
+ "rusty-tpkt",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-test",
+]
 
 [[package]]
 name = "rusty-tpkt"
