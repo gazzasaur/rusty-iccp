@@ -124,7 +124,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseList
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseListener for RustyOsiSingleValueAcseListener<T, R, W> {
     async fn responder(self, response: AcseResponseInformation) -> Result<(impl crate::OsiSingleValueAcseResponder, AcseRequestInformation, Vec<u8>), AcseError> {
-        Ok((RustyOsiSingleValueAcseResponder::<T, R, W>::new(self.copp_responder, response), self.request, vec![]))
+        Ok((RustyOsiSingleValueAcseResponder::<T, R, W>::new(self.copp_responder, response), self.request, self.acse_user_data))
     }
 }
 

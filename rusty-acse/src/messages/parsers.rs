@@ -3,8 +3,8 @@ use std::fmt::Debug;
 use der_parser::{
     Oid,
     asn1_rs::Any,
-    ber::{BerObjectContent, BitStringObject, parse_ber_any},
-    der::Tag,
+    ber::{BerObjectContent, BitStringObject, parse_ber_any, parse_ber_content, parse_ber_integer, parse_ber_oid},
+    der::{Class, Tag},
     error::BerError,
     parse_ber,
 };
@@ -31,7 +31,7 @@ pub(crate) fn process_request(data: &[u8]) -> Result<(AcseRequestInformation, Ve
     let mut payload_user_data = None;
 
     let (_, pdu) = parse_ber_any(&data).map_err(to_acse_error("Failed to parse ACSE Request"))?;
-    pdu.header.assert_class(der_parser::der::Class::Application).map_err(to_acse_error("Expected ACSE Request was not found"))?;
+    pdu.header.assert_class(Class::Application).map_err(to_acse_error("Expected ACSE Request was not found"))?;
     pdu.header.assert_tag(Tag::from(0)).map_err(to_acse_error("Expected ACSE Request was not found"))?;
     pdu.header.assert_constructed().map_err(to_acse_error("Expected ACSE Request was not found"))?;
     let pdu_parts = process_constructed_data(pdu.data).map_err(to_acse_error("Could not deconstruct ACSE Request"))?;
@@ -39,29 +39,27 @@ pub(crate) fn process_request(data: &[u8]) -> Result<(AcseRequestInformation, Ve
     for pdu_part in pdu_parts {
         match pdu_part.header.raw_tag() {
             Some(&[128]) => version = process_bitstring(pdu_part, "Failed to extract protocol version from ACSE Request")?,
-            Some(&[161]) => application_context_name = Some(process_oid(pdu_part, "Failed to parse Application Context Name in ACSE Request")?),
+            Some(&[161]) => application_context_name = Some(parse_ber_oid(pdu_part.data).map_err(to_acse_error("Failed to parse Application Context Name in ACSE Request"))?.1),
 
-            Some(&[66]) => called_ap_title = Some(process_ap_title(pdu_part, "Failed to parse Called AP Title in ACSE Request")?),
-            Some(&[67]) => called_ae_qualifier = Some(process_ae_qualifier(pdu_part, "Failed to parse Called AE Title in ACSE Request")?),
-            Some(&[68]) => called_ap_invocation_identifier = Some(process_integer(pdu_part, "Failed to parse Called AP Invocation Identifier in ACSE Request")?),
-            Some(&[69]) => called_ae_invocation_identifier = Some(process_integer(pdu_part, "Failed to parse Called AE Invocation Identifier in ACSE Request")?),
+            Some(&[162]) => called_ap_title = Some(process_ap_title(pdu_part, "Failed to parse Called AP Title in ACSE Request")?),
+            Some(&[163]) => called_ae_qualifier = Some(process_ae_qualifier(pdu_part, "Failed to parse Called AE Title in ACSE Request")?),
+            Some(&[164]) => called_ap_invocation_identifier = Some(process_integer(pdu_part.data, "Failed to parse Called AP Invocation Identifier in ACSE Request")?),
+            Some(&[165]) => called_ae_invocation_identifier = Some(process_integer(pdu_part.data, "Failed to parse Called AE Invocation Identifier in ACSE Request")?),
 
-            Some(&[70]) => calling_ap_title = Some(process_ap_title(pdu_part, "Failed to parse Calling AP Title in ACSE Request")?),
-            Some(&[71]) => calling_ae_qualifier = Some(process_ae_qualifier(pdu_part, "Failed to parse Calling AE Title in ACSE Request")?),
-            Some(&[72]) => calling_ap_invocation_identifier = Some(process_integer(pdu_part, "Failed to parse Calling AP Invocation Identifier in ACSE Request")?),
-            Some(&[73]) => calling_ae_invocation_identifier = Some(process_integer(pdu_part, "Failed to parse Calling AE Invocation Identifier in ACSE Request")?),
+            Some(&[166]) => calling_ap_title = Some(process_ap_title(pdu_part, "Failed to parse Calling AP Title in ACSE Request")?),
+            Some(&[167]) => calling_ae_qualifier = Some(process_ae_qualifier(pdu_part, "Failed to parse Calling AE Title in ACSE Request")?),
+            Some(&[168]) => calling_ap_invocation_identifier = Some(process_integer(pdu_part.data, "Failed to parse Calling AP Invocation Identifier in ACSE Request")?),
+            Some(&[169]) => calling_ae_invocation_identifier = Some(process_integer(pdu_part.data, "Failed to parse Calling AE Invocation Identifier in ACSE Request")?),
 
-            Some(&[74]) => implementation_information = Some(process_graphical_string(pdu_part, "Failed to parse Implementation Information in ACSE Request")?),
+            Some(&[157]) => implementation_information = Some(process_graphical_string(pdu_part, "Failed to parse Implementation Information in ACSE Request")?),
             Some(&[190]) => {
-                // let context_id = &[];
-                warn!("{:?}", pdu_part.data);
                 for user_data_part in process_constructed_data(pdu_part.data).map_err(to_acse_error("Failed to deconstruct UserInformation on ACSE Request".into()))? {
                     match user_data_part.header.raw_tag() {
                         Some(&[40]) => {
                             for single_value_part in process_constructed_data(user_data_part.data).map_err(to_acse_error("Failed to deconstruct Single Value part in ACSE Request"))? {
                                 let mut context_id = None;
                                 match single_value_part.header.raw_tag() {
-                                    Some(&[2]) => context_id = Some(process_integer(single_value_part, "Failed to parse context id from Single Value part in ACSE Request")?),
+                                    Some(&[2]) => context_id = Some(process_integer_context(single_value_part, "Failed to parse context id from Single Value part in ACSE Request")?),
                                     Some(&[160]) => payload_user_data = Some(single_value_part.data.to_vec()),
                                     x => warn!("Unknown tag in ACSE Request User Data Single Value part: {:?}", x),
                                 }
@@ -90,7 +88,11 @@ pub(crate) fn process_request(data: &[u8]) -> Result<(AcseRequestInformation, Ve
 
     Ok((
         AcseRequestInformation {
-            application_context_name: application_context_name.ok_or_else(|| AcseError::ProtocolError("No Application Context Name was present on the ACSE request".into()))?,
+            application_context_name: application_context_name
+                .ok_or_else(|| AcseError::ProtocolError("No Application Context Name was present on the ACSE request".into()))?
+                .as_oid_val()
+                .map_err(to_acse_error("Failed to extract Application Context Name OID from ACSE Request"))?
+                .to_owned(),
             called_ap_title,
             called_ae_qualifier,
             called_ap_invocation_identifier,
@@ -118,8 +120,7 @@ pub(crate) fn process_constructed_data<'a>(data: &'a [u8]) -> Result<Vec<Any<'a>
 }
 
 pub(crate) fn process_bitstring<'a>(npm_object: Any<'a>, error_message: &str) -> Result<BitStringObject<'a>, AcseError> {
-    warn!("{:?}", npm_object);
-    let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::BitString)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_acse_error(error_message))?;
+    let (_, inner_object) = parse_ber_content(Tag::BitString)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_acse_error(error_message))?;
 
     match inner_object {
         BerObjectContent::BitString(_, value) => Ok(value),
@@ -127,8 +128,17 @@ pub(crate) fn process_bitstring<'a>(npm_object: Any<'a>, error_message: &str) ->
     }
 }
 
-pub(crate) fn process_integer<'a>(npm_object: Any<'a>, error_message: &str) -> Result<Vec<u8>, AcseError> {
-    let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::Integer)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_acse_error(error_message))?;
+pub(crate) fn process_integer<'a>(data: &[u8], error_message: &str) -> Result<Vec<u8>, AcseError> {
+    let (_, inner_object) = parse_ber_integer(data).map_err(to_acse_error(error_message))?;
+
+    match inner_object.content {
+        BerObjectContent::Integer(value) => Ok(value.to_vec()),
+        _ => Err(AcseError::ProtocolError(error_message.into())),
+    }
+}
+
+pub(crate) fn process_integer_context<'a>(npm_object: Any<'a>, error_message: &str) -> Result<Vec<u8>, AcseError> {
+    let (_, inner_object) = parse_ber_content(Tag::Integer)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_acse_error(error_message))?;
 
     match inner_object {
         BerObjectContent::Integer(value) => Ok(value.to_vec()),
@@ -137,7 +147,7 @@ pub(crate) fn process_integer<'a>(npm_object: Any<'a>, error_message: &str) -> R
 }
 
 pub(crate) fn process_graphical_string<'a>(npm_object: Any<'a>, error_message: &str) -> Result<String, AcseError> {
-    let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::GeneralString)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_acse_error(error_message))?;
+    let (_, inner_object) = parse_ber_content(Tag::GeneralString)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_acse_error(error_message))?;
 
     match inner_object {
         BerObjectContent::GeneralString(value) => Ok(value.to_owned()),
@@ -146,7 +156,7 @@ pub(crate) fn process_graphical_string<'a>(npm_object: Any<'a>, error_message: &
 }
 
 pub(crate) fn process_oid(npm_object: Any<'_>, error_message: &str) -> Result<Oid<'static>, AcseError> {
-    let (_, inner_object) = der_parser::ber::parse_ber_content(Tag::Oid)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_acse_error(error_message))?;
+    let (_, inner_object) = parse_ber_content(Tag::Oid)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_acse_error(error_message))?;
 
     match inner_object {
         BerObjectContent::OID(value) => Ok(value.to_owned()),

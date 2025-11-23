@@ -53,6 +53,7 @@ mod tests {
                 responding_ae_invocation_identifier: Some(vec![102]),
                 implementation_information: Some("This Other Guy".into()),
             },
+            vec![0xa8, 0x00],
             vec![0xa9, 0x00],
         )
         .await?;
@@ -63,6 +64,7 @@ mod tests {
     async fn create_acse_connection_pair_with_options(
         reqeust_options: AcseRequestInformation,
         response_options: AcseResponseInformation,
+        connect_data: Vec<u8>,
         accept_data: Vec<u8>,
     ) -> Result<(impl OsiSingleValueAcseConnection, impl OsiSingleValueAcseConnection), anyhow::Error> {
         // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
@@ -79,8 +81,8 @@ mod tests {
                 cosp_client,
                 Default::default(),
             );
-            let acse_client = RustyOsiSingleValueAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_client, reqeust_options);
-            Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, vec![0xa8, 0x00]).await?)
+            let acse_client = RustyOsiSingleValueAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_client, reqeust_options.clone());
+            Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, connect_data.clone()).await?)
         };
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;
@@ -91,16 +93,17 @@ mod tests {
             let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
             let acse_listener = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
-            let (acse_responder, connect_user_data, acse_user_data) = acse_listener.responder(response_options).await?;
+            let (acse_responder, received_request_information, received_connect_data) = acse_listener.responder(response_options).await?;
 
-            Ok((acse_responder.accept(accept_data.clone()).await?, connect_user_data))
+            Ok((acse_responder.accept(accept_data.clone()).await?, received_request_information, received_connect_data))
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
-        let (copp_server, connected_data) = copp_server?;
+        let (copp_server, received_request_information, received_connect_data) = copp_server?;
         let (copp_client, accepted_data, user_data) = copp_client?;
 
-        // assert_eq!(accept_data, accepted_data);
+        assert_eq!(reqeust_options, received_request_information);
+        assert_eq!(connect_data, received_connect_data);
         // assert_eq!(connect_data, connected_data);
 
         Ok((copp_client, copp_server))

@@ -19,7 +19,7 @@ pub enum AcseError {
 
 // Only BER encoding is supported.
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct AcseRequestInformation {
     pub application_context_name: Oid<'static>,
 
@@ -93,13 +93,13 @@ pub enum AssociateSourceDiagnosticProviderCategory {
     Unknown(Vec<u8>), // Integer
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum ApTitle {
     // Form1(...), Not supporting as this library does not support DN.
     Form2(Oid<'static>),
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum AeQualifier {
     // Form1(...), Not supporting as this library does not support DN.
     Form2(Vec<u8>), // Integer
