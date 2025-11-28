@@ -682,6 +682,7 @@ dependencies = [
  "anyhow",
  "der-parser",
  "rand",
+ "rusty-acse",
  "rusty-copp",
  "rusty-cosp",
  "rusty-cotp",

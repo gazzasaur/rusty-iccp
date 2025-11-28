@@ -48,6 +48,9 @@ pub trait CospListener: Send {
 
 pub trait CospResponder: Send {
     fn accept(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
+
+    // fn refuse(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    // fn abort(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }
 
 pub trait CospConnection: Send {
@@ -61,4 +64,7 @@ pub trait CospReader: Send {
 pub trait CospWriter: Send {
     fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+
+    // fn finish(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    // fn abort(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }

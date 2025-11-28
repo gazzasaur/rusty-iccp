@@ -2,9 +2,9 @@ pub(crate) mod api;
 pub(crate) mod error;
 pub(crate) mod messages;
 pub(crate) mod service;
+use rusty_cosp::{RustyCospInitiatorIsoStack, RustyCospReaderIsoStack, RustyCospResponderIsoStack, RustyCospWriterIsoStack};
 
 pub use api::*;
-use rusty_cosp::{RustyCospInitiatorIsoStack, RustyCospReaderIsoStack, RustyCospResponderIsoStack, RustyCospWriterIsoStack};
 pub use service::*;
 
 pub type RustyCoppReaderIsoStack<R> = RustyCoppReader<RustyCospReaderIsoStack<R>>;

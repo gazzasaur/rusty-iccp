@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rusty-copp = { path = "../rusty-acse" }
+rusty-acse = { path = "../rusty-acse" }
 rusty-copp = { path = "../rusty-copp" }
 rusty-cosp = { path = "../rusty-cosp" }
 rusty-cotp = { path = "../rusty-cotp" }

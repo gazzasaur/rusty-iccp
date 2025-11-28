@@ -1,3 +1,4 @@
+use rusty_copp::CoppError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -21,6 +22,7 @@ pub enum MmsRecvResult {
     Data(MmsMessage),
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum MmsMessage {
     ConfirmedRequest,
     InitiateRequest,
@@ -28,11 +30,11 @@ pub enum MmsMessage {
 }
 
 pub trait MmsInitiator: Send {
-    fn initiate(self) -> impl std::future::Future<Output = Result<(impl MmsConnection), MmsError>> + Send;
+    fn initiate(self) -> impl std::future::Future<Output = Result<impl MmsConnection, MmsError>> + Send;
 }
 
 pub trait MmsListener: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl MmsResponder), MmsError>> + Send;
+    fn responder(self) -> impl std::future::Future<Output = Result<impl MmsResponder, MmsError>> + Send;
 }
 
 pub trait MmsResponder: Send {

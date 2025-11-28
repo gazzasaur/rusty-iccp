@@ -63,7 +63,6 @@ mod tests {
 
         client_writer.send(vec![0xa0, 0x03, 0x02, 0x01, 0x01]).await?;
         assert_eq!(AcseRecvResult::Data(vec![160, 3, 2, 1, 1]), server_reader.recv().await?);
-
         server_writer.send(vec![0xa0, 0x03, 0x02, 0x01, 0x02]).await?;
         assert_eq!(AcseRecvResult::Data(vec![160, 3, 2, 1, 2]), client_reader.recv().await?);
 
