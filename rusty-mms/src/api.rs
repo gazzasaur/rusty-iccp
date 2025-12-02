@@ -1,6 +1,30 @@
 use rusty_copp::CoppError;
 use thiserror::Error;
 
+/**
+ * This MMS stack is designed to be used with ICCP. It supports the following.
+ * 
+ * Parameter CBB
+ * - str1
+ * - str2
+ * - vnam
+ * - vatl
+ * - vlis
+ * 
+ * VMD Support
+ * - GetNameList
+ * - Identify
+ *    
+ * Variable Access
+ * - Read
+ * - Write
+ * - Information Report
+ * - GetVariableAccessAttributes
+ * - DefineNamedVariableList
+ * - GetNamedVariableListAttribute
+ * - DeleteNamedVariableList
+ */
+
 #[derive(Error, Debug)]
 pub enum MmsError {
     #[error("MMS Protocol Error - {}", .0)]
