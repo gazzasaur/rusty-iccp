@@ -101,7 +101,7 @@ pub enum ServiceSupportOption {
 
 struct ServiceSupportOptionsBerObject<'a> {
     data: [u8; 10],
-    ignored_bits: u8,
+    ignored_bits: usize,
     _lifetime: PhantomData<&'a ()>,
 }
 
@@ -130,7 +130,27 @@ impl<'a> ServiceSupportOptionsBerObject<'a> {
                 }
                 ServiceSupportOption::Write => {
                     obj.ignored_bits = obj.ignored_bits.min(74);
-                    obj.data[0] |= 0x40;
+                    obj.data[0] |= 0x04;
+                }
+                ServiceSupportOption::GetVariableAccessAttributes => {
+                    obj.ignored_bits = obj.ignored_bits.min(73);
+                    obj.data[0] |= 0x02;
+                }
+                ServiceSupportOption::GetNamedVariableListAttribute => {
+                    obj.ignored_bits = obj.ignored_bits.min(72);
+                    obj.data[0] |= 0x01;
+                }
+                ServiceSupportOption::DefineNamedVariableList => {
+                    obj.ignored_bits = obj.ignored_bits.min(68);
+                    obj.data[1] |= 0x10;
+                }
+                ServiceSupportOption::DeleteNamedVariableList => {
+                    obj.ignored_bits = obj.ignored_bits.min(66);
+                    obj.data[1] |= 0x04;
+                }
+                ServiceSupportOption::InformationReport => {
+                    obj.ignored_bits = obj.ignored_bits.min(72);
+                    obj.data[9] |= 0x01;
                 }
                 _ => (),
             }
@@ -142,7 +162,12 @@ impl<'a> ServiceSupportOptionsBerObject<'a> {
     fn to_ber_object(&'a self, tag: Tag) -> BerObject<'a> {
         BerObject::from_header_and_content(
             Header::new(Class::ContextSpecific, false, tag, Length::Definite(0)),
-            BerObjectContent::BitString(self.ignored_bits, BitStringObject { data: &self.data }),
+            BerObjectContent::BitString(
+                (self.ignored_bits % 8) as u8,
+                BitStringObject {
+                    data: &self.data[0..(10 - self.ignored_bits / 8)],
+                },
+            ),
         )
     }
 }
@@ -154,54 +179,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_serialises_service_support_options2() -> Result<(), anyhow::Error> {
-        match ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![] }).to_ber_object(Tag::from(3)).content {
-            BerObjectContent::BitString(_, bit_string_object) => {
-                assert!(!bit_string_object.is_set(0));
-                assert!(!bit_string_object.is_set(1));
-                assert!(!bit_string_object.is_set(2));
-                assert!(!bit_string_object.is_set(4));
-                assert!(!bit_string_object.is_set(5));
-                assert!(!bit_string_object.is_set(6));
-                assert!(!bit_string_object.is_set(7));
-                assert!(!bit_string_object.is_set(11));
-                assert!(!bit_string_object.is_set(13));
-                assert!(!bit_string_object.is_set(79));
+    fn it_serialises_service_support_options_empty() -> Result<(), anyhow::Error> {
+        let subject = ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![] });
+        let subject_ber = subject.to_ber_object(Tag::from(3)).content;
+        for test_bit in 1..100 {
+            match &subject_ber {
+                BerObjectContent::BitString(i, x) => assert!(!x.is_set(test_bit)),
+                x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
             }
-            x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
-        };
+        }
+        assert_eq!(vec![131, 1, 0], subject.to_ber_object(Tag::from(3)).to_vec()?);
 
-        match ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![ServiceSupportOption::GetNameList] }).to_ber_object(Tag::from(3)).content {
-            BerObjectContent::BitString(_, bit_string_object) => {
-                assert!(!bit_string_object.is_set(0));
-                assert!(bit_string_object.is_set(1));
-                assert!(!bit_string_object.is_set(2));
-                assert!(!bit_string_object.is_set(4));
-                assert!(!bit_string_object.is_set(5));
-                assert!(!bit_string_object.is_set(6));
-                assert!(!bit_string_object.is_set(7));
-                assert!(!bit_string_object.is_set(11));
-                assert!(!bit_string_object.is_set(13));
-                assert!(!bit_string_object.is_set(79));
-            }
-            x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
-        };
+        Ok(())
+    }
 
-                match ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![ServiceSupportOption::GetNameList] }).to_ber_object(Tag::from(3)).content {
-            BerObjectContent::BitString(_, bit_string_object) => {
-                assert!(!bit_string_object.is_set(0));
-                assert!(bit_string_object.is_set(1));
-                assert!(!bit_string_object.is_set(2));
-                assert!(!bit_string_object.is_set(4));
-                assert!(!bit_string_object.is_set(5));
-                assert!(!bit_string_object.is_set(6));
-                assert!(!bit_string_object.is_set(7));
-                assert!(!bit_string_object.is_set(11));
-                assert!(!bit_string_object.is_set(13));
-                assert!(!bit_string_object.is_set(79));
+    #[test]
+    fn it_serialises_service_support_options() -> Result<(), anyhow::Error> {
+        let subject_bits = vec![
+            (1, 6, vec![131u8, 2u8, 6u8, 64u8], ServiceSupportOption::GetNameList),
+            (2, 5, vec![131u8, 2u8, 5u8, 32u8], ServiceSupportOption::Identify),
+            (4, 3, vec![131u8, 2u8, 3u8, 8u8], ServiceSupportOption::Read),
+            (5, 2, vec![131u8, 2u8, 2u8, 4u8], ServiceSupportOption::Write),
+            (6, 1, vec![131u8, 2u8, 1u8, 2u8], ServiceSupportOption::GetVariableAccessAttributes),
+            (7, 0, vec![131u8, 2u8, 0u8, 1u8], ServiceSupportOption::GetNamedVariableListAttribute),
+            (11, 4, vec![131u8, 3u8, 4u8, 0u8, 16u8], ServiceSupportOption::DefineNamedVariableList),
+            (13, 2, vec![131u8, 3u8, 2u8, 0u8, 4u8], ServiceSupportOption::DeleteNamedVariableList),
+            (79, 0, vec![131u8, 3u8, 2u8, 0u8, 4u8], ServiceSupportOption::InformationReport),
+        ];
+
+        for (subject_bit, expected_ignored_bits, expected_serilised_form, subject_option) in subject_bits {
+            let subject = ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![subject_option] });
+            let subject_ber = subject.to_ber_object(Tag::from(3)).content;
+            for test_bit in 1..100 {
+                match &subject_ber {
+                    BerObjectContent::BitString(i, x) if test_bit == subject_bit => {
+                        assert!(x.is_set(test_bit));
+                        assert_eq!(*i as usize, expected_ignored_bits);
+                        assert_eq!(&expected_serilised_form, &subject.to_ber_object(Tag::from(3)).to_vec()?);
+                    }
+                    BerObjectContent::BitString(i, x) if test_bit != subject_bit => assert!(!x.is_set(test_bit)),
+                    x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
+                }
             }
-            x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
-        };
+        }
 
         Ok(())
     }
