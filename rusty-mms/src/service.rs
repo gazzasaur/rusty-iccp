@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 
 use der_parser::{
-    asn1_rs::{Any, BitString, ToDer},
     ber::{
         BerObject, BerObjectContent, BitStringObject,
         Length::{self, Definite},
@@ -11,9 +10,8 @@ use der_parser::{
         Header, Tag,
     },
 };
-use rusty_copp::CoppResponder;
 
-use crate::{MmsConnection, MmsError, MmsInitiator};
+use crate::MmsError;
 
 #[repr(u8)]
 enum MmsPduType {
@@ -45,6 +43,51 @@ pub struct InitiateRequestPdu {
     init_request_details: InitRequestDetails,
 }
 
+impl InitiateRequestPdu {
+    pub fn new(local_detail_calling: Option<i32>, proposed_max_serv_outstanding_calling: i16, proposed_max_serv_outstanding_called: i16, proposed_data_structure_nesting_level: Option<i8>, init_request_details: InitRequestDetails) -> Self {
+        Self {
+            local_detail_calling,
+            proposed_max_serv_outstanding_calling,
+            proposed_max_serv_outstanding_called,
+            proposed_data_structure_nesting_level,
+            init_request_details,
+        }
+    }
+
+    pub fn serialise(self) -> Result<Vec<u8>, MmsError> {
+        let local_detail_calling = self.local_detail_calling.map(|x| x.to_be_bytes());
+        let proposed_max_serv_outstanding_calling = self.proposed_max_serv_outstanding_calling.to_be_bytes();
+        let proposed_max_serv_outstanding_called = self.proposed_max_serv_outstanding_called.to_be_bytes();
+        let proposed_data_structure_nesting_level = self.proposed_data_structure_nesting_level.map(|x| x.to_be_bytes());
+
+        BerObject::from_header_and_content(
+            Header::new(Class::ContextSpecific, true, Tag::from(8), Length::Definite(0)),
+            BerObjectContent::Sequence(
+                vec![
+                    local_detail_calling
+                        .as_ref()
+                        .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Integer(x))),
+                    Some(BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)),
+                        BerObjectContent::Integer(&proposed_max_serv_outstanding_calling),
+                    )),
+                    Some(BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)),
+                        BerObjectContent::Integer(&proposed_max_serv_outstanding_called),
+                    )),
+                    proposed_data_structure_nesting_level
+                        .as_ref()
+                        .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Integer(x))),
+                ]
+                .into_iter()
+                .filter_map(|i| i)
+                .collect(),
+            ),
+        );
+        Ok(vec![])
+    }
+}
+
 pub struct InitRequestDetails {
     proposed_version_number: i16,
     propsed_parameter_cbb: ParameterSupportOptions,
@@ -74,11 +117,11 @@ pub struct ParameterSupportOptions {
 }
 
 pub enum ParameterSupportOption {
-    Str1,                           // Bit 0
-    Str2,                           // Bit 1
-    Vnam,                           // Bit 2
-    Valt,                           // Bit 3
-    Vlis,                           // Bit 7
+    Str1, // Bit 0
+    Str2, // Bit 1
+    Vnam, // Bit 2
+    Valt, // Bit 3
+    Vlis, // Bit 7
     Unsupported(u8),
 }
 
