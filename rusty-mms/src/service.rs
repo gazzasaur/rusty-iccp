@@ -1,46 +1,11 @@
 use std::marker::PhantomData;
 
 use der_parser::Oid;
-use rusty_acse::{AcseRequestInformation, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader, OsiSingleValueAcseWriter, RustyOsiSingleValueAcseInitiator, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseReader, RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseWriterIsoStack};
-use rusty_copp::{CoppConnectionInformation, RustyCoppInitiator, RustyCoppInitiatorIsoStack, RustyCoppReader, RustyCoppWriter};
-use rusty_cosp::{CospConnectionInformation, TcpCospInitiator, TcpCospReader, TcpCospWriter};
-use rusty_cotp::{CotpConnectInformation, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
-use rusty_tpkt::{TcpTpktReader, TcpTpktWriter, TpktConnection, TpktReader, TpktWriter};
+use rusty_acse::{OsiSingleValueAcseReader, OsiSingleValueAcseWriter, OsiSingleValueAcseInitiator};
 
 use crate::{
-    MmsConnection, MmsError, MmsInitiator, MmsReader, MmsWriter, RustyMmsInitiatorIsoStack, RustyMmsReaderIsoStack, error::to_mms_error, parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions}, pdu::{InitRequestDetails, InitiateRequestPdu}
+    MmsConnection, MmsError, MmsInitiator, MmsReader, MmsWriter, error::to_mms_error, parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions}, pdu::{InitRequestDetails, InitiateRequestPdu}
 };
-
-pub struct OsiMmsConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
-    _tpkt_connection: PhantomData<T>,
-    _tpkt_reader: PhantomData<R>,
-    _tpkt_writer: PhantomData<W>,
-}
-
-impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsConnectionFactory<T, R, W> {
-    pub async fn connect(
-        tpkt_connection: T,
-        cotp_information: CotpConnectInformation,
-        cosp_information: CospConnectionInformation,
-        copp_information: CoppConnectionInformation,
-        acse_information: AcseRequestInformation,
-        mms_information: MmsRequestInformation,
-    ) -> Result<(), MmsError> {
-        let cotp_client = TcpCotpConnection::<R, W>::initiate(tpkt_connection, cotp_information)
-            .await
-            .map_err(to_mms_error("Failed to establish a COTP connection when creating an MMS association"))?;
-        let cosp_client = TcpCospInitiator::<TcpCotpReader<R>, TcpCotpWriter<W>>::new(cotp_client, cosp_information)
-            .await
-            .map_err(to_mms_error("Failed to establish a COSP connection when creating an MMS association"))?;
-        let copp_client = RustyCoppInitiatorIsoStack::<R, W>::new(cosp_client, copp_information);
-        let acse_client: RustyOsiSingleValueAcseInitiator<RustyCoppInitiator<TcpCospInitiator<TcpCotpReader<R>, TcpCotpWriter<W>>, TcpCospReader<TcpCotpReader<R>>, TcpCospWriter<TcpCotpWriter<W>>>, RustyCoppReader<TcpCospReader<TcpCotpReader<R>>>, RustyCoppWriter<TcpCospWriter<TcpCotpWriter<W>>>> = RustyOsiSingleValueAcseInitiatorIsoStack::<R, W>::new(copp_client, acse_information);
-        let mms_client = RustyMmsInitiatorIsoStack::<R, W>::new(acse_client, mms_information);
-        // mms_client.initiate().await?;
-        // 
-
-        Ok(())
-    }
-}
 
 pub struct MmsRequestInformation {
     pub local_detail_calling: Option<i32>,
@@ -91,11 +56,11 @@ pub struct RustyMmsInitiator<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAc
 }
 
 impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsInitiator<T, R, W> {
-    pub fn new(acse_initiator: T, options: MmsRequestInformation) -> Self {
-        Self {
+    pub fn new(acse_initiator: impl OsiSingleValueAcseInitiator, options: MmsRequestInformation) -> RustyMmsInitiator<impl OsiSingleValueAcseInitiator, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
+        RustyMmsInitiator {
             acse_initiator,
-            acse_reader: PhantomData,
-            acse_writer: PhantomData,
+            acse_reader: PhantomData::<R>,
+            acse_writer: PhantomData::<W>,
             options,
         }
     }

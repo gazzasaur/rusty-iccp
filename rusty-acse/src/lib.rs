@@ -6,8 +6,8 @@ pub use api::*;
 use rusty_copp::{RustyCoppInitiatorIsoStack, RustyCoppReaderIsoStack, RustyCoppResponderIsoStack, RustyCoppWriterIsoStack};
 pub use service::*;
 
-pub type RustyOsiSingleValueAcseReaderIsoStack<R> = RustyOsiSingleValueAcseReader<R>;
-pub type RustyOsiSingleValueAcseWriterIsoStack<W> = RustyOsiSingleValueAcseWriter<W>;
+pub type RustyOsiSingleValueAcseReaderIsoStack<R> = RustyOsiSingleValueAcseReader<RustyCoppReaderIsoStack<R>>;
+pub type RustyOsiSingleValueAcseWriterIsoStack<W> = RustyOsiSingleValueAcseWriter<RustyCoppWriterIsoStack<W>>;
 pub type RustyOsiSingleValueAcseInitiatorIsoStack<R, W> = RustyOsiSingleValueAcseInitiator<RustyCoppInitiatorIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
 pub type RustyOsiSingleValueAcseListenerIsoStack<R, W> = RustyOsiSingleValueAcseListener<RustyCoppResponderIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
 pub type RustyOsiSingleValueAcseResponderIsoStack<R, W> = RustyOsiSingleValueAcseResponder<RustyCoppResponderIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
@@ -85,7 +85,7 @@ mod tests {
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
             let cotp_client = TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone()).await?;
             let cosp_client = TcpCospInitiator::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client, Default::default()).await?;
-            let copp_client = RustyCoppInitiator::<TcpCospInitiator<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(
+            let copp_client = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(
                 cosp_client,
                 Default::default(),
             );

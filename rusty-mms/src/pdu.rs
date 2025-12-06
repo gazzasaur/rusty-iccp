@@ -1,6 +1,13 @@
-use der_parser::{ber::{BerObject, BerObjectContent, Length}, der::{Class, Header, Tag}};
+use der_parser::{
+    ber::{BerObject, BerObjectContent, Length},
+    der::{Class, Header, Tag},
+};
 
-use crate::{MmsError, parameters::{ParameterSupportOptions, ParameterSupportOptionsBerObject, ServiceSupportOptions, ServiceSupportOptionsBerObject}};
+use crate::{
+    MmsError,
+    error::to_mms_error,
+    parameters::{ParameterSupportOptions, ParameterSupportOptionsBerObject, ServiceSupportOptions, ServiceSupportOptionsBerObject},
+};
 
 #[repr(u8)]
 pub(crate) enum MmsPduType {
@@ -91,8 +98,9 @@ impl InitiateRequestPdu {
                 .filter_map(|i| i)
                 .collect(),
             ),
-        );
-        Ok(vec![])
+        )
+        .to_vec()
+        .map_err(to_mms_error(""))
     }
 }
 
