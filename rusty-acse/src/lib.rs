@@ -18,7 +18,7 @@ mod tests {
     use std::time::Duration;
 
     use der_parser::Oid;
-    use rusty_copp::{CoppError, RustyCoppInitiator, RustyCoppListener};
+    use rusty_copp::{CoppError, RustyCoppListener};
     use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
     use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
@@ -100,8 +100,9 @@ mod tests {
             let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
             let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
-            let acse_listener = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
-            let (acse_responder, received_request_information, received_connect_data) = acse_listener.responder(response_options.clone()).await?;
+            let (mut acse_listener, received_request_information) = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
+            acse_listener.set_response(Some(response_options.clone()));
+            let (acse_responder, received_connect_data) = acse_listener.responder().await?;
 
             Ok((acse_responder.accept(accept_data.clone()).await?, received_request_information, received_connect_data))
         };

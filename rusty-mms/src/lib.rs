@@ -7,8 +7,6 @@ pub mod service;
 use std::marker::PhantomData;
 
 pub use api::*;
-use der_parser::Oid;
-use rusty_acse::OsiSingleValueAcseInitiator;
 use rusty_acse::{AcseRequestInformation, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseWriterIsoStack};
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack};
 use rusty_cosp::{CospConnectionInformation, TcpCospInitiator};
@@ -59,7 +57,8 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsConnectionFactory<T,
 mod tests {
     use std::time::Duration;
 
-    use rusty_acse::RustyOsiSingleValueAcseListenerIsoStack;
+    use der_parser::Oid;
+    use rusty_acse::{AcseResponseInformation, RustyOsiSingleValueAcseListenerIsoStack};
     use rusty_copp::RustyCoppListener;
     use rusty_cosp::{TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
     use rusty_cotp::{CotpAcceptInformation, TcpCotpAcceptor, CotpResponder};

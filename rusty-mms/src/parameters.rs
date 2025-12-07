@@ -172,7 +172,7 @@ mod tests {
         let subject_ber = subject.to_ber_object(Tag::from(3)).content;
         for test_bit in 1..100 {
             match &subject_ber {
-                BerObjectContent::BitString(i, x) => assert!(!x.is_set(test_bit)),
+                BerObjectContent::BitString(_, x) => assert!(!x.is_set(test_bit)),
                 x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
             }
         }
@@ -201,7 +201,7 @@ mod tests {
                         assert_eq!(*i as usize, expected_ignored_bits);
                         assert_eq!(&expected_serilised_form, &subject.to_ber_object(Tag::from(3)).to_vec()?);
                     }
-                    BerObjectContent::BitString(i, x) if test_bit != subject_bit => assert!(!x.is_set(test_bit)),
+                    BerObjectContent::BitString(_, x) if test_bit != subject_bit => assert!(!x.is_set(test_bit)),
                     x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
                 }
             }
@@ -230,7 +230,7 @@ mod tests {
         let subject_ber = subject.to_ber_object(Tag::from(3)).content;
         for test_bit in 1..100 {
             match &subject_ber {
-                BerObjectContent::BitString(i, x) => assert!(!x.is_set(test_bit)),
+                BerObjectContent::BitString(_, x) => assert!(!x.is_set(test_bit)),
                 x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
             }
         }
@@ -263,7 +263,7 @@ mod tests {
                         assert_eq!(*i as usize, expected_ignored_bits);
                         assert_eq!(&expected_serilised_form, &subject.to_ber_object(Tag::from(3)).to_vec()?);
                     }
-                    BerObjectContent::BitString(i, x) if test_bit != subject_bit => assert!(!x.is_set(test_bit)),
+                    BerObjectContent::BitString(_, x) if test_bit != subject_bit => assert!(!x.is_set(test_bit)),
                     x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
                 }
             }

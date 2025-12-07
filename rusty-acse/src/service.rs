@@ -86,12 +86,12 @@ pub struct RustyOsiSingleValueAcseListener<T: CoppResponder, R: CoppReader, W: C
     copp_responder: T,
     copp_reader: PhantomData<R>,
     copp_writer: PhantomData<W>,
-    request: AcseRequestInformation,
+    response: Option<AcseResponseInformation>,
     acse_user_data: Vec<u8>,
 }
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseListener<T, R, W> {
-    pub async fn new(copp_listener: impl CoppListener) -> Result<RustyOsiSingleValueAcseListener<impl CoppResponder, impl CoppReader, impl CoppWriter>, AcseError> {
+    pub async fn new(copp_listener: impl CoppListener) -> Result<(RustyOsiSingleValueAcseListener<impl CoppResponder, impl CoppReader, impl CoppWriter>, AcseRequestInformation), AcseError> {
         let (copp_responder, copp_options) = copp_listener.responder().await?;
         let copp_presentation_data_list = match copp_options {
             Some(UserData::FullyEncoded(x)) => x,
@@ -118,19 +118,30 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseList
         let (request, acse_user_data) = match &copp_presentation_data.presentation_data_values {
             PresentationDataValues::SingleAsn1Type(data) => process_request(data)?,
         };
-        Ok(RustyOsiSingleValueAcseListener {
-            copp_responder,
-            copp_reader: PhantomData::<R>,
-            copp_writer: PhantomData::<W>,
+        Ok((
+            RustyOsiSingleValueAcseListener {
+                copp_responder,
+                copp_reader: PhantomData::<R>,
+                copp_writer: PhantomData::<W>,
+                response: None,
+                acse_user_data,
+            },
             request,
-            acse_user_data,
-        })
+        ))
     }
+    
+    pub fn set_response(&mut self, response: Option<AcseResponseInformation>) {
+        self.response = response;
+    }
+
 }
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseListener for RustyOsiSingleValueAcseListener<T, R, W> {
-    async fn responder(self, response: AcseResponseInformation) -> Result<(impl crate::OsiSingleValueAcseResponder, AcseRequestInformation, Vec<u8>), AcseError> {
-        Ok((RustyOsiSingleValueAcseResponder::<T, R, W>::new(self.copp_responder, response), self.request, self.acse_user_data))
+    async fn responder(self) -> Result<(impl OsiSingleValueAcseResponder, Vec<u8>), AcseError> {
+        match self.response {
+            Some(response) => Ok((RustyOsiSingleValueAcseResponder::<T, R, W>::new(self.copp_responder, response), self.acse_user_data)),
+            None => Err(AcseError::ProtocolError("No ACSE response information was provided".into())),
+        }
     }
 }
 

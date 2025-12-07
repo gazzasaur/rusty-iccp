@@ -1,10 +1,10 @@
 use std::marker::PhantomData;
 
 use der_parser::Oid;
-use rusty_acse::{OsiSingleValueAcseReader, OsiSingleValueAcseWriter, OsiSingleValueAcseInitiator};
+use rusty_acse::{AcseError, OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 
 use crate::{
-    MmsConnection, MmsError, MmsInitiator, MmsReader, MmsWriter, error::to_mms_error, parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions}, pdu::{InitRequestDetails, InitiateRequestPdu}
+    MmsConnection, MmsError, MmsInitiator, MmsListener, MmsReader, MmsResponder, MmsWriter, error::to_mms_error, parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions}, pdu::{InitRequestDetails, InitiateRequestPdu}
 };
 
 pub struct MmsRequestInformation {
@@ -91,6 +91,40 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
         Ok(RustyMmsConnection::<R, W> {
             _r: PhantomData, _w: PhantomData
         })
+    }
+}
+
+pub struct RustyMmsListener<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
+    _t: PhantomData<T>,
+    _r: PhantomData<R>,
+    _w: PhantomData<W>,
+}
+
+impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsListener<T, R, W> {
+    pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<(RustyMmsListener<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsRequestInformation), AcseError> {
+        acse_listener.responder().await?;
+        
+        Ok((RustyMmsListener { _t: PhantomData::<T>, _r: PhantomData::<R>, _w: PhantomData::<W> }, MmsRequestInformation::default()))
+    }
+}
+
+
+
+impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsListener for RustyMmsListener<T, R, W> {
+    async fn responder(self) -> Result<impl MmsResponder, MmsError> {
+        Err::<RustyMmsResponder<T, R, W>, MmsError>(MmsError::InternalError("Nah".into()))
+    }
+}
+
+pub struct RustyMmsResponder<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
+    _t: PhantomData<T>,
+    _r: PhantomData<R>,
+    _w: PhantomData<W>,
+}
+
+impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsResponder for RustyMmsResponder<T, R, W> {
+    async fn accept(self) -> Result<impl MmsConnection, MmsError> {
+        Err::<RustyMmsConnection<R, W>, MmsError>(MmsError::InternalError("Nah".into()))
     }
 }
 
