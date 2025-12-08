@@ -1,4 +1,5 @@
 use der_parser::Oid;
+use rand::random;
 use rusty_copp::CoppError;
 use thiserror::Error;
 
@@ -34,6 +35,23 @@ pub struct AcseRequestInformation {
     pub calling_ae_invocation_identifier: Option<Vec<u8>>, // Integer
 
     pub implementation_information: Option<String>,
+}
+
+impl Default for AcseRequestInformation {
+    fn default() -> Self {
+        Self {
+            application_context_name: Oid::from(&[random(), random(), random(), random(), random()]).expect("Failed to generate constant OID. This is a bug.").to_owned(),
+            called_ap_title: Default::default(),
+            called_ae_qualifier: Default::default(),
+            called_ap_invocation_identifier: Default::default(),
+            called_ae_invocation_identifier: Default::default(),
+            calling_ap_title: Default::default(),
+            calling_ae_qualifier: Default::default(),
+            calling_ap_invocation_identifier: Default::default(),
+            calling_ae_invocation_identifier: Default::default(),
+            implementation_information: Default::default(),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]

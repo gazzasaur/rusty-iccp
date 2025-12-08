@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use der_parser::Oid;
-use rusty_acse::{AcseError, OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
+use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 
 use crate::{
     MmsConnection, MmsError, MmsInitiator, MmsListener, MmsReader, MmsResponder, MmsWriter, error::to_mms_error, parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions}, pdu::{InitRequestDetails, InitiateRequestPdu}
@@ -101,14 +101,12 @@ pub struct RustyMmsListener<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcs
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsListener<T, R, W> {
-    pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<(RustyMmsListener<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsRequestInformation), AcseError> {
-        acse_listener.responder().await?;
+    pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<(RustyMmsListener<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsRequestInformation), MmsError> {
+        acse_listener.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
         
         Ok((RustyMmsListener { _t: PhantomData::<T>, _r: PhantomData::<R>, _w: PhantomData::<W> }, MmsRequestInformation::default()))
     }
 }
-
-
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsListener for RustyMmsListener<T, R, W> {
     async fn responder(self) -> Result<impl MmsResponder, MmsError> {
@@ -165,10 +163,6 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
 
 #[cfg(test)]
 mod tests {
-    use std::vec;
-
-    use crate::parameters::ParameterSupportOption;
-
     use super::*;
 
     #[test]

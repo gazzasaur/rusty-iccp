@@ -7,10 +7,14 @@ pub mod service;
 use std::marker::PhantomData;
 
 pub use api::*;
-use rusty_acse::{AcseRequestInformation, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseWriterIsoStack};
-use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack};
-use rusty_cosp::{CospConnectionInformation, TcpCospInitiator};
-use rusty_cotp::{CotpConnectInformation, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
+use der_parser::Oid;
+use rusty_acse::{
+    AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
+    RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseResponderIsoStack, RustyOsiSingleValueAcseWriterIsoStack,
+};
+use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
+use rusty_cosp::{CospConnectionInformation, TcpCospInitiator, TcpCospListener};
+use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
 use rusty_tpkt::{TpktConnection, TpktReader, TpktWriter};
 pub use service::*;
 
@@ -19,16 +23,16 @@ use crate::error::to_mms_error;
 pub type RustyMmsReaderIsoStack<R> = RustyMmsReader<RustyOsiSingleValueAcseReaderIsoStack<R>>;
 pub type RustyMmsWriterIsoStack<W> = RustyMmsWriter<RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsInitiatorIsoStack<R, W> = RustyMmsInitiator<RustyOsiSingleValueAcseInitiatorIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
-// pub type RustyMmsListenerIsoStack<R, W> = RustyMmsListener<RustyAcseResponderIsoStack<R, W>, RustyAcseReaderIsoStack<R>, RustyAcseWriterIsoStack<W>>;
-// pub type RustyMmsResponderIsoStack<R, W> = RustyMmsResponder<RustyAcseResponderIsoStack<R, W>, RustyAcseReaderIsoStack<R>, RustyAcseWriterIsoStack<W>>;
+pub type RustyMmsListenerIsoStack<R, W> = RustyMmsListener<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
+pub type RustyMmsResponderIsoStack<R, W> = RustyMmsResponder<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 
-pub struct OsiMmsConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
+pub struct OsiMmsInitiatorConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
     _tpkt_connection: PhantomData<T>,
     _tpkt_reader: PhantomData<R>,
     _tpkt_writer: PhantomData<W>,
 }
 
-impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsConnectionFactory<T, R, W> {
+impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsInitiatorConnectionFactory<T, R, W> {
     pub async fn connect(
         tpkt_connection: T,
         cotp_information: CotpConnectInformation,
@@ -36,7 +40,7 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsConnectionFactory<T,
         copp_information: CoppConnectionInformation,
         acse_information: AcseRequestInformation,
         mms_information: MmsRequestInformation,
-    ) -> Result<(), MmsError> {
+    ) -> Result<impl MmsConnection, MmsError> {
         let cotp_client = TcpCotpConnection::<R, W>::initiate(tpkt_connection, cotp_information)
             .await
             .map_err(to_mms_error("Failed to establish a COTP connection when creating an MMS association"))?;
@@ -45,11 +49,44 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsConnectionFactory<T,
             .map_err(to_mms_error("Failed to establish a COSP connection when creating an MMS association"))?;
         let copp_client = RustyCoppInitiatorIsoStack::<R, W>::new(cosp_client, copp_information);
         let acse_client = RustyOsiSingleValueAcseInitiatorIsoStack::<R, W>::new(copp_client, acse_information);
-
         let mms_client = RustyMmsInitiatorIsoStack::<R, W>::new(acse_client, mms_information);
-        mms_client.initiate().await?;
+        mms_client.initiate().await
+    }
+}
 
-        Ok(())
+pub struct OsiMmsMirrorResponderConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
+    _tpkt_connection: PhantomData<T>,
+    _tpkt_reader: PhantomData<R>,
+    _tpkt_writer: PhantomData<W>,
+}
+
+impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConnectionFactory<T, R, W> {
+    pub async fn connect(tpkt_connection: T) -> Result<impl MmsConnection, MmsError> {
+        let (cotp_listener, _) = TcpCotpAcceptor::<R, W>::new(tpkt_connection).await.map_err(to_mms_error("Failed to create COTP connection when creating an MMS association"))?;
+        let cotp_connection = cotp_listener
+            .accept(CotpAcceptInformation::default())
+            .await
+            .map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
+        let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<R>, TcpCotpWriter<W>>::new(cotp_connection)
+            .await
+            .map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
+        let (copp_listener, _) = RustyCoppListenerIsoStack::<R, W>::new(cosp_listener).await?;
+        let (mut acse_listener, acse_request_information) = RustyOsiSingleValueAcseListenerIsoStack::<R, W>::new(copp_listener)
+            .await
+            .map_err(to_mms_error("Failed to create a COPP connection when creating an MMS association"))?;
+        acse_listener.set_response(Some(AcseResponseInformation {
+            application_context_name: Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error("Failed to create MMS application context_name. This is a bug."))?,
+            associate_result: AssociateResult::Accepted,
+            associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
+            responding_ap_title: acse_request_information.called_ap_title,
+            responding_ae_qualifier: acse_request_information.called_ae_qualifier,
+            responding_ap_invocation_identifier: acse_request_information.called_ap_invocation_identifier,
+            responding_ae_invocation_identifier: acse_request_information.called_ae_invocation_identifier,
+            implementation_information: None,
+        }));
+        let (mms_listener, _) = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await?;
+        let mms_responder = mms_listener.responder().await?;
+        mms_responder.accept().await
     }
 }
 
@@ -58,10 +95,10 @@ mod tests {
     use std::time::Duration;
 
     use der_parser::Oid;
-    use rusty_acse::{AcseResponseInformation, RustyOsiSingleValueAcseListenerIsoStack};
+    use rusty_acse::RustyOsiSingleValueAcseListenerIsoStack;
     use rusty_copp::RustyCoppListener;
     use rusty_cosp::{TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
-    use rusty_cotp::{CotpAcceptInformation, TcpCotpAcceptor, CotpResponder};
+    use rusty_cotp::{CotpAcceptInformation, CotpResponder, TcpCotpAcceptor};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -75,22 +112,14 @@ mod tests {
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
-            let a = OsiMmsConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::connect(
+            let a = OsiMmsInitiatorConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::connect(
                 tpkt_client,
                 CotpConnectInformation::default(),
                 CospConnectionInformation::default(),
                 CoppConnectionInformation::default(),
                 AcseRequestInformation {
                     application_context_name: Oid::from(&[1, 2, 3])?,
-                    called_ap_title: None,
-                    called_ae_qualifier: None,
-                    called_ap_invocation_identifier: None,
-                    called_ae_invocation_identifier: None,
-                    calling_ap_title: None,
-                    calling_ae_qualifier: None,
-                    calling_ap_invocation_identifier: None,
-                    calling_ae_invocation_identifier: None,
-                    implementation_information: None,
+                    ..Default::default()
                 },
                 MmsRequestInformation::default(),
             )
