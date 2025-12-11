@@ -118,7 +118,7 @@ impl InitiateRequestPdu {
 
         let (_, pdu) = der_parser::ber::parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS Init payload."))?;
         match pdu.header.raw_tag() {
-            Some(&[8]) => return Err(MmsError::InternalError("Must Implement".into())),
+            Some([168]) => return Err(MmsError::InternalError("Must Implement".into())),
             x => return Err(MmsError::InternalError(format!("Expected tag &[8] on MMS Init PDU but found {:?}", x)))
         }
     }

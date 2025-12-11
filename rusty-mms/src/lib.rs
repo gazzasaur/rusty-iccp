@@ -134,7 +134,17 @@ mod tests {
             let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
             let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
-            let (acse_listener, _) = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
+            let (mut acse_listener, acse_request) = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
+            acse_listener.set_response(Some(AcseResponseInformation {
+                application_context_name: acse_request.application_context_name,
+                associate_result: AssociateResult::Accepted,
+                associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
+                responding_ap_title: acse_request.called_ap_title,
+                responding_ae_qualifier: acse_request.called_ae_qualifier,
+                responding_ap_invocation_identifier: acse_request.called_ap_invocation_identifier,
+                responding_ae_invocation_identifier: acse_request.called_ae_invocation_identifier,
+                implementation_information: Some("Gaz".into()),
+            }));
             let (a, b) = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await?;
             Ok(())
         };
