@@ -40,7 +40,7 @@ pub struct AcseRequestInformation {
 impl Default for AcseRequestInformation {
     fn default() -> Self {
         Self {
-            application_context_name: Oid::from(&[random(), random(), random(), random(), random()]).expect("Failed to generate constant OID. This is a bug.").to_owned(),
+            application_context_name: Oid::from(&[1, 2, 3, 4, 5]).expect("Failed to generate constant OID. This is a bug.").to_owned(),
             called_ap_title: Default::default(),
             called_ae_qualifier: Default::default(),
             called_ap_invocation_identifier: Default::default(),

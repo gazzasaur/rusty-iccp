@@ -46,7 +46,13 @@ pub(crate) struct InitRequestDetails {
 }
 
 impl InitiateRequestPdu {
-    pub fn new(local_detail_calling: Option<i32>, proposed_max_serv_outstanding_calling: i16, proposed_max_serv_outstanding_called: i16, proposed_data_structure_nesting_level: Option<i8>, init_request_details: InitRequestDetails) -> Self {
+    pub(crate) fn new(
+        local_detail_calling: Option<i32>,
+        proposed_max_serv_outstanding_calling: i16,
+        proposed_max_serv_outstanding_called: i16,
+        proposed_data_structure_nesting_level: Option<i8>,
+        init_request_details: InitRequestDetails,
+    ) -> Self {
         Self {
             local_detail_calling,
             proposed_max_serv_outstanding_calling,
@@ -56,7 +62,7 @@ impl InitiateRequestPdu {
         }
     }
 
-    pub fn serialise(self) -> Result<Vec<u8>, MmsError> {
+    pub(crate) fn serialise(self) -> Result<Vec<u8>, MmsError> {
         let local_detail_calling = self.local_detail_calling.map(|x| x.to_be_bytes());
         let proposed_max_serv_outstanding_calling = self.proposed_max_serv_outstanding_calling.to_be_bytes();
         let proposed_max_serv_outstanding_called = self.proposed_max_serv_outstanding_called.to_be_bytes();
@@ -101,6 +107,20 @@ impl InitiateRequestPdu {
         )
         .to_vec()
         .map_err(to_mms_error(""))
+    }
+
+    pub(crate) fn parse(data: Vec<u8>) -> Result<InitiateRequestPdu, MmsError> {
+        // let local_detail_calling = None;
+        // let proposed_max_serv_outstanding_calling = None;
+        // let proposed_max_serv_outstanding_called = None;
+        // let proposed_data_structure_nesting_level = None;
+        // let init_request_details = None;
+
+        let (_, pdu) = der_parser::ber::parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS Init payload."))?;
+        match pdu.header.raw_tag() {
+            Some(&[8]) => return Err(MmsError::InternalError("Must Implement".into())),
+            x => return Err(MmsError::InternalError(format!("Expected tag &[8] on MMS Init PDU but found {:?}", x)))
+        }
     }
 }
 

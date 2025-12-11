@@ -102,7 +102,8 @@ pub struct RustyMmsListener<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcs
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsListener<T, R, W> {
     pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<(RustyMmsListener<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsRequestInformation), MmsError> {
-        acse_listener.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
+        let (responder, init_data) = acse_listener.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
+        InitiateRequestPdu::parse(init_data)?;
         
         Ok((RustyMmsListener { _t: PhantomData::<T>, _r: PhantomData::<R>, _w: PhantomData::<W> }, MmsRequestInformation::default()))
     }
