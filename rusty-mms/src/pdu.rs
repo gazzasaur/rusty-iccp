@@ -6,7 +6,7 @@ use der_parser::{
 use crate::{
     MmsError,
     error::to_mms_error,
-    parameters::{ParameterSupportOptions, ParameterSupportOptionsBerObject, ServiceSupportOptions, ServiceSupportOptionsBerObject},
+    parameters::{ParameterSupportOptions, ParameterSupportOptionsBerObject, ServiceSupportOptions, ServiceSupportOptionsBerObject}, parsers::{process_constructed_data, process_integer_content},
 };
 
 #[repr(u8)]
@@ -110,7 +110,7 @@ impl InitiateRequestPdu {
     }
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<InitiateRequestPdu, MmsError> {
-        // let local_detail_calling = None;
+        let mut local_detail_calling = None;
         // let proposed_max_serv_outstanding_calling = None;
         // let proposed_max_serv_outstanding_called = None;
         // let proposed_data_structure_nesting_level = None;
@@ -118,8 +118,16 @@ impl InitiateRequestPdu {
 
         let (_, pdu) = der_parser::ber::parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS Init payload."))?;
         match pdu.header.raw_tag() {
-            Some([168]) => return Err(MmsError::InternalError("Must Implement".into())),
-            x => return Err(MmsError::InternalError(format!("Expected tag &[8] on MMS Init PDU but found {:?}", x)))
+            Some([168]) => {
+                for item in process_constructed_data(pdu.data).map_err(to_mms_error("Failed to parse MMS outer payload."))? {
+                    match item.header.raw_tag() {
+                        Some([128]) => local_detail_calling = process_mms_integer_32_content(item, "Failed to parse local detail calling on MMS request")?
+                    }
+                    return Err(MmsError::InternalError(format!("Discovery {:?}", item)))
+                }
+                Err(MmsError::InternalError(format!("Discovery Empty")))
+            },
+            x => return Err(MmsError::InternalError(format!("Expected tag &[168] on MMS Init PDU but found {:?}", x)))
         }
     }
 }

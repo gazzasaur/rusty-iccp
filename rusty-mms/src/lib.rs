@@ -3,6 +3,7 @@ pub(crate) mod error;
 pub(crate) mod parameters;
 pub(crate) mod pdu;
 pub mod service;
+pub(crate) mod parsers;
 
 use std::marker::PhantomData;
 
