@@ -1,6 +1,9 @@
 use std::marker::PhantomData;
 
-use der_parser::{ber::{BerObject, BerObjectContent, BitStringObject, Length}, der::{Class, Header, Tag}};
+use der_parser::{
+    ber::{BerObject, BerObjectContent, BitStringObject, Length},
+    der::{Class, Header, Tag},
+};
 
 pub(crate) struct ParameterSupportOptions {
     pub options: Vec<ParameterSupportOption>,

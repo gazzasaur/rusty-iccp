@@ -147,6 +147,7 @@ mod tests {
                 implementation_information: Some("Gaz".into()),
             }));
             let (a, b) = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await?;
+            a.responder().await?.accept().await?;
             Ok(())
         };
 
