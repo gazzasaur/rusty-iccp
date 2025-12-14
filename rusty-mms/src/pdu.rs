@@ -6,7 +6,7 @@ use der_parser::{
 use tracing::warn;
 
 use crate::{
-    MmsError,
+    MmsError, MmsVariableAccessSpecification,
     error::to_mms_error,
     parameters::{ParameterSupportOptions, ParameterSupportOptionsBerObject, ServiceSupportOptions, ServiceSupportOptionsBerObject},
     parsers::{process_constructed_data, process_integer_content, process_mms_integer_8_content, process_mms_integer_16_content, process_mms_integer_32_content, process_mms_parameter_support_options, process_mms_service_support_option},
@@ -281,11 +281,61 @@ impl InitRequestResponseDetails {
 }
 
 pub(crate) struct ReadRequestPdu {
+    specification_with_result: Option<bool>,
+    variable_access_specification: MmsVariableAccessSpecification,
 }
 
-pub(crate) struct ReadResponsePdu {
+impl ReadRequestPdu {
+    pub(crate) fn serialise(&self) -> Result<Vec<u8>, MmsError> {
+        match self.variable_access_specification {
+            MmsVariableAccessSpecification::ListOfVariable(list_of_variable_items) => todo!(),
+            MmsVariableAccessSpecification::VariableListName(mms_object_name) => todo!(),
+        };
+        BerObject::from_header_and_content(
+            Header::new(Class::ContextSpecific, true, Tag::from(4), Length::Definite(0)),
+            BerObjectContent::Sequence(
+                vec![
+                    self.specification_with_result
+                        .as_ref()
+                        .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*x))),
+                    Some(BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
+                        BerObjectContent::Sequence(vec![
+
+
+
+                        ]),
+                    )),
+                    // Some(BerObject::from_header_and_content(
+                    //     Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)),
+                    //     BerObjectContent::Integer(&negotiated_max_serv_outstanding_called),
+                    // )),
+                    // negotiated_data_structure_nesting_level
+                    //     .as_ref()
+                    //     .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Integer(x))),
+                    // Some(BerObject::from_header_and_content(
+                    //     Header::new(Class::ContextSpecific, true, Tag::from(4), Length::Definite(0)),
+                    //     BerObjectContent::Sequence(vec![
+                    //         BerObject::from_header_and_content(
+                    //             Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)),
+                    //             BerObjectContent::Integer(&self.init_response_details.proposed_version_number.to_be_bytes()),
+                    //         ),
+                    //         negotiated_parameter_cbb.to_ber_object(Tag::from(1)),
+                    //         services_supported_calling.to_ber_object(Tag::from(2)),
+                    //     ]),
+                    // )),
+                ]
+                .into_iter()
+                .filter_map(|i| i)
+                .collect(),
+            ),
+        )
+        .to_vec()
+        .map_err(to_mms_error(""))
+    }
 }
 
+pub(crate) struct ReadResponsePdu {}
 
 fn expect_value<T>(pdu: &str, field: &str, value: Option<T>) -> Result<T, MmsError> {
     value.ok_or_else(|| MmsError::ProtocolError(format!("MMS Payload '{}' must container the field '{}' but was not found.", pdu, field)))

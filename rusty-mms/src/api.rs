@@ -35,11 +35,14 @@ pub enum MmsObjectName {
 }
 
 pub enum MmsVariableAccessSpecification {
-    VariableSpecification(VariableSpecification),
+    ListOfVariable(Vec<ListOfVariableItem>),
     // AlternateAccess, valt
     VariableListName(MmsObjectName),
 }
 
+pub struct ListOfVariableItem {
+    variable_specification: VariableSpecification
+}
 
 pub enum VariableSpecification {
     Name(MmsObjectName),

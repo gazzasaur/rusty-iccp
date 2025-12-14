@@ -210,9 +210,9 @@ impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsConnectio
 
 impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsConnection for RustyMmsConnection<R, W> {
     async fn read(&mut self, access_specifications: Vec<MmsVariableAccessSpecification>) -> Result<Vec<crate::MmsAccessResult>, MmsError> {
-        MmsPduType::ConfirmedRequestPduType(ConfirmedMmsPduType::ReadRequestPduType(ReadRequestPdu {
+        let read_request_pdu = ReadRequestPdu {
 
-        }));
+        };
 
         let invocation_id = self.invocation_id.fetch_add(1, Ordering::Acquire);
         let (inbound_sender, inbound_receiver) = mpsc::channel::<Result<MmsPduType, MmsError>>(1);
