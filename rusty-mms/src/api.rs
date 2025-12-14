@@ -1,3 +1,6 @@
+use std::{collections::HashMap, time::Instant};
+
+use der_parser::Oid;
 use rusty_copp::CoppError;
 use thiserror::Error;
 
@@ -8,7 +11,7 @@ use thiserror::Error;
  * - str1
  * - str2
  * - vnam
- * - vatl
+ * - valt -- Optional. Leaving out for now.
  * - vlis
  * 
  * VMD Support
@@ -24,6 +27,59 @@ use thiserror::Error;
  * - GetNamedVariableListAttribute
  * - DeleteNamedVariableList
  */
+
+pub enum MmsObjectName {
+    VmdSpecific(String),
+    DomainSpecific(String, String), // Domain, Item Id
+    AaSpecific(String)
+}
+
+pub enum MmsVariableAccessSpecification {
+    VariableSpecification(VariableSpecification),
+    // AlternateAccess, valt
+    VariableListName(MmsObjectName),
+}
+
+
+pub enum VariableSpecification {
+    Name(MmsObjectName),
+}
+
+pub enum MmsAccessError {
+    Unknown(Vec<u8>)
+}
+
+pub enum MmsAccessResult {
+    Failure(MmsAccessError),
+    Success(MmsData),
+}
+
+pub struct MmsBitString {
+    padding: u8,
+    buffer: Vec<u8>,
+}
+
+pub enum MmsData {
+    Array(Vec<MmsData>),
+    Structure(Vec<MmsData>),
+    Boolean(bool),
+    BitString(MmsBitString),
+    Integer(Vec<u8>),
+    Unsigned(Vec<u8>),
+    FloatingPoint(Vec<u8>),
+    OctetString(Vec<u8>),
+    VisibleString(String),
+    GeneralizedTime(Instant),
+    BinaryTime(Vec<u8>),
+    Bcd(Vec<u8>),
+    BooleanArray(MmsBitString),
+    ObjectId(Oid<'static>),
+    MmsString(String),
+}
+
+pub enum MmsSimpleData {
+    MmsString(String) // Printable characters only.
+}
 
 #[derive(Error, Debug)]
 pub enum MmsError {
@@ -65,15 +121,22 @@ pub trait MmsResponder: Send {
     fn accept(self) -> impl std::future::Future<Output = Result<impl MmsConnection, MmsError>> + Send;
 }
 
-pub trait MmsConnection: Send {
-    fn split(self) -> impl std::future::Future<Output = Result<(impl MmsReader, impl MmsWriter), MmsError>> + Send;
-}
+pub trait MmsConnection: Send + Sync {
+    fn read(&mut self, access_specifications: Vec<MmsVariableAccessSpecification>) -> impl std::future::Future<Output = Result<Vec<MmsAccessResult>, MmsError>> + Send;
 
-pub trait MmsReader: Send {
-    fn recv(&mut self) -> impl std::future::Future<Output = Result<MmsRecvResult, MmsError>> + Send;
-}
+    // ParameterSupportOption::Str1, Array
+    // ParameterSupportOption::Str2, Map
+    // ParameterSupportOption::Vnam,
+    // ParameterSupportOption::Valt,
+    // ParameterSupportOption::Vlis,
 
-pub trait MmsWriter: Send {
-    fn send(&mut self, data: MmsMessage) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
-    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
+    // ServiceSupportOption::GetNameList,
+    // ServiceSupportOption::Identify,
+    // ServiceSupportOption::Read,
+    // ServiceSupportOption::Write,
+    // ServiceSupportOption::GetVariableAccessAttributes,
+    // ServiceSupportOption::GetNamedVariableListAttribute,
+    // ServiceSupportOption::DefineNamedVariableList,
+    // ServiceSupportOption::DeleteNamedVariableList,
+    // ServiceSupportOption::InformationReport,
 }

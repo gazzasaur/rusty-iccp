@@ -14,7 +14,7 @@ use crate::{
 
 #[repr(u8)]
 pub(crate) enum MmsPduType {
-    ConfirmedRequestPduType() = 0,
+    ConfirmedRequestPduType(ConfirmedMmsPduType) = 0,
     ConfirmedResponsePduType = 1,
     ConfirmedErrorPduType = 2,
 
@@ -26,12 +26,17 @@ pub(crate) enum MmsPduType {
     CancelErrorPduType = 7,
 
     InitiateRequestPduType(InitiateRequestPdu) = 8,
-    InitiateResponsePduType = 9,
+    InitiateResponsePduType(InitiateResponsePdu) = 9,
     InitiateErrorPduType = 10,
 
     ConcludeRequestPduType = 11,
     ConcludeResponsePduType = 12,
     ConcludeErrorPduType = 13,
+}
+
+#[repr(u8)]
+pub(crate) enum ConfirmedMmsPduType {
+    ReadRequestPduType(ReadRequestPdu) = 1,
 }
 
 pub(crate) struct InitiateRequestPdu {
@@ -133,7 +138,7 @@ impl InitiateRequestPdu {
                     }
                 }
             }
-            x => return Err(MmsError::InternalError(format!("Expected tag &[168] on MMS Init PDU but found {:?}", x))),
+            x => return Err(MmsError::InternalError(format!("Expected tag &[168] on MMS Init Request PDU but found {:?}", x))),
         }
 
         Ok(InitiateRequestPdu {
@@ -218,38 +223,38 @@ impl InitiateResponsePdu {
         .map_err(to_mms_error(""))
     }
 
-    // pub(crate) fn parse(data: Vec<u8>) -> Result<InitiateRequestPdu, MmsError> {
-    //     let mut local_detail_calling = None;
-    //     let mut proposed_max_serv_outstanding_calling = None;
-    //     let mut proposed_max_serv_outstanding_called = None;
-    //     let mut proposed_data_structure_nesting_level = None;
-    //     let mut init_request_details = None;
+    pub(crate) fn parse(data: Vec<u8>) -> Result<InitiateResponsePdu, MmsError> {
+        let mut local_detail_calling = None;
+        let mut negotiated_max_serv_outstanding_calling = None;
+        let mut negotiated_max_serv_outstanding_called = None;
+        let mut negotiated_data_structure_nesting_level = None;
+        let mut init_response_details = None;
 
-    //     let (_, pdu) = der_parser::ber::parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS Init payload."))?;
-    //     match pdu.header.raw_tag() {
-    //         Some([168]) => {
-    //             for item in &process_constructed_data(pdu.data).map_err(to_mms_error("Failed to parse MMS outer payload."))? {
-    //                 match item.header.raw_tag() {
-    //                     Some([128]) => local_detail_calling = Some(process_mms_integer_32_content(item, "Failed to parse local detail calling on MMS request")?),
-    //                     Some([129]) => proposed_max_serv_outstanding_calling = Some(process_mms_integer_16_content(item, "Failed to parse proposed max serv outstanding calling on MMS request")?),
-    //                     Some([130]) => proposed_max_serv_outstanding_called = Some(process_mms_integer_16_content(item, "Failed to parse proposed max serv outstanding called on MMS request")?),
-    //                     Some([131]) => proposed_data_structure_nesting_level = Some(process_mms_integer_8_content(item, "Failed to parse process proposed data structure nesting level on MMS request")?),
-    //                     Some([164]) => init_request_details = Some(InitRequestResponseDetails::parse("InitiateRequest", item)?),
-    //                     x => warn!("Unknown MMS Request item {:?}", x),
-    //                 }
-    //             }
-    //         }
-    //         x => return Err(MmsError::InternalError(format!("Expected tag &[168] on MMS Init PDU but found {:?}", x))),
-    //     }
+        let (_, pdu) = der_parser::ber::parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS Init payload."))?;
+        match pdu.header.raw_tag() {
+            Some([169]) => {
+                for item in &process_constructed_data(pdu.data).map_err(to_mms_error("Failed to parse MMS outer payload."))? {
+                    match item.header.raw_tag() {
+                        Some([128]) => local_detail_calling = Some(process_mms_integer_32_content(item, "Failed to parse local detail calling on MMS response")?),
+                        Some([129]) => negotiated_max_serv_outstanding_calling = Some(process_mms_integer_16_content(item, "Failed to parse negotiated max serv outstanding calling on MMS response")?),
+                        Some([130]) => negotiated_max_serv_outstanding_called = Some(process_mms_integer_16_content(item, "Failed to parse negotiated max serv outstanding called on MMS response")?),
+                        Some([131]) => negotiated_data_structure_nesting_level = Some(process_mms_integer_8_content(item, "Failed to parse process negotiated data structure nesting level on MMS response")?),
+                        Some([164]) => init_response_details = Some(InitRequestResponseDetails::parse("InitiateRequest", item)?),
+                        x => warn!("Unknown MMS Request item {:?}", x),
+                    }
+                }
+            }
+            x => return Err(MmsError::InternalError(format!("Expected tag &[169] on MMS Init Response PDU but found {:?}", x))),
+        }
 
-    //     Ok(InitiateRequestPdu {
-    //         local_detail_calling: local_detail_calling,
-    //         proposed_max_serv_outstanding_calling: expect_value("InitiateRequest", "ProposedMaxServOutstandingCalling", proposed_max_serv_outstanding_calling)?,
-    //         proposed_max_serv_outstanding_called: expect_value("InitiateRequest", "ProposedMaxServOutstandingCalled", proposed_max_serv_outstanding_called)?,
-    //         proposed_data_structure_nesting_level: proposed_data_structure_nesting_level,
-    //         init_request_details: expect_value("InitiateRequest", "InitRequestDetails", init_request_details)?,
-    //     })
-    // }
+        Ok(InitiateResponsePdu {
+            local_detail_calling: local_detail_calling,
+            negotiated_max_serv_outstanding_calling: expect_value("InitiateResponse", "NegotiatedMaxServOutstandingCalling", negotiated_max_serv_outstanding_calling)?,
+            negotiated_max_serv_outstanding_called: expect_value("InitiateResponse", "NegotiatedMaxServOutstandingCalled", negotiated_max_serv_outstanding_called)?,
+            negotiated_data_structure_nesting_level: negotiated_data_structure_nesting_level,
+            init_response_details: expect_value("InitiateResponse", "InitResponseDetails", init_response_details)?,
+        })
+    }
 }
 
 impl InitRequestResponseDetails {
@@ -274,6 +279,13 @@ impl InitRequestResponseDetails {
         })
     }
 }
+
+pub(crate) struct ReadRequestPdu {
+}
+
+pub(crate) struct ReadResponsePdu {
+}
+
 
 fn expect_value<T>(pdu: &str, field: &str, value: Option<T>) -> Result<T, MmsError> {
     value.ok_or_else(|| MmsError::ProtocolError(format!("MMS Payload '{}' must container the field '{}' but was not found.", pdu, field)))
