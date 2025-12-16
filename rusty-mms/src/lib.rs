@@ -1,9 +1,9 @@
 pub mod api;
 pub(crate) mod error;
 pub(crate) mod parameters;
+pub(crate) mod parsers;
 pub(crate) mod pdu;
 pub mod service;
-pub(crate) mod parsers;
 
 use std::marker::PhantomData;
 
@@ -21,7 +21,7 @@ pub use service::*;
 
 use crate::error::to_mms_error;
 
-pub type RustyMmsConnectionIsoStack<R, W> = RustyMmsConnection<RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
+pub type RustyMmsConnectionIsoStack<R, W> = RustyMmsInitiatorConnection<RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsInitiatorIsoStack<R, W> = RustyMmsInitiator<RustyOsiSingleValueAcseInitiatorIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsListenerIsoStack<R, W> = RustyMmsListener<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsResponderIsoStack<R, W> = RustyMmsResponder<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
@@ -40,7 +40,7 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsInitiatorConnectionF
         copp_information: CoppConnectionInformation,
         acse_information: AcseRequestInformation,
         mms_information: MmsRequestInformation,
-    ) -> Result<impl MmsConnection, MmsError> {
+    ) -> Result<impl MmsInitiatorConnection, MmsError> {
         let cotp_client = TcpCotpConnection::<R, W>::initiate(tpkt_connection, cotp_information)
             .await
             .map_err(to_mms_error("Failed to establish a COTP connection when creating an MMS association"))?;
@@ -61,7 +61,7 @@ pub struct OsiMmsMirrorResponderConnectionFactory<T: TpktConnection, R: TpktRead
 }
 
 impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConnectionFactory<T, R, W> {
-    pub async fn connect(tpkt_connection: T) -> Result<impl MmsConnection, MmsError> {
+    pub async fn connect(tpkt_connection: T) -> Result<impl MmsResponderConnection, MmsError> {
         let (cotp_listener, _) = TcpCotpAcceptor::<R, W>::new(tpkt_connection).await.map_err(to_mms_error("Failed to create COTP connection when creating an MMS association"))?;
         let cotp_connection = cotp_listener
             .accept(CotpAcceptInformation::default())
@@ -70,7 +70,7 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConne
         let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<R>, TcpCotpWriter<W>>::new(cotp_connection)
             .await
             .map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
-        let (copp_listener, _) = RustyCoppListenerIsoStack::<R, W>::new(cosp_listener).await?;
+        let (copp_listener, _) = RustyCoppListenerIsoStack::<R, W>::new(cosp_listener).await.map_err(to_mms_error("Failed to create COPP listener"))?;
         let (mut acse_listener, acse_request_information) = RustyOsiSingleValueAcseListenerIsoStack::<R, W>::new(copp_listener)
             .await
             .map_err(to_mms_error("Failed to create a COPP connection when creating an MMS association"))?;
@@ -112,7 +112,7 @@ mod tests {
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
-            let a = OsiMmsInitiatorConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::connect(
+            let mut a = OsiMmsInitiatorConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::connect(
                 tpkt_client,
                 CotpConnectInformation::default(),
                 CospConnectionInformation::default(),
@@ -123,6 +123,12 @@ mod tests {
                 },
                 MmsRequestInformation::default(),
             )
+            .await?;
+            let b = a.read(MmsVariableAccessSpecification::ListOfVariable(vec![
+                ListOfVariableItem { variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Hello".into())) },
+                ListOfVariableItem { variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific("Foo".into(), "Bar".into())) },
+                ListOfVariableItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())) },
+            ]))
             .await?;
             Ok(())
         };
@@ -146,7 +152,8 @@ mod tests {
                 implementation_information: Some("Gaz".into()),
             }));
             let (a, b) = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await?;
-            a.responder().await?.accept().await?;
+            let mut c = a.responder().await?.accept().await?;
+            c.recv().await?;
             Ok(())
         };
 

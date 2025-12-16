@@ -1,5 +1,4 @@
 use der_parser::Oid;
-use rand::random;
 use rusty_copp::CoppError;
 use thiserror::Error;
 

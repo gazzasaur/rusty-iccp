@@ -1,10 +1,10 @@
 use der_parser::{
     asn1_rs::Any,
-    ber::{BerObjectContent, parse_ber_any, parse_ber_bitstring, parse_ber_content},
+    ber::{BerObjectContent, parse_ber_any, parse_ber_content},
     der::Tag,
-    error::BerError,
+    error::BerError, num_bigint::BigInt,
 };
-use tokio::io::AsyncReadExt;
+use num_traits::ToPrimitive;
 
 use crate::{
     MmsError,
@@ -22,6 +22,25 @@ pub(crate) fn process_constructed_data<'a>(data: &'a [u8]) -> Result<Vec<Any<'a>
         remaining = rem;
     }
     Ok(results)
+}
+
+// Pretty much visible string.
+pub(crate) fn process_mms_string<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<String, MmsError> {
+    let (_, inner_object) = parse_ber_content(Tag::VisibleString)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
+
+    match inner_object {
+        BerObjectContent::VisibleString(value) => Ok(value.into()),
+        _ => Err(MmsError::ProtocolError(error_message.into())),
+    }
+}
+
+pub(crate) fn process_mms_boolean_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<bool, MmsError> {
+    let (_, inner_object) = parse_ber_content(Tag::Integer)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
+
+    match inner_object {
+        BerObjectContent::Boolean(value) => Ok(value),
+        _ => Err(MmsError::ProtocolError(error_message.into())),
+    }
 }
 
 pub(crate) fn process_integer_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<Vec<u8>, MmsError> {
@@ -54,7 +73,9 @@ pub(crate) fn process_mms_integer_32_content<'a>(npm_object: &Any<'a>, error_mes
     if int_value.len() > 4 {
         return Err(MmsError::ProtocolError(format!("{}: {} - {:?}", error_message, "Exceeded Integer32 range", int_value)));
     }
-    Ok(i32::from_be_bytes(int_value.try_into().map_err(to_mms_error(error_message))?))
+    let bi = BigInt::from_signed_bytes_be(&int_value);
+    let m: i32 = bi.to_i32().unwrap();
+    Ok(m)
 }
 
 pub(crate) fn process_mms_parameter_support_options<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<ParameterSupportOptions, MmsError> {

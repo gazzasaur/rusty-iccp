@@ -1,6 +1,6 @@
 use der_parser::{
     asn1_rs::Any,
-    ber::{BerObject, BerObjectContent, Length},
+    ber::{BerObject, BerObjectContent, Length, parse_ber_any},
     der::{Class, Header, Tag},
 };
 use tracing::warn;
@@ -9,7 +9,7 @@ use crate::{
     MmsError, MmsVariableAccessSpecification,
     error::to_mms_error,
     parameters::{ParameterSupportOptions, ParameterSupportOptionsBerObject, ServiceSupportOptions, ServiceSupportOptionsBerObject},
-    parsers::{process_constructed_data, process_integer_content, process_mms_integer_8_content, process_mms_integer_16_content, process_mms_integer_32_content, process_mms_parameter_support_options, process_mms_service_support_option},
+    parsers::{process_constructed_data, process_integer_content, process_mms_boolean_content, process_mms_integer_8_content, process_mms_integer_16_content, process_mms_integer_32_content, process_mms_parameter_support_options, process_mms_service_support_option},
 };
 
 #[repr(u8)]
@@ -280,63 +280,64 @@ impl InitRequestResponseDetails {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ReadRequestPdu {
-    specification_with_result: Option<bool>,
-    variable_access_specification: MmsVariableAccessSpecification,
+    pub(crate) specification_with_result: Option<bool>,
+    pub(crate) variable_access_specification: MmsVariableAccessSpecification,
 }
 
 impl ReadRequestPdu {
-    pub(crate) fn serialise(&self) -> Result<Vec<u8>, MmsError> {
-        match self.variable_access_specification {
-            MmsVariableAccessSpecification::ListOfVariable(list_of_variable_items) => todo!(),
-            MmsVariableAccessSpecification::VariableListName(mms_object_name) => todo!(),
-        };
+    pub(crate) fn to_ber(&self) -> BerObject<'_> {
         BerObject::from_header_and_content(
             Header::new(Class::ContextSpecific, true, Tag::from(4), Length::Definite(0)),
             BerObjectContent::Sequence(
                 vec![
-                    self.specification_with_result
-                        .as_ref()
-                        .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*x))),
+                    match &self.specification_with_result {
+                        Some(specification_with_result) => Some(BerObject::from_header_and_content(
+                            Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)),
+                            BerObjectContent::Boolean(*specification_with_result),
+                        )),
+                        None => None,
+                    },
                     Some(BerObject::from_header_and_content(
                         Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
-                        BerObjectContent::Sequence(vec![
-
-
-
-                        ]),
+                        BerObjectContent::Sequence(vec![self.variable_access_specification.to_ber()]),
                     )),
-                    // Some(BerObject::from_header_and_content(
-                    //     Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)),
-                    //     BerObjectContent::Integer(&negotiated_max_serv_outstanding_called),
-                    // )),
-                    // negotiated_data_structure_nesting_level
-                    //     .as_ref()
-                    //     .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Integer(x))),
-                    // Some(BerObject::from_header_and_content(
-                    //     Header::new(Class::ContextSpecific, true, Tag::from(4), Length::Definite(0)),
-                    //     BerObjectContent::Sequence(vec![
-                    //         BerObject::from_header_and_content(
-                    //             Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)),
-                    //             BerObjectContent::Integer(&self.init_response_details.proposed_version_number.to_be_bytes()),
-                    //         ),
-                    //         negotiated_parameter_cbb.to_ber_object(Tag::from(1)),
-                    //         services_supported_calling.to_ber_object(Tag::from(2)),
-                    //     ]),
-                    // )),
                 ]
                 .into_iter()
                 .filter_map(|i| i)
                 .collect(),
             ),
         )
-        .to_vec()
-        .map_err(to_mms_error(""))
+    }
+
+    pub(crate) fn parse(pdu: &Any<'_>) -> Result<ReadRequestPdu, MmsError> {
+        let mut specification_with_result = None;
+        let mut variable_access_specification = None;
+
+        match pdu.header.raw_tag() {
+            Some(&[164]) => {
+                for item in process_constructed_data(pdu.data).map_err(to_mms_error("Failed to parse MMS Request PDU"))? {
+                    match item.header.raw_tag() {
+                        Some([80]) => specification_with_result = Some(process_mms_boolean_content(&item, "Failed to parse Specification With Result parameter on MMS Request PDU")?),
+                        Some([161]) => variable_access_specification = Some(MmsVariableAccessSpecification::parse("Read Request PDU", item.data)?),
+                        x => return Err(MmsError::ProtocolError(format!("Unsupported tag in MMS Read Request PDU: {:?}", x))),
+                    }
+                }
+            }
+            x => return Err(MmsError::ProtocolError(format!("Expected MMS Read Request PDU to have a tag of 164 a but {:?} was found", x))),
+        };
+
+        let variable_access_specification = variable_access_specification.ok_or_else(|| MmsError::ProtocolError("No Variable Access Specification on Request PDU".into()))?;
+        Ok(ReadRequestPdu {
+            specification_with_result,
+            variable_access_specification,
+        })
     }
 }
 
 pub(crate) struct ReadResponsePdu {}
 
-fn expect_value<T>(pdu: &str, field: &str, value: Option<T>) -> Result<T, MmsError> {
+pub(crate) fn expect_value<T>(pdu: &str, field: &str, value: Option<T>) -> Result<T, MmsError> {
     value.ok_or_else(|| MmsError::ProtocolError(format!("MMS Payload '{}' must container the field '{}' but was not found.", pdu, field)))
 }

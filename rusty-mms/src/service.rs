@@ -4,19 +4,24 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 use der_parser::Oid;
-use rusty_acse::OsiSingleValueAcseConnection;
+use der_parser::ber::{BerObject, BerObjectContent, Length, parse_ber_any, parse_ber_content, parse_ber_integer};
+use der_parser::der::{Class, Header, Tag};
+use der_parser::num_bigint::{BigInt, BigUint, ToBigInt, ToBigUint};
+use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
 use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{Mutex, mpsc};
+use tracing::warn;
 
-use crate::MmsVariableAccessSpecification;
+use crate::parsers::{process_constructed_data, process_mms_integer_32_content};
 use crate::pdu::{ConfirmedMmsPduType, MmsPduType, ReadRequestPdu};
 use crate::{
-    MmsConnection, MmsError, MmsInitiator, MmsListener, MmsResponder,
+    MmsError, MmsInitiator, MmsListener, MmsResponder,
     error::to_mms_error,
     parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions},
     pdu::{InitRequestResponseDetails, InitiateRequestPdu, InitiateResponsePdu},
 };
+use crate::{MmsInitiatorConnection, MmsResponderConnection, MmsResponderRecvResult, MmsVariableAccessSpecification};
 
 pub struct MmsRequestInformation {
     pub local_detail_calling: Option<i32>,
@@ -78,7 +83,7 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
 }
 
 impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsInitiator for RustyMmsInitiator<T, R, W> {
-    async fn initiate(self) -> Result<impl MmsConnection, MmsError> {
+    async fn initiate(self) -> Result<impl MmsInitiatorConnection, MmsError> {
         let pdu = InitiateRequestPdu::new(
             self.options.local_detail_calling,
             self.options.proposed_max_serv_outstanding_calling,
@@ -103,7 +108,7 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
 
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
 
-        Ok(RustyMmsConnection::<R, W>::new(acse_reader, acse_writer))
+        Ok(RustyMmsInitiatorConnection::<R, W>::new(acse_reader, acse_writer))
     }
 }
 
@@ -146,7 +151,7 @@ pub struct RustyMmsResponder<T: OsiSingleValueAcseResponder, R: OsiSingleValueAc
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsResponder for RustyMmsResponder<T, R, W> {
-    async fn accept(self) -> Result<impl MmsConnection, MmsError> {
+    async fn accept(self) -> Result<impl MmsResponderConnection, MmsError> {
         let repsonse = InitiateResponsePdu::new(
             None,
             10,
@@ -178,9 +183,13 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
                 },
             },
         );
-        let acse_connection = self.acse_responder.accept(repsonse.serialise()?).await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
+        let acse_connection = self
+            .acse_responder
+            .accept(repsonse.serialise()?)
+            .await
+            .map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
-        Ok(RustyMmsConnection::<R, W>::new(acse_reader, acse_writer))
+        Ok(RustyMmsResponderConnection::<R, W>::new(acse_reader, acse_writer))
     }
 }
 
@@ -188,37 +197,104 @@ struct RustyMmsConnectionInternal<R: OsiSingleValueAcseReader, W: OsiSingleValue
     acse_reader: R,
     acse_writer: W,
 
-    pending: HashMap<u32, Receiver<Result<MmsPduType, MmsError>>>
+    pending: HashMap<u32, Receiver<Result<MmsPduType, MmsError>>>,
 }
 
 impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsConnectionInternal<R, W> {
     fn new(acse_reader: R, acse_writer: W) -> Self {
-        Self { acse_reader, acse_writer, pending: HashMap::new() }
+        Self {
+            acse_reader,
+            acse_writer,
+            pending: HashMap::new(),
+        }
+    }
+
+    async fn send_confirmed(&mut self, payload: Vec<u8>) -> Result<(), MmsError> {
+        self.acse_writer.send(payload).await.map_err(|e| MmsError::InternalError(format!("Failed to send MMS payload: {:?}", e)))
     }
 }
 
-pub struct RustyMmsConnection<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
+pub struct RustyMmsInitiatorConnection<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
     invocation_id: AtomicU32,
-    internal: Arc<Mutex<RustyMmsConnectionInternal<R, W>>>
+    internal: Arc<Mutex<RustyMmsConnectionInternal<R, W>>>,
 }
 
-impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsConnection<R, W> {
-    pub fn new(acse_reader: impl OsiSingleValueAcseReader, acse_writer: impl OsiSingleValueAcseWriter) -> RustyMmsConnection<impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
-        RustyMmsConnection { invocation_id: AtomicU32::new(1), internal: Arc::new(Mutex::new(RustyMmsConnectionInternal::new(acse_reader, acse_writer))) }
+impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsInitiatorConnection<R, W> {
+    pub fn new(acse_reader: impl OsiSingleValueAcseReader, acse_writer: impl OsiSingleValueAcseWriter) -> RustyMmsInitiatorConnection<impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
+        RustyMmsInitiatorConnection {
+            invocation_id: AtomicU32::new(1),
+            internal: Arc::new(Mutex::new(RustyMmsConnectionInternal::new(acse_reader, acse_writer))),
+        }
     }
 }
 
-impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsConnection for RustyMmsConnection<R, W> {
-    async fn read(&mut self, access_specifications: Vec<MmsVariableAccessSpecification>) -> Result<Vec<crate::MmsAccessResult>, MmsError> {
+impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsInitiatorConnection for RustyMmsInitiatorConnection<R, W> {
+    async fn read(&mut self, variable_access_specification: MmsVariableAccessSpecification) -> Result<Vec<crate::MmsAccessResult>, MmsError> {
         let read_request_pdu = ReadRequestPdu {
-
+            specification_with_result: None,
+            variable_access_specification,
         };
 
         let invocation_id = self.invocation_id.fetch_add(1, Ordering::Acquire);
-        let (inbound_sender, inbound_receiver) = mpsc::channel::<Result<MmsPduType, MmsError>>(1);
-        
+        let invocation_id = if invocation_id > 2000000000 {
+            let _lock = self.internal.lock().await;
+            if self.invocation_id.fetch_add(1, Ordering::Acquire) > 2000000000 {
+                self.invocation_id.store(1, Ordering::Relaxed);
+            }
+            self.invocation_id.fetch_add(1, Ordering::Acquire)
+        } else {
+            invocation_id
+        };
+        let invocation_id = BigUint::from(invocation_id).to_bytes_be();
 
-        Ok(())
+        let confirmed_request_pdu = BerObject::from_header_and_content(
+            Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
+            BerObjectContent::Sequence(vec![BerObject::from_obj(BerObjectContent::Integer(&invocation_id)), read_request_pdu.to_ber()]),
+        )
+        .to_vec()
+        .map_err(|e| MmsError::ProtocolError(format!("Failed: {:?}", e)))?;
+
+        let (inbound_sender, inbound_receiver) = mpsc::channel::<Result<MmsPduType, MmsError>>(1);
+        let mut l = self.internal.lock().await;
+        l.send_confirmed(confirmed_request_pdu).await?;
+
+        Ok(vec![])
+    }
+}
+
+pub struct RustyMmsResponderConnection<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
+    internal: Arc<Mutex<RustyMmsConnectionInternal<R, W>>>,
+}
+
+impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsResponderConnection<R, W> {
+    pub fn new(acse_reader: impl OsiSingleValueAcseReader, acse_writer: impl OsiSingleValueAcseWriter) -> RustyMmsResponderConnection<impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
+        RustyMmsResponderConnection {
+            internal: Arc::new(Mutex::new(RustyMmsConnectionInternal::new(acse_reader, acse_writer))),
+        }
+    }
+}
+
+impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsResponderConnection for RustyMmsResponderConnection<R, W> {
+    async fn recv(&mut self) -> Result<crate::MmsResponderRecvResult, MmsError> {
+        let acse_user_data = self.internal.lock().await.acse_reader.recv().await.map_err(|e| MmsError::ProtocolStackError(e))?;
+        let user_data = match acse_user_data {
+            AcseRecvResult::Closed => return Ok(MmsResponderRecvResult::Closed),
+            AcseRecvResult::Data(user_data) => user_data,
+        };
+        let (_, mms_pdu) = parse_ber_any(&user_data).map_err(|e| MmsError::ProtocolError(format!("Failed to parse MMS PDU: {:?}", e)))?;
+        match mms_pdu.header.raw_tag() {
+            Some(&[160]) => {
+                for item in process_constructed_data(mms_pdu.data).map_err(to_mms_error("Failed to parse Confirmed Request PDU"))? {
+                    match item.header.raw_tag() {
+                        Some(&[2]) => warn!("Invocation Id: {:?}", process_mms_integer_32_content(&item, "DSA")?),
+                        Some(&[164]) => warn!("Payload: {:?}", ReadRequestPdu::parse(&item)),
+                        x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x)
+                    }
+                }
+            },
+            x => warn!("Failed to parse unknown MMS PDU: {:?}", x)
+        }
+        todo!()
     }
 }
 
