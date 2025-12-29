@@ -18,7 +18,7 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: 
     const MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE: usize = 10240;
 
     let mut connect_accept_parameters = vec![
-        SessionPduParameter::ProtocolOptionsParameter(ProtocolOptionsField(2)), // Only set the duplex functionall unit
+        SessionPduParameter::ProtocolOptionsParameter(ProtocolOptionsField(0)), // Do not support extended PDUs
         SessionPduParameter::VersionNumberParameter(VersionNumberField(2)),     // Version 2 only
     ];
     if let Some(size) = options.tsdu_maximum_size {
