@@ -1,12 +1,12 @@
-use std::{collections::HashMap, time::Instant};
 use der_parser::{
     Oid,
     asn1_rs::Any,
-    ber::{BerObject, BerObjectContent, Length, parse_ber_any},
+    ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any},
     der::{Class, Header, Tag},
 };
 use rusty_acse::AcseError;
 use rusty_copp::CoppError;
+use std::{collections::HashMap, time::Instant};
 use thiserror::Error;
 use tracing::warn;
 
@@ -117,9 +117,9 @@ impl MmsVariableAccessSpecification {
             Some([161]) => {
                 let mms_object = MmsObjectName::parse(pdu_name, items[0].data)?;
                 return Ok(MmsVariableAccessSpecification::VariableListName(mms_object));
-            },
+            }
             Some(x) => return Err(MmsError::InternalError(format!("Unsupported variable type found {:?} on {:?}", x, pdu_name))),
-            None => return Err(MmsError::InternalError(format!("No variable found in payload: {:?}", pdu_name)))
+            None => return Err(MmsError::InternalError(format!("No variable found in payload: {:?}", pdu_name))),
         }
     }
 }
@@ -140,7 +140,7 @@ impl ListOfVariableItem {
         for item in process_constructed_data(item.data).map_err(to_mms_error(error_message))? {
             match item.header.raw_tag() {
                 Some([160]) => variable_specification = Some(VariableSpecification::parse(item.data)?),
-                x => warn!("Ignoring unknown variable specification: {:?}", x)
+                x => warn!("Ignoring unknown variable specification: {:?}", x),
             }
         }
         let variable_specification = expect_value(error_message, "Variable Specification", variable_specification)?;
@@ -161,7 +161,7 @@ impl VariableSpecification {
             VariableSpecification::Invalidated => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)), BerObjectContent::Null),
         }
     }
-    
+
     fn parse(data: &[u8]) -> Result<VariableSpecification, MmsError> {
         let (_, variable_spec_ber) = parse_ber_any(data).map_err(to_mms_error("Failed to parse Variable Specification"))?;
         match variable_spec_ber.header.raw_tag() {
@@ -169,7 +169,7 @@ impl VariableSpecification {
             Some([161]) => Ok(VariableSpecification::Name(MmsObjectName::parse("", data)?)),
             Some([130]) => Ok(VariableSpecification::Name(MmsObjectName::parse("", data)?)),
             Some([132]) => Ok(VariableSpecification::Invalidated),
-            x => Err(MmsError::ProtocolError(format!("Unknown Variable Specification: {:?}", x)))
+            x => Err(MmsError::ProtocolError(format!("Unknown Variable Specification: {:?}", x))),
         }
     }
 }
@@ -183,16 +183,11 @@ pub enum MmsAccessResult {
     Success(MmsData),
 }
 
-pub struct MmsBitString {
-    padding: u8,
-    buffer: Vec<u8>,
-}
-
 pub enum MmsData {
     Array(Vec<MmsData>),
     Structure(Vec<MmsData>),
     Boolean(bool),
-    BitString(MmsBitString),
+    BitString(u8, Vec<u8>),
     Integer(Vec<u8>),
     Unsigned(Vec<u8>),
     FloatingPoint(Vec<u8>),
@@ -201,13 +196,51 @@ pub enum MmsData {
     GeneralizedTime(Instant),
     BinaryTime(Vec<u8>),
     Bcd(Vec<u8>),
-    BooleanArray(MmsBitString),
+    BooleanArray(u8, Vec<u8>),
     ObjectId(Oid<'static>),
     MmsString(String),
 }
 
-pub enum MmsSimpleData {
-    MmsString(String), // Printable characters only.
+impl MmsData {
+    pub(crate) fn serialise(&self, str1: bool, str2: bool) -> Result<BerObject<'_>, MmsError> {
+        let payload = match &self {
+            MmsData::Array(mms_array_items) if str1 => {
+                let mut mms_array_data = vec![];
+                for mms_array_item in mms_array_items {
+                    mms_array_data.push(mms_array_item.serialise(str1, str2)?)
+                }
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(mms_array_data))
+            }
+            MmsData::Array(_) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Null),
+
+            MmsData::Structure(mms_array_items) if str2 => {
+                let mut mms_array_data = vec![];
+                for mms_array_item in mms_array_items {
+                    mms_array_data.push(mms_array_item.serialise(str1, str2)?)
+                }
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)), BerObjectContent::Sequence(mms_array_data))
+            }
+            MmsData::Structure(_) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::Null),
+
+            MmsData::Boolean(value) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Boolean(*value)),
+            MmsData::BitString(padding, bit_data) => BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)),
+                BerObjectContent::BitString(*padding, BitStringObject { data: &bit_data }),
+            ),
+            MmsData::Integer(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
+            MmsData::Unsigned(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(6), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
+            MmsData::FloatingPoint(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(7), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
+            MmsData::OctetString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(8), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
+            MmsData::VisibleString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
+            MmsData::GeneralizedTime(instant) => todo!(),
+            MmsData::BinaryTime(items) => todo!(),
+            MmsData::Bcd(items) => todo!(),
+            MmsData::BooleanArray(paddibg, object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::BitString(*paddibg, BitStringObject { data: &object_data })),
+            MmsData::ObjectId(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::OID(object_data.to_owned())),
+            MmsData::MmsString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
+        };
+        Ok(payload)
+    }
 }
 
 #[derive(Error, Debug)]

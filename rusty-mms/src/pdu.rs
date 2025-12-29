@@ -14,7 +14,7 @@ use crate::{
 
 #[repr(u8)]
 pub(crate) enum MmsPduType {
-    ConfirmedRequestPduType(ConfirmedMmsPduType) = 0,
+    ConfirmedRequestPduType(ConfirmedMmsPdu) = 0,
     ConfirmedResponsePduType = 1,
     ConfirmedErrorPduType = 2,
 
@@ -32,6 +32,11 @@ pub(crate) enum MmsPduType {
     ConcludeRequestPduType = 11,
     ConcludeResponsePduType = 12,
     ConcludeErrorPduType = 13,
+}
+
+pub(crate) struct ConfirmedMmsPdu {
+    pub(crate) invocation_id: i32,
+    pub(crate) payload: ConfirmedMmsPduType,
 }
 
 #[repr(u8)]

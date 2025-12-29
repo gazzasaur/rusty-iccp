@@ -32,7 +32,7 @@ pub enum PresentationDataValues {
 }
 
 impl UserData {
-    pub fn to_ber(&self) -> BerObject {
+    pub fn to_ber(&self) -> BerObject<'_> {
         match &self {
             UserData::FullyEncoded(presentation_data_value_lists) => {
                 let mut pdv_lists = vec![];
@@ -86,7 +86,7 @@ impl UserData {
 }
 
 impl PresentationDataValueList {
-    pub fn to_ber(&self) -> BerObject {
+    pub fn to_ber(&self) -> BerObject<'_> {
         let mut object_content = vec![];
         if let Some(transfer_syntax_name) = &self.transfer_syntax_name {
             object_content.push(der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(transfer_syntax_name.clone())));
@@ -99,7 +99,7 @@ impl PresentationDataValueList {
 }
 
 impl PresentationDataValues {
-    pub fn to_ber(&self) -> BerObject {
+    pub fn to_ber(&self) -> BerObject<'_> {
         match &self {
             PresentationDataValues::SingleAsn1Type(data) => der_parser::ber::BerObject::from_header_and_content(
                 Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)),

@@ -14,7 +14,7 @@ use tokio::sync::{Mutex, mpsc};
 use tracing::warn;
 
 use crate::parsers::{process_constructed_data, process_mms_integer_32_content};
-use crate::pdu::{ConfirmedMmsPduType, MmsPduType, ReadRequestPdu};
+use crate::pdu::{ConfirmedMmsPdu, ConfirmedMmsPduType, MmsPduType, ReadRequestPdu, expect_value};
 use crate::{
     MmsError, MmsInitiator, MmsListener, MmsResponder,
     error::to_mms_error,
@@ -282,19 +282,31 @@ impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsResponderConne
             AcseRecvResult::Data(user_data) => user_data,
         };
         let (_, mms_pdu) = parse_ber_any(&user_data).map_err(|e| MmsError::ProtocolError(format!("Failed to parse MMS PDU: {:?}", e)))?;
+
         match mms_pdu.header.raw_tag() {
             Some(&[160]) => {
+                let mut invocation_id = None;
+                let mut mms_payload = None;
+
                 for item in process_constructed_data(mms_pdu.data).map_err(to_mms_error("Failed to parse Confirmed Request PDU"))? {
                     match item.header.raw_tag() {
-                        Some(&[2]) => warn!("Invocation Id: {:?}", process_mms_integer_32_content(&item, "DSA")?),
-                        Some(&[164]) => warn!("Payload: {:?}", ReadRequestPdu::parse(&item)),
+                        Some(&[2]) => invocation_id = Some(process_mms_integer_32_content(&item, "DSA")?),
+                        Some(&[164]) => mms_payload = Some(ConfirmedMmsPduType::ReadRequestPduType(ReadRequestPdu::parse(&item)?)),
                         x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x)
                     }
                 }
+
+                let invocation_id = expect_value("ConfirmedRequest", "InvocationId", invocation_id)?;
+                let mms_payload = expect_value("ConfirmedRequest", "MmsPayload", mms_payload)?;
+
+                return Ok(MmsResponderRecvResult::Pdu(MmsPduType::ConfirmedRequestPduType(ConfirmedMmsPdu {
+                    invocation_id,
+                    payload: mms_payload,
+                })));
             },
             x => warn!("Failed to parse unknown MMS PDU: {:?}", x)
         }
-        todo!()
+        return Err(MmsError::ProtocolError("failed to recv MMS payload".into()))
     }
 }
 

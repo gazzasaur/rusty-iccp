@@ -103,6 +103,8 @@ mod tests {
     use tokio::join;
     use tracing_test::traced_test;
 
+    use crate::pdu::ConfirmedMmsPdu;
+
     use super::*;
 
     #[tokio::test]
@@ -151,9 +153,27 @@ mod tests {
                 responding_ae_invocation_identifier: acse_request.called_ae_invocation_identifier,
                 implementation_information: Some("Gaz".into()),
             }));
-            let (a, b) = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await?;
-            let mut c = a.responder().await?.accept().await?;
-            c.recv().await?;
+            let (mms_listener, _) = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await?;
+            let mut server_connection = mms_listener.responder().await?.accept().await?;
+            let recv_result = server_connection.recv().await?;
+            let mms_pdu = match recv_result {
+                MmsResponderRecvResult::Pdu(mms_pdu_type) => mms_pdu_type,
+                MmsResponderRecvResult::Closed => panic!("Test failed"),
+            };
+            let confirmed_request = match mms_pdu {
+                pdu::MmsPduType::ConfirmedRequestPduType(confirmed_mms_pdu_type) => confirmed_mms_pdu_type,
+                _ => panic!("Test failed"),
+            };
+            let read_request = match confirmed_request.payload {
+                pdu::ConfirmedMmsPduType::ReadRequestPduType(read_request_pdu) => read_request_pdu,
+            };
+            assert_eq!(read_request.specification_with_result, None);
+            match read_request.variable_access_specification {
+                MmsVariableAccessSpecification::ListOfVariable(list_of_variable_items) => {
+                    assert_eq!(list_of_variable_items.len(), 1)
+                },
+                MmsVariableAccessSpecification::VariableListName(_) => panic!("Test failed"),
+            }
             Ok(())
         };
 
