@@ -5,15 +5,13 @@ use der_parser::{
     der::{Class, Header, Tag},
 };
 use rusty_acse::AcseError;
-use rusty_copp::CoppError;
-use std::{collections::HashMap, time::Instant};
+use std::time::Instant;
 use thiserror::Error;
 use tracing::warn;
 
 use crate::{
     error::to_mms_error,
-    parsers::{process_constructed_data, process_mms_integer_8_content, process_mms_string},
-    pdu::{self, MmsPduType, expect_value},
+    parsers::{process_constructed_data, process_mms_string}, pdu::common::{MmsPduType, expect_value},
 };
 
 /**

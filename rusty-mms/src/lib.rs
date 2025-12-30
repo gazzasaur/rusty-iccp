@@ -103,7 +103,7 @@ mod tests {
     use tokio::join;
     use tracing_test::traced_test;
 
-    use crate::pdu::ConfirmedMmsPdu;
+    use crate::pdu::{common::MmsPduType, types::ConfirmedMmsPduType};
 
     use super::*;
 
@@ -161,11 +161,11 @@ mod tests {
                 MmsResponderRecvResult::Closed => panic!("Test failed"),
             };
             let confirmed_request = match mms_pdu {
-                pdu::MmsPduType::ConfirmedRequestPduType(confirmed_mms_pdu_type) => confirmed_mms_pdu_type,
+                MmsPduType::ConfirmedRequestPduType(confirmed_mms_pdu_type) => confirmed_mms_pdu_type,
                 _ => panic!("Test failed"),
             };
             let read_request = match confirmed_request.payload {
-                pdu::ConfirmedMmsPduType::ReadRequestPduType(read_request_pdu) => read_request_pdu,
+                ConfirmedMmsPduType::ReadRequestPduType(read_request_pdu) => read_request_pdu,
             };
             assert_eq!(read_request.specification_with_result, None);
             match read_request.variable_access_specification {
