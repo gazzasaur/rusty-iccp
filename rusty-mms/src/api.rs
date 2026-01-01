@@ -10,8 +10,7 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::{
-    error::to_mms_error,
-    parsers::{process_constructed_data, process_mms_string}, pdu::common::{MmsPduType, expect_value},
+    error::to_mms_error, parsers::{process_constructed_data, process_mms_string}, pdu::{MmsPduType, common::expect_value},
 };
 
 /**

@@ -14,12 +14,15 @@ use tokio::sync::{Mutex, mpsc};
 use tracing::warn;
 
 use crate::parsers::{process_constructed_data, process_mms_integer_32_content};
-use crate::pdu::{ConfirmedMmsPdu, ConfirmedMmsPduType, MmsPduType, ReadRequestPdu, expect_value};
+use crate::pdu::common::expect_value;
+use crate::pdu::initiaterequest::{InitRequestResponseDetails, InitiateRequestPdu};
+use crate::pdu::initiateresponse::InitiateResponsePdu;
+use crate::pdu::readrequest::ReadRequestPdu;
+use crate::pdu::{ConfirmedMmsPdu, ConfirmedMmsPduType, MmsPduType};
 use crate::{
     MmsError, MmsInitiator, MmsListener, MmsResponder,
     error::to_mms_error,
     parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions},
-    pdu::{InitRequestResponseDetails, InitiateRequestPdu, InitiateResponsePdu},
 };
 use crate::{MmsInitiatorConnection, MmsResponderConnection, MmsResponderRecvResult, MmsVariableAccessSpecification};
 

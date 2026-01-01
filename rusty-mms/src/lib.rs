@@ -103,7 +103,7 @@ mod tests {
     use tokio::join;
     use tracing_test::traced_test;
 
-    use crate::pdu::{common::MmsPduType, types::ConfirmedMmsPduType};
+    use crate::pdu::{ConfirmedMmsPduType, MmsPduType};
 
     use super::*;
 
@@ -170,7 +170,7 @@ mod tests {
             assert_eq!(read_request.specification_with_result, None);
             match read_request.variable_access_specification {
                 MmsVariableAccessSpecification::ListOfVariable(list_of_variable_items) => {
-                    assert_eq!(list_of_variable_items.len(), 1)
+                    assert_eq!(list_of_variable_items.len(), 3)
                 },
                 MmsVariableAccessSpecification::VariableListName(_) => panic!("Test failed"),
             }
