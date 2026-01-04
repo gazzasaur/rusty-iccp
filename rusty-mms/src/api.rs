@@ -1,6 +1,6 @@
 use der_parser::{
     Oid,
-    asn1_rs::Any,
+    asn1_rs::{ASN1DateTime, Any, GeneralizedTime},
     ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any},
     der::{Class, Header, Tag},
 };
@@ -10,7 +10,7 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::{
-    error::to_mms_error, parsers::{process_constructed_data, process_mms_string}, pdu::{MmsPduType, common::expect_value},
+    error::to_mms_error, parsers::{process_constructed_data, process_integer_content, process_mms_bit_string_data, process_mms_boolean_content, process_mms_integer_16_content, process_mms_string}, pdu::{MmsPduType, common::expect_value},
 };
 
 /**
@@ -190,7 +190,7 @@ pub enum MmsData {
     FloatingPoint(Vec<u8>),
     OctetString(Vec<u8>),
     VisibleString(String),
-    GeneralizedTime(Instant),
+    GeneralizedTime(ASN1DateTime),
     BinaryTime(Vec<u8>),
     Bcd(Vec<u8>),
     BooleanArray(u8, Vec<u8>),
@@ -229,14 +229,41 @@ impl MmsData {
             MmsData::FloatingPoint(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(7), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
             MmsData::OctetString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(8), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
             MmsData::VisibleString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
-            MmsData::GeneralizedTime(instant) => todo!(),
-            MmsData::BinaryTime(items) => todo!(),
-            MmsData::Bcd(items) => todo!(),
+            MmsData::GeneralizedTime(time) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::GeneralizedTime(time.to_owned())),
+            MmsData::BinaryTime(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(8), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
+            MmsData::Bcd(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
             MmsData::BooleanArray(paddibg, object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::BitString(*paddibg, BitStringObject { data: &object_data })),
             MmsData::ObjectId(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::OID(object_data.to_owned())),
             MmsData::MmsString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
         };
         Ok(payload)
+    }
+
+    pub(crate) fn parse(data: Any<'_>) -> Result<MmsData, MmsError> {
+        match data.header.raw_tag() {
+            Some(&[1]) => {
+                let mut array = vec![];
+                for value in process_constructed_data(data.data).map_err(to_mms_error("Failed to parse MmsData Array"))? {
+                    array.push(MmsData::parse(value)?);
+                }
+                Ok(MmsData::Array(array))
+            }
+            Some(&[2]) => {
+                let mut structure = vec![];
+                for value in process_constructed_data(data.data).map_err(to_mms_error("Failed to parse MmsData Structure"))? {
+                    structure.push(MmsData::parse(value)?);
+                }
+                Ok(MmsData::Structure(structure))
+            }
+            Some(&[3]) => Ok(MmsData::Boolean(process_mms_boolean_content(&data, "Failed to parse MmsData Structure")?)),
+            Some(&[4]) => {
+                let (padding, value) = process_mms_bit_string_data(&data, "Failed to parse MmsData Structure")?;
+                Ok(MmsData::BitString(padding, value))
+            }
+            Some(&[5]) => Ok(MmsData::Integer(process_integer_content(&data, "Failed to parse MmsData Structure")?)),
+            Some(&[6]) => Ok(MmsData::Unsigned(process_integer_content(&data, "Failed to parse MmsData Structure")?))
+            
+        }
     }
 }
 
