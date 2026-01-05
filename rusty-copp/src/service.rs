@@ -66,7 +66,6 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
         let copp_information = CoppConnectionInformation {
             calling_presentation_selector: connect_message.calling_presentation_selector().cloned(),
             called_presentation_selector: connect_message.called_presentation_selector().cloned(),
-            presentation_context: connect_message.context_definition_list().clone(),
         };
 
         Ok((

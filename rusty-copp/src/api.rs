@@ -89,7 +89,6 @@ pub struct PresentationContextResult {
 pub struct CoppConnectionInformation {
     pub calling_presentation_selector: Option<Vec<u8>>,
     pub called_presentation_selector: Option<Vec<u8>>,
-    pub presentation_context: PresentationContextType,
 }
 
 impl Default for CoppConnectionInformation {
@@ -97,7 +96,6 @@ impl Default for CoppConnectionInformation {
         Self {
             calling_presentation_selector: None,
             called_presentation_selector: None,
-            presentation_context: PresentationContextType::ContextDefinitionList(vec![]),
         }
     }
 }
