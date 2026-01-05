@@ -261,8 +261,8 @@ impl MmsData {
                 Ok(MmsData::BitString(padding, value))
             }
             Some(&[5]) => Ok(MmsData::Integer(process_integer_content(&data, "Failed to parse MmsData Structure")?)),
-            Some(&[6]) => Ok(MmsData::Unsigned(process_integer_content(&data, "Failed to parse MmsData Structure")?))
-            
+            Some(&[6]) => Ok(MmsData::Unsigned(process_integer_content(&data, "Failed to parse MmsData Structure")?)),
+            x => Err(MmsError::ProtocolError(format!("Unknown MMS Data: {:?}", x)))
         }
     }
 }
