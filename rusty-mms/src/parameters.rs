@@ -18,6 +18,24 @@ pub enum ParameterSupportOption {
     Unsupported(u8),
 }
 
+#[repr(u8)]
+pub(crate) enum BasicObjectClass {
+    NamedVariable = 0,
+    NamedVariableList = 2,
+    NamedType = 3,
+
+    Semapgore = 4,
+    EventCondition = 5,
+    EventAction = 6,
+    EventEnrollment = 7,
+    Journal = 8,
+    Domain = 9,
+    ProgramInvocation = 10,
+    OperatorStation = 11,
+    DataExchange = 12,
+    AccessControlList = 13,
+}
+
 pub(crate) struct ParameterSupportOptionsBerObject<'a> {
     data: [u8; 1],
     ignored_bits: usize,
@@ -84,8 +102,8 @@ pub enum ServiceSupportOption {
     Read,                          // Bit 4
     Write,                         // Bit 5
     GetVariableAccessAttributes,   // Bit 6
-    GetNamedVariableListAttribute, // Bit 7
     DefineNamedVariableList,       // Bit 11
+    GetNamedVariableListAttribute, // Bit 12
     DeleteNamedVariableList,       // Bit 13
     InformationReport,             // Bit 79
     Unsupported(u8),
@@ -129,7 +147,7 @@ impl<'a> ServiceSupportOptionsBerObject<'a> {
                 }
                 ServiceSupportOption::GetNamedVariableListAttribute => {
                     obj.ignored_bits = obj.ignored_bits.min(72);
-                    obj.data[0] |= 0x01;
+                    obj.data[1] |= 0x08;
                 }
                 ServiceSupportOption::DefineNamedVariableList => {
                     obj.ignored_bits = obj.ignored_bits.min(68);
