@@ -152,6 +152,9 @@ mod tests {
                         ListOfVariablesItem {
                             variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())),
                         },
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("Does not exist".into())),
+                        },
                     ]),
                 },
             })
@@ -186,6 +189,9 @@ mod tests {
                 ListOfVariablesItem {
                     variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())),
                 },
+                ListOfVariablesItem {
+                    variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("Does not exist".into())),
+                },
             ])
         );
 
@@ -197,16 +203,27 @@ mod tests {
                     access_results: vec![
                         MmsAccessResult::Success(MmsData::Boolean(true)),
                         MmsAccessResult::Success(MmsData::Integer(vec![0x12, 0x34])),
-                        MmsAccessResult::Success(MmsData::Array(vec![
-                            MmsData::MmsString("Test".into()),
-                            MmsData::Unsigned(vec![0x02]),
-                            MmsData::Unsigned(vec![0x03]),
-                        ])),
-                        // MmsAccessResult::Failure(MmsAccessError::Unknown(vec![0xDE, 0xAD, 0xBE, 0xEF])),
+                        MmsAccessResult::Success(MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])])),
+                        MmsAccessResult::Failure(MmsAccessError::Unknown(vec![0x04])),
                     ],
                 },
             })
             .await?;
+
+        let client_read_result = mms_client_reader.recv().await?;
+        assert_eq!(client_read_result, MmsRecvResult::Message(MmsMessage::ConfirmedResponse {
+            invocation_id: BigInt::from(1).to_signed_bytes_be(),
+            response: MmsConfirmedResponse::Read {
+                variable_access_specification: None,
+                access_results: vec![
+                    MmsAccessResult::Success(MmsData::Boolean(true)),
+                    MmsAccessResult::Success(MmsData::Integer(vec![0x12, 0x34])),
+                    MmsAccessResult::Success(MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])])),
+                    MmsAccessResult::Failure(MmsAccessError::Unknown(vec![0x04])),
+                ],
+            },
+        }));
+
         tokio::time::sleep(Duration::from_millis(100)).await; // Give time for the message to be sent before reading
         Ok(())
     }

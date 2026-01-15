@@ -1,17 +1,9 @@
 use der_parser::{
     Oid,
-    asn1_rs::{ASN1DateTime, Any, GeneralizedTime},
-    ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any},
-    der::{Class, Header, Tag},
+    asn1_rs::ASN1DateTime,
 };
 use rusty_acse::AcseError;
-use std::time::Instant;
 use thiserror::Error;
-use tracing::warn;
-
-use crate::{
-    error::to_mms_error, parsers::{process_constructed_data, process_integer_content, process_mms_bit_string_data, process_mms_boolean_content, process_mms_integer_16_content, process_mms_string}, pdu::{MmsPduType, common::expect_value},
-};
 
 /**
  * This MMS stack is designed to be used with ICCP/TASE2.
@@ -84,6 +76,8 @@ pub enum VariableSpecification {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsAccessError {
+    ObjectInvalidated,
+    // TODO Add other error codes
     Unknown(Vec<u8>),
 }
 

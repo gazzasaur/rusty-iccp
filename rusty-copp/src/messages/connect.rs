@@ -38,10 +38,6 @@ impl ConnectMessage {
         self.called_presentation_selector.as_ref()
     }
 
-    pub(crate) fn context_definition_list(&self) -> &PresentationContextType {
-        &self.context_definition_list
-    }
-
     pub(crate) fn user_data_mut(&mut self) -> &mut Option<UserData> {
         &mut self.user_data
     }

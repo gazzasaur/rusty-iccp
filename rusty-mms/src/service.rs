@@ -8,10 +8,10 @@ use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
 use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 use tracing::warn;
 
-use crate::parsers::{process_constructed_data, process_mms_string};
+use crate::parsers::{process_constructed_data, process_mms_boolean_content, process_mms_string};
 use crate::pdu::common::expect_value;
 use crate::pdu::confirmedrequest::{confirmed_request_to_ber, parse_confirmed_request};
-use crate::pdu::confirmedresponse::confirmed_response_to_ber;
+use crate::pdu::confirmedresponse::{confirmed_response_to_ber, parse_confirmed_response};
 use crate::pdu::initiaterequest::{InitRequestResponseDetails, InitiateRequestPdu};
 use crate::pdu::initiateresponse::InitiateResponsePdu;
 use crate::pdu::readrequest::read_request_to_ber;
@@ -215,6 +215,30 @@ impl MmsData {
         };
         Ok(payload)
     }
+
+    pub(crate) fn parse(pdu: &str, data: &Any<'_>) -> Result<MmsData, MmsError> {
+        match data.header.raw_tag() {
+            Some([161]) => {
+                let mut items = vec![];
+                for item in process_constructed_data(data.data).map_err(to_mms_error(format!("Failed to parse Array on {}", pdu).as_str()))? {
+                    items.push(MmsData::parse(pdu, &item)?);
+                }
+                Ok(MmsData::Array(items))
+            }
+            Some([162]) => {
+                let mut items = vec![];
+                for item in process_constructed_data(data.data).map_err(to_mms_error(format!("Failed to parse Structure on {}", pdu).as_str()))? {
+                    items.push(MmsData::parse(pdu, &item)?);
+                }
+                Ok(MmsData::Structure(items))
+            }
+            Some([131]) => Ok(MmsData::Boolean(process_mms_boolean_content(data, format!("Failed to parse Boolean on {}", pdu).as_str())?)),
+            Some([133]) => Ok(MmsData::Integer(data.data.to_owned())),
+            Some([134]) => Ok(MmsData::Unsigned(data.data.to_owned())),
+            Some([144]) => Ok(MmsData::MmsString(String::from_utf8(data.data.to_owned()).map_err(to_mms_error("Failed to parse MMS String"))?)),
+            x => Err(MmsError::ProtocolError(format!("Unsupported MMS Data type {:?} on {}", x, pdu))),
+        }
+    }
 }
 
 pub struct RustyMmsInitiator<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
@@ -383,6 +407,7 @@ impl<R: OsiSingleValueAcseReader> MmsReader for RustyMmsReader<R> {
                     let (_, message) = parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS message"))?;
                     match message.header.raw_tag() {
                         Some([160]) => return Ok(MmsRecvResult::Message(parse_confirmed_request(message)?)),
+                        Some([161]) => return Ok(MmsRecvResult::Message(parse_confirmed_response(message)?)),
                         x => warn!("Failed to parse unknown MMS PDU: {:?}", x),
                     }
                 }
@@ -406,56 +431,11 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
         let data = match message {
             MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request).to_vec(),
             MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
-            x => todo!("Cannot send MMS message: {:?}", x),
         };
         self.acse_writer.send(data.map_err(to_mms_error("Failed to serialise message"))?).await?;
         Ok(())
     }
 }
-
-// impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsResponderConnection<R, W> {
-//     pub fn new(acse_reader: impl OsiSingleValueAcseReader, acse_writer: impl OsiSingleValueAcseWriter) -> RustyMmsResponderConnection<impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
-//         RustyMmsResponderConnection {
-//             internal: Arc::new(Mutex::new(RustyMmsConnectionInternal::new(acse_reader, acse_writer))),
-//         }
-//     }
-// }
-
-// impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsConnection for MmsConnection<R, W> {
-//     async fn recv(&mut self) -> Result<crate::MmsResponderRecvResult, MmsError> {
-//         let acse_user_data = self.internal.lock().await.acse_reader.recv().await.map_err(|e| MmsError::ProtocolStackError(e))?;
-//         let user_data = match acse_user_data {
-//             AcseRecvResult::Closed => return Ok(MmsResponderRecvResult::Closed),
-//             AcseRecvResult::Data(user_data) => user_data,
-//         };
-//         let (_, mms_pdu) = parse_ber_any(&user_data).map_err(|e| MmsError::ProtocolError(format!("Failed to parse MMS PDU: {:?}", e)))?;
-
-//         match mms_pdu.header.raw_tag() {
-//             Some(&[160]) => {
-//                 let mut invocation_id = None;
-//                 let mut mms_payload = None;
-
-//                 for item in process_constructed_data(mms_pdu.data).map_err(to_mms_error("Failed to parse Confirmed Request PDU"))? {
-//                     match item.header.raw_tag() {
-//                         Some(&[2]) => invocation_id = Some(process_mms_integer_32_content(&item, "DSA")?),
-//                         Some(&[164]) => mms_payload = Some(ConfirmedMmsPduType::ReadRequestPduType(ReadRequestPdu::parse(&item)?)),
-//                         x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x)
-//                     }
-//                 }
-
-//                 let invocation_id = expect_value("ConfirmedRequest", "InvocationId", invocation_id)?;
-//                 let mms_payload = expect_value("ConfirmedRequest", "MmsPayload", mms_payload)?;
-
-//                 return Ok(MmsResponderRecvResult::Pdu(MmsPduType::ConfirmedRequestPduType(ConfirmedMmsPdu {
-//                     invocation_id,
-//                     payload: mms_payload,
-//                 })));
-//             },
-//             x => warn!("Failed to parse unknown MMS PDU: {:?}", x)
-//         }
-//         return Err(MmsError::ProtocolError("failed to recv MMS payload".into()))
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

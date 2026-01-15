@@ -6,7 +6,7 @@ use der_parser::{
 use tracing::warn;
 
 use crate::{
-    MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsError, MmsVariableAccessSpecification,
+    MmsAccessResult, MmsConfirmedResponse, MmsError, MmsVariableAccessSpecification,
     error::to_mms_error,
     parsers::{process_constructed_data, process_mms_boolean_content},
 };
@@ -29,7 +29,7 @@ pub(crate) fn parse_read_response(payload: &Any<'_>) -> Result<MmsConfirmedRespo
 
     Ok(MmsConfirmedResponse::Read {
         variable_access_specification,
-        access_results: todo!(),
+        access_results,
     })
 }
 

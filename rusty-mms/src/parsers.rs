@@ -1,13 +1,17 @@
 use der_parser::{
     asn1_rs::Any,
-    ber::{BerObject, BerObjectContent, parse_ber_any, parse_ber_content},
-    der::Tag,
-    error::BerError, num_bigint::BigInt,
+    ber::{BerObject, BerObjectContent, parse_ber_any, parse_ber_content, parse_ber_integer},
+    der::{Header, Tag},
+    error::BerError,
+    num_bigint::BigInt,
 };
 use num_traits::ToPrimitive;
+use tracing::warn;
 
 use crate::{
-    MmsAccessResult, MmsError, error::to_mms_error, parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions}
+    MmsAccessError, MmsAccessResult, MmsData, MmsError,
+    error::to_mms_error,
+    parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions},
 };
 
 pub(crate) fn process_constructed_data<'a>(data: &'a [u8]) -> Result<Vec<Any<'a>>, BerError> {
@@ -33,7 +37,7 @@ pub(crate) fn process_mms_string<'a>(npm_object: &Any<'a>, error_message: &str) 
 }
 
 pub(crate) fn process_mms_boolean_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<bool, MmsError> {
-    let (_, inner_object) = parse_ber_content(Tag::Integer)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
+    let (_, inner_object) = parse_ber_content(Tag::Boolean)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
 
     match inner_object {
         BerObjectContent::Boolean(value) => Ok(value),
@@ -59,12 +63,35 @@ pub(crate) fn process_integer_content<'a>(npm_object: &Any<'a>, error_message: &
     }
 }
 
+pub(crate) fn process_mms_access_error<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<MmsAccessError, MmsError> {
+    let (_, inner_object) = parse_ber_content(Tag::Integer)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
+
+    match inner_object {
+        BerObjectContent::Integer(&[0x00]) => Ok(MmsAccessError::ObjectInvalidated),
+        BerObjectContent::Integer(x) => Ok(MmsAccessError::Unknown(x.to_vec())),
+        // TODO: More error codes
+        _ => Err(MmsError::ProtocolError(error_message.into())),
+    }
+}
+
+pub(crate) fn mms_access_error_to_ber<'a>(error: &'a MmsAccessError) -> BerObject<'a> {
+    BerObject::from_header_and_content(
+        Header::new(der_parser::der::Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
+        match error {
+            MmsAccessError::ObjectInvalidated => BerObjectContent::Integer(&[0x00]),
+            MmsAccessError::Unknown(x) => BerObjectContent::Integer(x.as_slice()),
+        },
+    )
+}
+
 pub(crate) fn process_mms_integer_8_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<i8, MmsError> {
     let int_value = process_integer_content(npm_object, error_message)?;
     if int_value.len() > 1 {
         return Err(MmsError::ProtocolError(format!("{}: {} - {:?}", error_message, "Exceeded Integer8 range", int_value)));
     }
-    BigInt::from_signed_bytes_be(&int_value).to_i8().ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int8 from {:?}", error_message, int_value)))
+    BigInt::from_signed_bytes_be(&int_value)
+        .to_i8()
+        .ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int8 from {:?}", error_message, int_value)))
 }
 
 pub(crate) fn process_mms_integer_16_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<i16, MmsError> {
@@ -72,7 +99,9 @@ pub(crate) fn process_mms_integer_16_content<'a>(npm_object: &Any<'a>, error_mes
     if int_value.len() > 2 {
         return Err(MmsError::ProtocolError(format!("{}: {} - {:?}", error_message, "Exceeded Integer16 range", int_value)));
     }
-    BigInt::from_signed_bytes_be(&int_value).to_i16().ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int16 from {:?}", error_message, int_value)))
+    BigInt::from_signed_bytes_be(&int_value)
+        .to_i16()
+        .ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int16 from {:?}", error_message, int_value)))
 }
 
 pub(crate) fn process_mms_integer_32_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<i32, MmsError> {
@@ -80,7 +109,9 @@ pub(crate) fn process_mms_integer_32_content<'a>(npm_object: &Any<'a>, error_mes
     if int_value.len() > 4 {
         return Err(MmsError::ProtocolError(format!("{}: {} - {:?}", error_message, "Exceeded Integer32 range", int_value)));
     }
-    BigInt::from_signed_bytes_be(&int_value).to_i32().ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int32 from {:?}", error_message, int_value)))
+    BigInt::from_signed_bytes_be(&int_value)
+        .to_i32()
+        .ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int32 from {:?}", error_message, int_value)))
 }
 
 pub(crate) fn process_mms_parameter_support_options<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<ParameterSupportOptions, MmsError> {
@@ -133,12 +164,24 @@ pub(crate) fn process_mms_service_support_option<'a>(npm_object: &Any<'a>, error
 
 impl MmsAccessResult {
     pub(crate) fn parse(pdu: &str, value: &Any<'_>) -> Result<MmsAccessResult, MmsError> {
-        Err(MmsError::ProtocolError(format!("MMS Access Result parsing not implemented in {}", pdu)))
+        let mut access_result = None;
+
+        match value.header.raw_tag() {
+            Some([128]) => access_result = Some(MmsAccessResult::Failure(process_mms_access_error(value, "Failed to parse MMS Access Error on Access Result")?)),
+            Some([131]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
+            Some([133]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
+            Some([134]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
+            Some([144]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
+            Some([161]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
+            x => warn!("Unknown MMS Access Result item {:?}", x),
+        }
+
+        access_result.ok_or_else(|| MmsError::ProtocolError(format!("No Access Result found on MMS {}", pdu)))
     }
 
     pub(crate) fn to_ber(&self) -> Result<BerObject<'_>, MmsError> {
         match self {
-            MmsAccessResult::Failure(mms_access_error) => todo!(),
+            MmsAccessResult::Failure(mms_access_error) => Ok(mms_access_error_to_ber(mms_access_error)),
             MmsAccessResult::Success(mms_data) => mms_data.serialise(true, true), // TODO: pass in correct flags
         }
     }
