@@ -4,6 +4,9 @@ pub(crate) mod initiateresponse;
 pub(crate) mod initiaterequest;
 pub(crate) mod common;
 pub(crate) mod readrequest;
+pub(crate) mod confirmedrequest;
+pub(crate) mod confirmedresponse;
+pub(crate) mod readresponse;
 
 #[repr(u8)]
 pub(crate) enum MmsPduType {

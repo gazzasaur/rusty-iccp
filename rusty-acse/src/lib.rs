@@ -11,6 +11,7 @@ pub type RustyOsiSingleValueAcseWriterIsoStack<W> = RustyOsiSingleValueAcseWrite
 pub type RustyOsiSingleValueAcseInitiatorIsoStack<R, W> = RustyOsiSingleValueAcseInitiator<RustyCoppInitiatorIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
 pub type RustyOsiSingleValueAcseListenerIsoStack<R, W> = RustyOsiSingleValueAcseListener<RustyCoppResponderIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
 pub type RustyOsiSingleValueAcseResponderIsoStack<R, W> = RustyOsiSingleValueAcseResponder<RustyCoppResponderIsoStack<R, W>, RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
+pub type RustyOsiSingleValueAcseConnectionIsoStack<R, W> = RustyAcseConnection<RustyCoppReaderIsoStack<R>, RustyCoppWriterIsoStack<W>>;
 
 #[cfg(test)]
 mod tests {

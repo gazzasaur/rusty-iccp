@@ -1,30 +1,135 @@
-use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 use der_parser::Oid;
-use der_parser::ber::{BerObject, BerObjectContent, Length, parse_ber_any, parse_ber_content, parse_ber_integer};
+use der_parser::asn1_rs::Any;
+use der_parser::ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any};
 use der_parser::der::{Class, Header, Tag};
-use der_parser::num_bigint::{BigInt, BigUint, ToBigInt, ToBigUint};
 use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
 use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::{Mutex, mpsc};
 use tracing::warn;
 
-use crate::parsers::{process_constructed_data, process_mms_integer_32_content};
+use crate::parsers::{process_constructed_data, process_mms_string};
 use crate::pdu::common::expect_value;
+use crate::pdu::confirmedrequest::{confirmed_request_to_ber, parse_confirmed_request};
+use crate::pdu::confirmedresponse::confirmed_response_to_ber;
 use crate::pdu::initiaterequest::{InitRequestResponseDetails, InitiateRequestPdu};
 use crate::pdu::initiateresponse::InitiateResponsePdu;
-use crate::pdu::readrequest::ReadRequestPdu;
-use crate::pdu::{ConfirmedMmsPdu, ConfirmedMmsPduType, MmsPduType};
+use crate::pdu::readrequest::read_request_to_ber;
+use crate::{ListOfVariablesItem, MmsConnection, MmsData, MmsMessage, MmsObjectName, MmsReader, MmsRecvResult, MmsVariableAccessSpecification, MmsWriter, VariableSpecification};
 use crate::{
     MmsError, MmsInitiator, MmsListener, MmsResponder,
     error::to_mms_error,
     parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions},
 };
-use crate::{MmsInitiatorConnection, MmsResponderConnection, MmsResponderRecvResult, MmsVariableAccessSpecification};
+
+impl MmsObjectName {
+    // Tecnically only a-zA-Z0-9 and $ and _ with no more than 32 char. We leave that to a higher layer to validate
+    pub(crate) fn to_ber(&self) -> BerObject<'_> {
+        match &self {
+            MmsObjectName::VmdSpecific(name) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::VisibleString(&name.as_str())),
+            MmsObjectName::DomainSpecific(domain, name) => BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
+                BerObjectContent::Sequence(vec![
+                    BerObject::from_obj(BerObjectContent::VisibleString(&domain.as_str())),
+                    BerObject::from_obj(BerObjectContent::VisibleString(&name.as_str())),
+                ]),
+            ),
+            MmsObjectName::AaSpecific(name) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::VisibleString(&name.as_str())),
+        }
+    }
+
+    pub(crate) fn parse(pdu: &str, data: &[u8]) -> Result<MmsObjectName, MmsError> {
+        let error_message = format!("Failed to parse ObjectName on {}", pdu);
+        let (_, npm_object) = parse_ber_any(data).map_err(to_mms_error(error_message.as_str()))?;
+        match npm_object.header.raw_tag() {
+            Some([128]) => Ok(MmsObjectName::VmdSpecific(process_mms_string(&npm_object, error_message.as_str())?)),
+            Some([161]) => {
+                let values = process_constructed_data(npm_object.data).map_err(to_mms_error(&error_message))?;
+                let mut values_iter = values.iter();
+                let domain = expect_value(pdu, "ObjectName", values_iter.next())?;
+                let name = expect_value(pdu, "ObjectName", values_iter.next())?;
+                Ok(MmsObjectName::DomainSpecific(process_mms_string(domain, &error_message)?, process_mms_string(name, &error_message)?))
+            }
+            Some([130]) => Ok(MmsObjectName::AaSpecific(process_mms_string(&npm_object, error_message.as_str())?)),
+            x => Err(MmsError::ProtocolError(error_message)),
+        }
+    }
+}
+
+impl MmsVariableAccessSpecification {
+    pub(crate) fn to_ber(&self) -> BerObject<'_> {
+        match &self {
+            MmsVariableAccessSpecification::ListOfVariables(list_of_variable_items) => BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
+                BerObjectContent::Sequence(list_of_variable_items.iter().map(|i| i.to_ber()).collect()),
+            ),
+            MmsVariableAccessSpecification::VariableListName(mms_object_name) => {
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(vec![mms_object_name.to_ber()]))
+            }
+        }
+    }
+
+    pub(crate) fn parse(pdu_name: &str, data: &[u8]) -> Result<MmsVariableAccessSpecification, MmsError> {
+        let items = process_constructed_data(data).map_err(to_mms_error(format!("Failed to parse Variable Access Specification on {:?}", pdu_name).as_str()))?;
+        if items.len() != 1 {
+            return Err(MmsError::ProtocolError(format!("Expected one item on variable access specification but got {}", items.len())));
+        }
+        match items[0].header.raw_tag() {
+            Some([160]) => {
+                let mut variables = vec![];
+                for variable_ber in process_constructed_data(items[0].data).map_err(to_mms_error(format!("Failed to parse Variable Access Specification on {:?}", pdu_name).as_str()))? {
+                    variables.push(ListOfVariablesItem::parse(&variable_ber, pdu_name)?);
+                }
+                return Ok(MmsVariableAccessSpecification::ListOfVariables(variables));
+            }
+            Some([161]) => {
+                let mms_object = MmsObjectName::parse(pdu_name, items[0].data)?;
+                return Ok(MmsVariableAccessSpecification::VariableListName(mms_object));
+            }
+            Some(x) => return Err(MmsError::InternalError(format!("Unsupported variable type found {:?} on {:?}", x, pdu_name))),
+            None => return Err(MmsError::InternalError(format!("No variable found in payload: {:?}", pdu_name))),
+        }
+    }
+}
+
+impl ListOfVariablesItem {
+    pub(crate) fn to_ber(&self) -> BerObject<'_> {
+        BerObject::from_seq(vec![self.variable_specification.to_ber()])
+    }
+
+    pub(crate) fn parse(item: &Any<'_>, error_message: &str) -> Result<ListOfVariablesItem, MmsError> {
+        let mut variable_specification = None;
+
+        for item in process_constructed_data(item.data).map_err(to_mms_error(error_message))? {
+            match item.header.raw_tag() {
+                Some([160]) => variable_specification = Some(VariableSpecification::parse(item.data)?),
+                x => warn!("Ignoring unknown variable specification: {:?}", x),
+            }
+        }
+        let variable_specification = expect_value(error_message, "Variable Specification", variable_specification)?;
+        Ok(ListOfVariablesItem { variable_specification })
+    }
+}
+
+impl VariableSpecification {
+    pub(crate) fn to_ber(&self) -> BerObject<'_> {
+        match &self {
+            VariableSpecification::Name(mms_object_name) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)), BerObjectContent::Sequence(vec![mms_object_name.to_ber()])),
+            VariableSpecification::Invalidated => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)), BerObjectContent::Null),
+        }
+    }
+
+    pub(crate) fn parse(data: &[u8]) -> Result<VariableSpecification, MmsError> {
+        let (_, variable_spec_ber) = parse_ber_any(data).map_err(to_mms_error("Failed to parse Variable Specification"))?;
+        match variable_spec_ber.header.raw_tag() {
+            Some([128]) => Ok(VariableSpecification::Name(MmsObjectName::parse("", data)?)),
+            Some([161]) => Ok(VariableSpecification::Name(MmsObjectName::parse("", data)?)),
+            Some([130]) => Ok(VariableSpecification::Name(MmsObjectName::parse("", data)?)),
+            Some([132]) => Ok(VariableSpecification::Invalidated),
+            x => Err(MmsError::ProtocolError(format!("Unknown Variable Specification: {:?}", x))),
+        }
+    }
+}
 
 pub struct MmsRequestInformation {
     pub local_detail_calling: Option<i32>,
@@ -67,6 +172,51 @@ impl Default for MmsRequestInformation {
     }
 }
 
+impl MmsData {
+    pub(crate) fn serialise(&self, str1: bool, str2: bool) -> Result<BerObject<'_>, MmsError> {
+        let payload = match &self {
+            MmsData::Array(mms_array_items) if str1 => {
+                let mut mms_array_data = vec![];
+                for mms_array_item in mms_array_items {
+                    mms_array_data.push(mms_array_item.serialise(str1, str2)?)
+                }
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(mms_array_data))
+            }
+            MmsData::Array(_) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Null),
+
+            MmsData::Structure(mms_array_items) if str2 => {
+                let mut mms_array_data = vec![];
+                for mms_array_item in mms_array_items {
+                    mms_array_data.push(mms_array_item.serialise(str1, str2)?)
+                }
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)), BerObjectContent::Sequence(mms_array_data))
+            }
+            MmsData::Structure(_) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::Null),
+
+            MmsData::Boolean(value) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Boolean(*value)),
+            MmsData::BitString(padding, bit_data) => BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)),
+                BerObjectContent::BitString(*padding, BitStringObject { data: &bit_data }),
+            ),
+            MmsData::Integer(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
+            MmsData::Unsigned(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(6), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
+            MmsData::FloatingPoint(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(7), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
+            MmsData::OctetString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(8), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
+            MmsData::VisibleString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
+            MmsData::GeneralizedTime(instant) => todo!(),
+            MmsData::BinaryTime(items) => todo!(),
+            MmsData::Bcd(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(13), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
+            MmsData::BooleanArray(paddibg, object_data) => BerObject::from_header_and_content(
+                Header::new(Class::ContextSpecific, false, Tag::from(14), Length::Definite(0)),
+                BerObjectContent::BitString(*paddibg, BitStringObject { data: &object_data }),
+            ),
+            MmsData::ObjectId(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(15), Length::Definite(0)), BerObjectContent::OID(object_data.to_owned())),
+            MmsData::MmsString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(16), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
+        };
+        Ok(payload)
+    }
+}
+
 pub struct RustyMmsInitiator<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
     acse_initiator: T,
     acse_reader: PhantomData<R>,
@@ -86,7 +236,7 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
 }
 
 impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsInitiator for RustyMmsInitiator<T, R, W> {
-    async fn initiate(self) -> Result<impl MmsInitiatorConnection, MmsError> {
+    async fn initiate(self) -> Result<impl MmsConnection, MmsError> {
         let pdu = InitiateRequestPdu::new(
             self.options.local_detail_calling,
             self.options.proposed_max_serv_outstanding_calling,
@@ -111,7 +261,7 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
 
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
 
-        Ok(RustyMmsInitiatorConnection::<R, W>::new(acse_reader, acse_writer))
+        Ok(RustyMmsConnection::<R, W>::new(acse_reader, acse_writer))
     }
 }
 
@@ -154,7 +304,7 @@ pub struct RustyMmsResponder<T: OsiSingleValueAcseResponder, R: OsiSingleValueAc
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsResponder for RustyMmsResponder<T, R, W> {
-    async fn accept(self) -> Result<impl MmsResponderConnection, MmsError> {
+    async fn accept(self) -> Result<impl MmsConnection, MmsError> {
         let repsonse = InitiateResponsePdu::new(
             None,
             10,
@@ -192,126 +342,120 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
             .await
             .map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
-        Ok(RustyMmsResponderConnection::<R, W>::new(acse_reader, acse_writer))
+        Ok(RustyMmsConnection::<R, W>::new(acse_reader, acse_writer))
     }
 }
 
-struct RustyMmsConnectionInternal<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
+pub struct RustyMmsConnection<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
     acse_reader: R,
     acse_writer: W,
-
-    pending: HashMap<u32, Receiver<Result<MmsPduType, MmsError>>>,
 }
 
-impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsConnectionInternal<R, W> {
-    fn new(acse_reader: R, acse_writer: W) -> Self {
-        Self {
-            acse_reader,
-            acse_writer,
-            pending: HashMap::new(),
-        }
-    }
-
-    async fn send_confirmed(&mut self, payload: Vec<u8>) -> Result<(), MmsError> {
-        self.acse_writer.send(payload).await.map_err(|e| MmsError::InternalError(format!("Failed to send MMS payload: {:?}", e)))
+impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsConnection<R, W> {
+    pub fn new(acse_reader: impl OsiSingleValueAcseReader, acse_writer: impl OsiSingleValueAcseWriter) -> RustyMmsConnection<impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
+        RustyMmsConnection { acse_reader, acse_writer }
     }
 }
 
-pub struct RustyMmsInitiatorConnection<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
-    invocation_id: AtomicU32,
-    internal: Arc<Mutex<RustyMmsConnectionInternal<R, W>>>,
-}
-
-impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsInitiatorConnection<R, W> {
-    pub fn new(acse_reader: impl OsiSingleValueAcseReader, acse_writer: impl OsiSingleValueAcseWriter) -> RustyMmsInitiatorConnection<impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
-        RustyMmsInitiatorConnection {
-            invocation_id: AtomicU32::new(1),
-            internal: Arc::new(Mutex::new(RustyMmsConnectionInternal::new(acse_reader, acse_writer))),
-        }
+impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsConnection for RustyMmsConnection<R, W> {
+    async fn split(self) -> Result<(impl MmsReader, impl MmsWriter), MmsError> {
+        Ok((RustyMmsReader::new(self.acse_reader), RustyMmsWriter::new(self.acse_writer)))
     }
 }
 
-impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsInitiatorConnection for RustyMmsInitiatorConnection<R, W> {
-    async fn read(&mut self, variable_access_specification: MmsVariableAccessSpecification) -> Result<Vec<crate::MmsAccessResult>, MmsError> {
-        let read_request_pdu = ReadRequestPdu {
-            specification_with_result: None,
-            variable_access_specification,
-        };
+pub struct RustyMmsReader<R: OsiSingleValueAcseReader> {
+    acse_reader: R,
+}
 
-        let invocation_id = self.invocation_id.fetch_add(1, Ordering::Acquire);
-        let invocation_id = if invocation_id > 2000000000 {
-            let _lock = self.internal.lock().await;
-            if self.invocation_id.fetch_add(1, Ordering::Acquire) > 2000000000 {
-                self.invocation_id.store(1, Ordering::Relaxed);
-            }
-            self.invocation_id.fetch_add(1, Ordering::Acquire)
-        } else {
-            invocation_id
-        };
-        let invocation_id = BigUint::from(invocation_id).to_bytes_be();
-
-        let confirmed_request_pdu = BerObject::from_header_and_content(
-            Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
-            BerObjectContent::Sequence(vec![BerObject::from_obj(BerObjectContent::Integer(&invocation_id)), read_request_pdu.to_ber()]),
-        )
-        .to_vec()
-        .map_err(|e| MmsError::ProtocolError(format!("Failed: {:?}", e)))?;
-
-        let (inbound_sender, inbound_receiver) = mpsc::channel::<Result<MmsPduType, MmsError>>(1);
-        let mut l = self.internal.lock().await;
-        l.send_confirmed(confirmed_request_pdu).await?;
-
-        Ok(vec![])
+impl<R: OsiSingleValueAcseReader> RustyMmsReader<R> {
+    fn new(acse_reader: R) -> Self {
+        RustyMmsReader { acse_reader }
     }
 }
 
-pub struct RustyMmsResponderConnection<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
-    internal: Arc<Mutex<RustyMmsConnectionInternal<R, W>>>,
-}
-
-impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsResponderConnection<R, W> {
-    pub fn new(acse_reader: impl OsiSingleValueAcseReader, acse_writer: impl OsiSingleValueAcseWriter) -> RustyMmsResponderConnection<impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
-        RustyMmsResponderConnection {
-            internal: Arc::new(Mutex::new(RustyMmsConnectionInternal::new(acse_reader, acse_writer))),
-        }
-    }
-}
-
-impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsResponderConnection for RustyMmsResponderConnection<R, W> {
-    async fn recv(&mut self) -> Result<crate::MmsResponderRecvResult, MmsError> {
-        let acse_user_data = self.internal.lock().await.acse_reader.recv().await.map_err(|e| MmsError::ProtocolStackError(e))?;
-        let user_data = match acse_user_data {
-            AcseRecvResult::Closed => return Ok(MmsResponderRecvResult::Closed),
-            AcseRecvResult::Data(user_data) => user_data,
-        };
-        let (_, mms_pdu) = parse_ber_any(&user_data).map_err(|e| MmsError::ProtocolError(format!("Failed to parse MMS PDU: {:?}", e)))?;
-
-        match mms_pdu.header.raw_tag() {
-            Some(&[160]) => {
-                let mut invocation_id = None;
-                let mut mms_payload = None;
-
-                for item in process_constructed_data(mms_pdu.data).map_err(to_mms_error("Failed to parse Confirmed Request PDU"))? {
-                    match item.header.raw_tag() {
-                        Some(&[2]) => invocation_id = Some(process_mms_integer_32_content(&item, "DSA")?),
-                        Some(&[164]) => mms_payload = Some(ConfirmedMmsPduType::ReadRequestPduType(ReadRequestPdu::parse(&item)?)),
-                        x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x)
+impl<R: OsiSingleValueAcseReader> MmsReader for RustyMmsReader<R> {
+    async fn recv(&mut self) -> Result<MmsRecvResult, MmsError> {
+        loop {
+            let result = self.acse_reader.recv().await?;
+            match result {
+                AcseRecvResult::Closed => return Ok(MmsRecvResult::Closed),
+                AcseRecvResult::Data(data) => {
+                    let (_, message) = parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS message"))?;
+                    match message.header.raw_tag() {
+                        Some([160]) => return Ok(MmsRecvResult::Message(parse_confirmed_request(message)?)),
+                        x => warn!("Failed to parse unknown MMS PDU: {:?}", x),
                     }
                 }
-
-                let invocation_id = expect_value("ConfirmedRequest", "InvocationId", invocation_id)?;
-                let mms_payload = expect_value("ConfirmedRequest", "MmsPayload", mms_payload)?;
-
-                return Ok(MmsResponderRecvResult::Pdu(MmsPduType::ConfirmedRequestPduType(ConfirmedMmsPdu {
-                    invocation_id,
-                    payload: mms_payload,
-                })));
-            },
-            x => warn!("Failed to parse unknown MMS PDU: {:?}", x)
+            };
         }
-        return Err(MmsError::ProtocolError("failed to recv MMS payload".into()))
     }
 }
+
+pub struct RustyMmsWriter<W: OsiSingleValueAcseWriter> {
+    acse_writer: W,
+}
+
+impl<R: OsiSingleValueAcseWriter> RustyMmsWriter<R> {
+    fn new(acse_writer: R) -> Self {
+        RustyMmsWriter { acse_writer }
+    }
+}
+
+impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
+    async fn send(&mut self, message: MmsMessage) -> Result<(), MmsError> {
+        let data = match message {
+            MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request).to_vec(),
+            MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
+            x => todo!("Cannot send MMS message: {:?}", x),
+        };
+        self.acse_writer.send(data.map_err(to_mms_error("Failed to serialise message"))?).await?;
+        Ok(())
+    }
+}
+
+// impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsResponderConnection<R, W> {
+//     pub fn new(acse_reader: impl OsiSingleValueAcseReader, acse_writer: impl OsiSingleValueAcseWriter) -> RustyMmsResponderConnection<impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
+//         RustyMmsResponderConnection {
+//             internal: Arc::new(Mutex::new(RustyMmsConnectionInternal::new(acse_reader, acse_writer))),
+//         }
+//     }
+// }
+
+// impl<R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsConnection for MmsConnection<R, W> {
+//     async fn recv(&mut self) -> Result<crate::MmsResponderRecvResult, MmsError> {
+//         let acse_user_data = self.internal.lock().await.acse_reader.recv().await.map_err(|e| MmsError::ProtocolStackError(e))?;
+//         let user_data = match acse_user_data {
+//             AcseRecvResult::Closed => return Ok(MmsResponderRecvResult::Closed),
+//             AcseRecvResult::Data(user_data) => user_data,
+//         };
+//         let (_, mms_pdu) = parse_ber_any(&user_data).map_err(|e| MmsError::ProtocolError(format!("Failed to parse MMS PDU: {:?}", e)))?;
+
+//         match mms_pdu.header.raw_tag() {
+//             Some(&[160]) => {
+//                 let mut invocation_id = None;
+//                 let mut mms_payload = None;
+
+//                 for item in process_constructed_data(mms_pdu.data).map_err(to_mms_error("Failed to parse Confirmed Request PDU"))? {
+//                     match item.header.raw_tag() {
+//                         Some(&[2]) => invocation_id = Some(process_mms_integer_32_content(&item, "DSA")?),
+//                         Some(&[164]) => mms_payload = Some(ConfirmedMmsPduType::ReadRequestPduType(ReadRequestPdu::parse(&item)?)),
+//                         x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x)
+//                     }
+//                 }
+
+//                 let invocation_id = expect_value("ConfirmedRequest", "InvocationId", invocation_id)?;
+//                 let mms_payload = expect_value("ConfirmedRequest", "MmsPayload", mms_payload)?;
+
+//                 return Ok(MmsResponderRecvResult::Pdu(MmsPduType::ConfirmedRequestPduType(ConfirmedMmsPdu {
+//                     invocation_id,
+//                     payload: mms_payload,
+//                 })));
+//             },
+//             x => warn!("Failed to parse unknown MMS PDU: {:?}", x)
+//         }
+//         return Err(MmsError::ProtocolError("failed to recv MMS payload".into()))
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

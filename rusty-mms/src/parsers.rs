@@ -1,15 +1,13 @@
 use der_parser::{
     asn1_rs::Any,
-    ber::{BerObjectContent, parse_ber_any, parse_ber_content},
+    ber::{BerObject, BerObjectContent, parse_ber_any, parse_ber_content},
     der::Tag,
     error::BerError, num_bigint::BigInt,
 };
 use num_traits::ToPrimitive;
 
 use crate::{
-    MmsError,
-    error::to_mms_error,
-    parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions},
+    MmsAccessResult, MmsError, error::to_mms_error, parameters::{ParameterSupportOption, ParameterSupportOptions, ServiceSupportOption, ServiceSupportOptions}
 };
 
 pub(crate) fn process_constructed_data<'a>(data: &'a [u8]) -> Result<Vec<Any<'a>>, BerError> {
@@ -131,4 +129,17 @@ pub(crate) fn process_mms_service_support_option<'a>(npm_object: &Any<'a>, error
         .filter_map(|i| i)
         .collect(),
     })
+}
+
+impl MmsAccessResult {
+    pub(crate) fn parse(pdu: &str, value: &Any<'_>) -> Result<MmsAccessResult, MmsError> {
+        Err(MmsError::ProtocolError(format!("MMS Access Result parsing not implemented in {}", pdu)))
+    }
+
+    pub(crate) fn to_ber(&self) -> Result<BerObject<'_>, MmsError> {
+        match self {
+            MmsAccessResult::Failure(mms_access_error) => todo!(),
+            MmsAccessResult::Success(mms_data) => mms_data.serialise(true, true), // TODO: pass in correct flags
+        }
+    }
 }

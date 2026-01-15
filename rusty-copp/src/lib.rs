@@ -12,6 +12,7 @@ pub type RustyCoppWriterIsoStack<W> = RustyCoppWriter<RustyCospWriterIsoStack<W>
 pub type RustyCoppInitiatorIsoStack<R, W> = RustyCoppInitiator<RustyCospInitiatorIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
 pub type RustyCoppListenerIsoStack<R, W> = RustyCoppListener<RustyCospResponderIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
 pub type RustyCoppResponderIsoStack<R, W> = RustyCoppResponder<RustyCospResponderIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
+pub type RustyCoppConnectionIsoStack<R, W> = RustyCoppConnection<RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
 
 #[cfg(test)]
 mod tests {

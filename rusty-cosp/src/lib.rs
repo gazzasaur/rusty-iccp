@@ -14,6 +14,7 @@ pub type RustyCospWriterIsoStack<W> = TcpCospWriter<TcpCotpWriter<W>>;
 pub type RustyCospInitiatorIsoStack<R, W> = TcpCospInitiator<TcpCotpReader<R>, TcpCotpWriter<W>>;
 pub type RustyCospListenerIsoStack<R, W> = TcpCospListener<TcpCotpReader<R>, TcpCotpWriter<W>>;
 pub type RustyCospResponderIsoStack<R, W> = TcpCospResponder<TcpCotpReader<R>, TcpCotpWriter<W>>;
+pub type RustyCospConnectionIsoStack<R, W> = TcpCospConnection<TcpCotpReader<R>, TcpCotpWriter<W>>;
 
 #[cfg(test)]
 mod tests {

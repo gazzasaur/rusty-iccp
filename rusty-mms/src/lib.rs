@@ -8,7 +8,6 @@ pub mod service;
 use std::marker::PhantomData;
 
 pub use api::*;
-use der_parser::Oid;
 use rusty_acse::{
     AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
     RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseResponderIsoStack, RustyOsiSingleValueAcseWriterIsoStack,
@@ -21,7 +20,7 @@ pub use service::*;
 
 use crate::error::to_mms_error;
 
-pub type RustyMmsConnectionIsoStack<R, W> = RustyMmsInitiatorConnection<RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
+pub type RustyMmsConnectionIsoStack<R, W> = RustyMmsConnection<RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsInitiatorIsoStack<R, W> = RustyMmsInitiator<RustyOsiSingleValueAcseInitiatorIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsListenerIsoStack<R, W> = RustyMmsListener<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsResponderIsoStack<R, W> = RustyMmsResponder<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
@@ -40,7 +39,7 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsInitiatorConnectionF
         copp_information: CoppConnectionInformation,
         acse_information: AcseRequestInformation,
         mms_information: MmsRequestInformation,
-    ) -> Result<impl MmsInitiatorConnection, MmsError> {
+    ) -> Result<impl MmsConnection, MmsError> {
         let cotp_client = TcpCotpConnection::<R, W>::initiate(tpkt_connection, cotp_information)
             .await
             .map_err(to_mms_error("Failed to establish a COTP connection when creating an MMS association"))?;
@@ -61,7 +60,7 @@ pub struct OsiMmsMirrorResponderConnectionFactory<T: TpktConnection, R: TpktRead
 }
 
 impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConnectionFactory<T, R, W> {
-    pub async fn connect(tpkt_connection: T) -> Result<impl MmsResponderConnection, MmsError> {
+    pub async fn accept(tpkt_connection: T) -> Result<impl MmsConnection, MmsError> {
         let (cotp_listener, _) = TcpCotpAcceptor::<R, W>::new(tpkt_connection).await.map_err(to_mms_error("Failed to create COTP connection when creating an MMS association"))?;
         let cotp_connection = cotp_listener
             .accept(CotpAcceptInformation::default())
@@ -75,7 +74,7 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConne
             .await
             .map_err(to_mms_error("Failed to create a COPP connection when creating an MMS association"))?;
         acse_listener.set_response(Some(AcseResponseInformation {
-            application_context_name: Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error("Failed to create MMS application context_name. This is a bug."))?,
+            application_context_name: acse_request_information.application_context_name, // TODO: Should verify it is MMS
             associate_result: AssociateResult::Accepted,
             associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
             responding_ap_title: acse_request_information.called_ap_title,
@@ -94,16 +93,10 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConne
 mod tests {
     use std::time::Duration;
 
-    use der_parser::Oid;
-    use rusty_acse::RustyOsiSingleValueAcseListenerIsoStack;
-    use rusty_copp::RustyCoppListener;
-    use rusty_cosp::{TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
-    use rusty_cotp::{CotpAcceptInformation, CotpResponder, TcpCotpAcceptor};
+    use der_parser::{Oid, num_bigint::BigInt};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
-
-    use crate::pdu::{ConfirmedMmsPduType, MmsPduType};
 
     use super::*;
 
@@ -114,7 +107,7 @@ mod tests {
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
-            let mut a = OsiMmsInitiatorConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::connect(
+            let connection = OsiMmsInitiatorConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::connect(
                 tpkt_client,
                 CotpConnectInformation::default(),
                 CospConnectionInformation::default(),
@@ -126,60 +119,95 @@ mod tests {
                 MmsRequestInformation::default(),
             )
             .await?;
-            let b = a.read(MmsVariableAccessSpecification::ListOfVariable(vec![
-                ListOfVariableItem { variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Hello".into())) },
-                ListOfVariableItem { variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific("Foo".into(), "Bar".into())) },
-                ListOfVariableItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())) },
-            ]))
-            .await?;
-            Ok(())
+
+            Ok(connection)
         };
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;
             let (tpkt_connection, _) = tpkt_server.accept().await?;
-            let (cotp_server, _) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection).await?;
-            let cotp_connection = cotp_server.accept(CotpAcceptInformation::default()).await?;
-            let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
-            let (copp_listener, _) =
-                RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
-            let (mut acse_listener, acse_request) = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
-            acse_listener.set_response(Some(AcseResponseInformation {
-                application_context_name: acse_request.application_context_name,
-                associate_result: AssociateResult::Accepted,
-                associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
-                responding_ap_title: acse_request.called_ap_title,
-                responding_ae_qualifier: acse_request.called_ae_qualifier,
-                responding_ap_invocation_identifier: acse_request.called_ap_invocation_identifier,
-                responding_ae_invocation_identifier: acse_request.called_ae_invocation_identifier,
-                implementation_information: Some("Gaz".into()),
-            }));
-            let (mms_listener, _) = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await?;
-            let mut server_connection = mms_listener.responder().await?.accept().await?;
-            let recv_result = server_connection.recv().await?;
-            let mms_pdu = match recv_result {
-                MmsResponderRecvResult::Pdu(mms_pdu_type) => mms_pdu_type,
-                MmsResponderRecvResult::Closed => panic!("Test failed"),
-            };
-            let confirmed_request = match mms_pdu {
-                MmsPduType::ConfirmedRequestPduType(confirmed_mms_pdu_type) => confirmed_mms_pdu_type,
-                _ => panic!("Test failed"),
-            };
-            let read_request = match confirmed_request.payload {
-                ConfirmedMmsPduType::ReadRequestPduType(read_request_pdu) => read_request_pdu,
-            };
-            assert_eq!(read_request.specification_with_result, None);
-            match read_request.variable_access_specification {
-                MmsVariableAccessSpecification::ListOfVariable(list_of_variable_items) => {
-                    assert_eq!(list_of_variable_items.len(), 3)
-                },
-                MmsVariableAccessSpecification::VariableListName(_) => panic!("Test failed"),
-            }
-            Ok(())
+            let connection = OsiMmsMirrorResponderConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::accept(tpkt_connection).await?;
+
+            Ok(connection)
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
-        copp_server?;
+        let mms_server = copp_server?;
+        let mms_client = copp_client?;
 
+        let (mut mms_client_reader, mut mms_client_writer) = mms_client.split().await?;
+        let (mut mms_server_reader, mut mms_server_writer) = mms_server.split().await?;
+
+        mms_client_writer
+            .send(MmsMessage::ConfirmedRequest {
+                invocation_id: BigInt::from(1).to_signed_bytes_be(),
+                request: MmsConfirmedRequest::Read {
+                    specification_with_result: None,
+                    variable_access_specification: MmsVariableAccessSpecification::ListOfVariables(vec![
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Hello".into())),
+                        },
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific("Foo".into(), "Bar".into())),
+                        },
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())),
+                        },
+                    ]),
+                },
+            })
+            .await?;
+
+        let request = mms_server_reader.recv().await?;
+        let read_request = match request {
+            MmsRecvResult::Message(message) => match message {
+                MmsMessage::ConfirmedRequest { invocation_id, request } => match (invocation_id, request) {
+                    (
+                        id,
+                        MmsConfirmedRequest::Read {
+                            specification_with_result,
+                            variable_access_specification,
+                        },
+                    ) if id == &[1] => variable_access_specification,
+                    _ => panic!(),
+                },
+                _ => panic!(),
+            },
+            MmsRecvResult::Closed => panic!(),
+        };
+        assert_eq!(
+            read_request,
+            MmsVariableAccessSpecification::ListOfVariables(vec![
+                ListOfVariablesItem {
+                    variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Hello".into())),
+                },
+                ListOfVariablesItem {
+                    variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific("Foo".into(), "Bar".into())),
+                },
+                ListOfVariablesItem {
+                    variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())),
+                },
+            ])
+        );
+
+        mms_server_writer
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: BigInt::from(1).to_signed_bytes_be(),
+                response: MmsConfirmedResponse::Read {
+                    variable_access_specification: None,
+                    access_results: vec![
+                        MmsAccessResult::Success(MmsData::Boolean(true)),
+                        MmsAccessResult::Success(MmsData::Integer(vec![0x12, 0x34])),
+                        MmsAccessResult::Success(MmsData::Array(vec![
+                            MmsData::MmsString("Test".into()),
+                            MmsData::Unsigned(vec![0x02]),
+                            MmsData::Unsigned(vec![0x03]),
+                        ])),
+                        // MmsAccessResult::Failure(MmsAccessError::Unknown(vec![0xDE, 0xAD, 0xBE, 0xEF])),
+                    ],
+                },
+            })
+            .await?;
+        tokio::time::sleep(Duration::from_millis(100)).await; // Give time for the message to be sent before reading
         Ok(())
     }
 }
