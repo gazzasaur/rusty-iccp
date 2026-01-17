@@ -9,6 +9,7 @@ pub(crate) struct ParameterSupportOptions {
     pub options: Vec<ParameterSupportOption>,
 }
 
+#[derive(Clone, Copy)]
 pub enum ParameterSupportOption {
     Str1, // Bit 0
     Str2, // Bit 1
@@ -96,6 +97,7 @@ pub(crate) struct ServiceSupportOptions {
     pub options: Vec<ServiceSupportOption>,
 }
 
+#[derive(Clone, Copy)]
 pub enum ServiceSupportOption {
     GetNameList,                   // Bit 1
     Identify,                      // Bit 2
@@ -145,13 +147,13 @@ impl<'a> ServiceSupportOptionsBerObject<'a> {
                     obj.ignored_bits = obj.ignored_bits.min(73);
                     obj.data[0] |= 0x02;
                 }
-                ServiceSupportOption::GetNamedVariableListAttribute => {
-                    obj.ignored_bits = obj.ignored_bits.min(72);
-                    obj.data[1] |= 0x08;
-                }
                 ServiceSupportOption::DefineNamedVariableList => {
                     obj.ignored_bits = obj.ignored_bits.min(68);
                     obj.data[1] |= 0x10;
+                }
+                ServiceSupportOption::GetNamedVariableListAttribute => {
+                    obj.ignored_bits = obj.ignored_bits.min(67);
+                    obj.data[1] |= 0x08;
                 }
                 ServiceSupportOption::DeleteNamedVariableList => {
                     obj.ignored_bits = obj.ignored_bits.min(66);
@@ -268,8 +270,8 @@ mod tests {
             (4, 3, vec![131u8, 2u8, 3u8, 8u8], ServiceSupportOption::Read),
             (5, 2, vec![131u8, 2u8, 2u8, 4u8], ServiceSupportOption::Write),
             (6, 1, vec![131u8, 2u8, 1u8, 2u8], ServiceSupportOption::GetVariableAccessAttributes),
-            (7, 0, vec![131u8, 2u8, 0u8, 1u8], ServiceSupportOption::GetNamedVariableListAttribute),
             (11, 4, vec![131u8, 3u8, 4u8, 0u8, 16u8], ServiceSupportOption::DefineNamedVariableList),
+            (12, 3, vec![131u8, 3u8, 3u8, 0u8, 8u8], ServiceSupportOption::GetNamedVariableListAttribute),
             (13, 2, vec![131u8, 3u8, 2u8, 0u8, 4u8], ServiceSupportOption::DeleteNamedVariableList),
             (79, 0, vec![131u8, 11u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8], ServiceSupportOption::InformationReport),
         ];

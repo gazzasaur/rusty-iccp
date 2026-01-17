@@ -8,7 +8,8 @@ use crate::{
     MmsError,
     error::to_mms_error,
     parameters::{ParameterSupportOptionsBerObject, ServiceSupportOptionsBerObject},
-    parsers::{process_constructed_data, process_mms_integer_8_content, process_mms_integer_16_content, process_mms_integer_32_content}, pdu::{common::expect_value, initiaterequest::InitRequestResponseDetails},
+    parsers::{process_constructed_data, process_mms_integer_8_content, process_mms_integer_16_content, process_mms_integer_32_content},
+    pdu::{common::expect_value, initiaterequest::InitRequestResponseDetails},
 };
 
 pub(crate) struct InitiateResponsePdu {

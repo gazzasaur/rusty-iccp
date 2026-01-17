@@ -86,10 +86,7 @@ mod tests {
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
             let cotp_client = TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone()).await?;
             let cosp_client = TcpCospInitiator::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client, Default::default()).await?;
-            let copp_client = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(
-                cosp_client,
-                Default::default(),
-            );
+            let copp_client = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_client, Default::default());
             let acse_client = RustyOsiSingleValueAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_client, reqeust_options.clone());
             Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, connect_data.clone()).await?)
         };

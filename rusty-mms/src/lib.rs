@@ -211,20 +211,48 @@ mod tests {
             .await?;
 
         let client_read_result = mms_client_reader.recv().await?;
-        assert_eq!(client_read_result, MmsRecvResult::Message(MmsMessage::ConfirmedResponse {
-            invocation_id: BigInt::from(1).to_signed_bytes_be(),
-            response: MmsConfirmedResponse::Read {
-                variable_access_specification: None,
-                access_results: vec![
-                    MmsAccessResult::Success(MmsData::Boolean(true)),
-                    MmsAccessResult::Success(MmsData::Integer(vec![0x12, 0x34])),
-                    MmsAccessResult::Success(MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])])),
-                    MmsAccessResult::Failure(MmsAccessError::Unknown(vec![0x04])),
-                ],
-            },
-        }));
+        assert_eq!(
+            client_read_result,
+            MmsRecvResult::Message(MmsMessage::ConfirmedResponse {
+                invocation_id: BigInt::from(1).to_signed_bytes_be(),
+                response: MmsConfirmedResponse::Read {
+                    variable_access_specification: None,
+                    access_results: vec![
+                        MmsAccessResult::Success(MmsData::Boolean(true)),
+                        MmsAccessResult::Success(MmsData::Integer(vec![0x12, 0x34])),
+                        MmsAccessResult::Success(MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])])),
+                        MmsAccessResult::Failure(MmsAccessError::Unknown(vec![0x04])),
+                    ],
+                },
+            })
+        );
 
-        tokio::time::sleep(Duration::from_millis(100)).await; // Give time for the message to be sent before reading
+        mms_client_writer
+            .send(MmsMessage::ConfirmedRequest {
+                invocation_id: vec![2],
+                request: MmsConfirmedRequest::Identify,
+            })
+            .await?;
+        assert_eq!(
+            mms_server_reader.recv().await?,
+            MmsRecvResult::Message(MmsMessage::ConfirmedRequest {
+                invocation_id: vec![2],
+                request: MmsConfirmedRequest::Identify,
+            })
+        );
+        mms_server_writer
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: vec![2],
+                response: MmsConfirmedResponse::Identify {
+                    vendor_name: "Test Vendor".into(),
+                    model_name: "Test Model".into(),
+                    revision: "Test Revision".into(),
+                    abstract_syntaxes: Some(vec![Oid::from(&[1, 2, 3, 4])?, Oid::from(&[4, 3, 2, 1])?]),
+                },
+            })
+            .await?;
+        mms_client_reader.recv().await?;
+
         Ok(())
     }
 }

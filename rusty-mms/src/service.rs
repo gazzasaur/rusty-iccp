@@ -1,3 +1,4 @@
+use std::cmp::{max, min};
 use std::marker::PhantomData;
 
 use der_parser::Oid;
@@ -300,13 +301,23 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
         let (acse_responder, init_data) = acse_listener.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
         let request = InitiateRequestPdu::parse(init_data)?;
 
+        let mms_request_information = MmsRequestInformation {
+            local_detail_calling: request.local_detail_calling(),
+            proposed_max_serv_outstanding_calling: request.proposed_max_serv_outstanding_calling(),
+            proposed_max_serv_outstanding_called: request.proposed_max_serv_outstanding_called(),
+            proposed_data_structure_nesting_level: request.proposed_data_structure_nesting_level(),
+            proposed_version_number: request.init_request_details().proposed_version_number,
+            propsed_parameter_cbb: request.init_request_details().propsed_parameter_cbb.options.clone(),
+            services_supported_calling: request.init_request_details().services_supported_calling.options.clone(),
+        };
+
         Ok((
             RustyMmsListener {
                 acse_responder,
                 _r: PhantomData::<R>,
                 _w: PhantomData::<W>,
             },
-            MmsRequestInformation::default(),
+            mms_request_information,
         ))
     }
 }

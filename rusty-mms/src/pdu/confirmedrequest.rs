@@ -9,7 +9,10 @@ use crate::{
     MmsConfirmedRequest, MmsError, MmsMessage,
     error::to_mms_error,
     parsers::process_constructed_data,
-    pdu::readrequest::{parse_read_request, read_request_to_ber},
+    pdu::{
+        identifyrequest::{identify_request_to_ber, parse_identify_request},
+        readrequest::{parse_read_request, read_request_to_ber},
+    },
 };
 
 pub(crate) fn parse_confirmed_request(payload: Any<'_>) -> Result<MmsMessage, MmsError> {
@@ -19,6 +22,7 @@ pub(crate) fn parse_confirmed_request(payload: Any<'_>) -> Result<MmsMessage, Mm
     for item in process_constructed_data(payload.data).map_err(to_mms_error("Failed to parse Confirmed Request Payload"))? {
         match item.header.raw_tag() {
             Some(&[2]) => invocation_id = Some(item.data.to_vec()),
+            Some(&[162]) => confirmed_payload = Some(parse_identify_request(&item)?),
             Some(&[164]) => confirmed_payload = Some(parse_read_request(&item)?),
             // TODO Moar!!!
             x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x),
@@ -37,6 +41,7 @@ pub(crate) fn confirmed_request_to_ber<'a>(invocation_id: &'a [u8], payload: &'a
         BerObjectContent::Sequence(vec![
             BerObject::from(BerObjectContent::Integer(invocation_id)),
             match payload {
+                MmsConfirmedRequest::Identify => identify_request_to_ber(),
                 MmsConfirmedRequest::Read {
                     specification_with_result,
                     variable_access_specification,

@@ -1,7 +1,4 @@
-use der_parser::{
-    Oid,
-    asn1_rs::ASN1DateTime,
-};
+use der_parser::{Oid, asn1_rs::ASN1DateTime};
 use rusty_acse::AcseError;
 use thiserror::Error;
 
@@ -9,7 +6,7 @@ use thiserror::Error;
  * This MMS stack is designed to be used with ICCP/TASE2.
  * The Packet API itself is left intentionally low-level.
  * High level adaptors should be used.
- * 
+ *
  * It supports the following.
  *
  * Parameter CBB
@@ -116,13 +113,13 @@ pub enum MmsRecvResult {
 pub enum MmsMessage {
     // InitiateRequest, Handled internally
     // InitiateResponse, Handled internally
-
     ConfirmedRequest { invocation_id: Vec<u8>, request: MmsConfirmedRequest },
     ConfirmedResponse { invocation_id: Vec<u8>, response: MmsConfirmedResponse },
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsConfirmedRequest {
+    Identify,
     Read {
         specification_with_result: Option<bool>,
         variable_access_specification: MmsVariableAccessSpecification,
@@ -131,6 +128,12 @@ pub enum MmsConfirmedRequest {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsConfirmedResponse {
+    Identify {
+        vendor_name: String,
+        model_name: String,
+        revision: String,
+        abstract_syntaxes: Option<Vec<Oid<'static>>>,
+    },
     Read {
         variable_access_specification: Option<MmsVariableAccessSpecification>,
         access_results: Vec<MmsAccessResult>,
@@ -171,7 +174,7 @@ pub trait MmsConnection: Send {
 
 pub trait MmsReader: Send {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<MmsRecvResult, MmsError>> + Send;
-    
+
     // ParameterSupportOption::Str1, Array
     // ParameterSupportOption::Str2, Map
     // ParameterSupportOption::Vnam,

@@ -129,11 +129,10 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseList
             request,
         ))
     }
-    
+
     pub fn set_response(&mut self, response: Option<AcseResponseInformation>) {
         self.response = response;
     }
-
 }
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseListener for RustyOsiSingleValueAcseListener<T, R, W> {

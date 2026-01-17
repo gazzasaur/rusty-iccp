@@ -9,7 +9,8 @@ use crate::{
     MmsError,
     error::to_mms_error,
     parameters::{ParameterSupportOptions, ParameterSupportOptionsBerObject, ServiceSupportOptions, ServiceSupportOptionsBerObject},
-    parsers::{process_constructed_data, process_mms_integer_8_content, process_mms_integer_16_content, process_mms_integer_32_content, process_mms_parameter_support_options, process_mms_service_support_option}, pdu::common::expect_value,
+    parsers::{process_constructed_data, process_mms_integer_8_content, process_mms_integer_16_content, process_mms_integer_32_content, process_mms_parameter_support_options, process_mms_service_support_option},
+    pdu::common::expect_value,
 };
 
 pub(crate) struct InitiateRequestPdu {
@@ -121,6 +122,26 @@ impl InitiateRequestPdu {
             proposed_data_structure_nesting_level: proposed_data_structure_nesting_level,
             init_request_details: expect_value("InitiateRequest", "InitRequestDetails", init_request_details)?,
         })
+    }
+
+    pub(crate) fn proposed_max_serv_outstanding_calling(&self) -> i16 {
+        self.proposed_max_serv_outstanding_calling
+    }
+
+    pub(crate) fn proposed_max_serv_outstanding_called(&self) -> i16 {
+        self.proposed_max_serv_outstanding_called
+    }
+
+    pub(crate) fn proposed_data_structure_nesting_level(&self) -> Option<i8> {
+        self.proposed_data_structure_nesting_level
+    }
+
+    pub(crate) fn init_request_details(&self) -> &InitRequestResponseDetails {
+        &self.init_request_details
+    }
+
+    pub(crate) fn local_detail_calling(&self) -> Option<i32> {
+        self.local_detail_calling
     }
 }
 
