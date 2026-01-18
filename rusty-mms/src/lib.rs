@@ -251,7 +251,72 @@ mod tests {
                 },
             })
             .await?;
-        mms_client_reader.recv().await?;
+        match mms_client_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id, response }) => {
+                assert_eq!(invocation_id, vec![2]);
+                assert_eq!(
+                    response,
+                    MmsConfirmedResponse::Identify {
+                        vendor_name: "Test Vendor".into(),
+                        model_name: "Test Model".into(),
+                        revision: "Test Revision".into(),
+                        abstract_syntaxes: Some(vec![Oid::from(&[1, 2, 3, 4])?, Oid::from(&[4, 3, 2, 1])?]),
+                    }
+                );
+            }
+            _ => panic!(),
+        }
+
+        mms_client_writer
+            .send(MmsMessage::ConfirmedRequest {
+                invocation_id: vec![3],
+                request: MmsConfirmedRequest::Write {
+                    variable_access_specification: MmsVariableAccessSpecification::ListOfVariables(vec![
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Hello".into())),
+                        },
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific("Foo".into(), "Bar".into())),
+                        },
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())),
+                        },
+                    ]),
+                    list_of_data: vec![
+                        MmsData::Boolean(true),
+                        MmsData::Integer(vec![0x12, 0x34]),
+                        MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])]),
+                    ],
+                },
+            })
+            .await?;
+        match mms_server_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedRequest { invocation_id, request }) => {
+                assert_eq!(invocation_id, vec![3]);
+                assert_eq!(
+                    request,
+                    MmsConfirmedRequest::Write {
+                        variable_access_specification: MmsVariableAccessSpecification::ListOfVariables(vec![
+                            ListOfVariablesItem {
+                                variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Hello".into())),
+                            },
+                            ListOfVariablesItem {
+                                variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific("Foo".into(), "Bar".into())),
+                            },
+                            ListOfVariablesItem {
+                                variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())),
+                            },
+                        ]),
+                        list_of_data: vec![
+                            MmsData::Boolean(true),
+                            MmsData::Integer(vec![0x12, 0x34]),
+                            MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])]),
+                        ],
+                    }
+                );
+            }
+            _ => panic!(),
+        };
 
         Ok(())
     }

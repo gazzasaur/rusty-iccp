@@ -23,7 +23,7 @@ use thiserror::Error;
  * Variable Access
  * - Read
  * - Write
- * - Information Report
+ * - InformationReport
  * - GetVariableAccessAttributes
  * - DefineNamedVariableList
  * - GetNamedVariableListAttribute
@@ -123,6 +123,10 @@ pub enum MmsConfirmedRequest {
     Read {
         specification_with_result: Option<bool>,
         variable_access_specification: MmsVariableAccessSpecification,
+    },
+    Write {
+        variable_access_specification: MmsVariableAccessSpecification,
+        list_of_data: Vec<MmsData>,
     },
 }
 

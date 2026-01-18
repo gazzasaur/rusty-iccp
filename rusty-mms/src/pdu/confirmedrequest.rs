@@ -12,6 +12,7 @@ use crate::{
     pdu::{
         identifyrequest::{identify_request_to_ber, parse_identify_request},
         readrequest::{parse_read_request, read_request_to_ber},
+        writerequest::{parse_write_request, write_request_to_ber},
     },
 };
 
@@ -24,6 +25,7 @@ pub(crate) fn parse_confirmed_request(payload: Any<'_>) -> Result<MmsMessage, Mm
             Some(&[2]) => invocation_id = Some(item.data.to_vec()),
             Some(&[162]) => confirmed_payload = Some(parse_identify_request(&item)?),
             Some(&[164]) => confirmed_payload = Some(parse_read_request(&item)?),
+            Some(&[165]) => confirmed_payload = Some(parse_write_request(&item)?),
             // TODO Moar!!!
             x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x),
         }
@@ -35,8 +37,8 @@ pub(crate) fn parse_confirmed_request(payload: Any<'_>) -> Result<MmsMessage, Mm
     })
 }
 
-pub(crate) fn confirmed_request_to_ber<'a>(invocation_id: &'a [u8], payload: &'a MmsConfirmedRequest) -> BerObject<'a> {
-    BerObject::from_header_and_content(
+pub(crate) fn confirmed_request_to_ber<'a>(invocation_id: &'a [u8], payload: &'a MmsConfirmedRequest) -> Result<BerObject<'a>, MmsError> {
+    Ok(BerObject::from_header_and_content(
         Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
         BerObjectContent::Sequence(vec![
             BerObject::from(BerObjectContent::Integer(invocation_id)),
@@ -46,7 +48,8 @@ pub(crate) fn confirmed_request_to_ber<'a>(invocation_id: &'a [u8], payload: &'a
                     specification_with_result,
                     variable_access_specification,
                 } => read_request_to_ber(specification_with_result, variable_access_specification),
+                MmsConfirmedRequest::Write { variable_access_specification, list_of_data } => write_request_to_ber(variable_access_specification, list_of_data)?,
             },
         ]),
-    )
+    ))
 }

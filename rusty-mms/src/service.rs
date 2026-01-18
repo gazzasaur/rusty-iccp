@@ -440,7 +440,7 @@ impl<R: OsiSingleValueAcseWriter> RustyMmsWriter<R> {
 impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
     async fn send(&mut self, message: MmsMessage) -> Result<(), MmsError> {
         let data = match message {
-            MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request).to_vec(),
+            MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request)?.to_vec(),
             MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
         };
         self.acse_writer.send(data.map_err(to_mms_error("Failed to serialise message"))?).await?;
