@@ -80,8 +80,14 @@ pub enum MmsAccessError {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsAccessResult {
-    Failure(MmsAccessError),
     Success(MmsData),
+    Failure(MmsAccessError),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MmsWriteResult {
+    Success,
+    Failure(MmsAccessError),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -115,6 +121,7 @@ pub enum MmsMessage {
     // InitiateResponse, Handled internally
     ConfirmedRequest { invocation_id: Vec<u8>, request: MmsConfirmedRequest },
     ConfirmedResponse { invocation_id: Vec<u8>, response: MmsConfirmedResponse },
+    Unconfirmed { unconfirmed_service: MmsUnconfirmedService },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -140,6 +147,17 @@ pub enum MmsConfirmedResponse {
     },
     Read {
         variable_access_specification: Option<MmsVariableAccessSpecification>,
+        access_results: Vec<MmsAccessResult>,
+    },
+    Write {
+        write_results: Vec<MmsWriteResult>,
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MmsUnconfirmedService {
+    InformationReport {
+        variable_access_specification: MmsVariableAccessSpecification,
         access_results: Vec<MmsAccessResult>,
     },
 }

@@ -5,7 +5,7 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::pdu::identifyresponse::{identify_response_to_ber, parse_identify_response};
+use crate::pdu::{identifyresponse::{identify_response_to_ber, parse_identify_response}, writeresponse::{parse_write_response, write_response_to_ber}};
 use crate::{
     MmsConfirmedResponse, MmsError, MmsMessage,
     error::to_mms_error,
@@ -22,6 +22,7 @@ pub(crate) fn parse_confirmed_response(payload: Any<'_>) -> Result<MmsMessage, M
             Some(&[2]) => invocation_id = Some(item.data.to_vec()),
             Some(&[162]) => confirmed_payload = Some(parse_identify_response(&item)?),
             Some(&[164]) => confirmed_payload = Some(parse_read_response(&item)?),
+            Some(&[165]) => confirmed_payload = Some(parse_write_response(&item)?),
             // TODO Moar!!!
             x => warn!("Failed to parse unknown MMS Confirmed Response Item: {:?}", x),
         }
@@ -49,6 +50,9 @@ pub(crate) fn confirmed_response_to_ber<'a>(invocation_id: &'a [u8], payload: &'
                     variable_access_specification,
                     access_results,
                 } => read_response_to_ber(variable_access_specification, access_results)?,
+                MmsConfirmedResponse::Write {
+                    write_results,
+                } => write_response_to_ber(write_results)?,
             },
         ]),
     ))

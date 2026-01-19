@@ -16,6 +16,7 @@ use crate::pdu::confirmedresponse::{confirmed_response_to_ber, parse_confirmed_r
 use crate::pdu::initiaterequest::{InitRequestResponseDetails, InitiateRequestPdu};
 use crate::pdu::initiateresponse::InitiateResponsePdu;
 use crate::pdu::readrequest::read_request_to_ber;
+use crate::pdu::unconfirmed::{parse_unconfirmed, unconfirmed_to_ber};
 use crate::{ListOfVariablesItem, MmsConnection, MmsData, MmsMessage, MmsObjectName, MmsReader, MmsRecvResult, MmsVariableAccessSpecification, MmsWriter, VariableSpecification};
 use crate::{
     MmsError, MmsInitiator, MmsListener, MmsResponder,
@@ -419,6 +420,7 @@ impl<R: OsiSingleValueAcseReader> MmsReader for RustyMmsReader<R> {
                     match message.header.raw_tag() {
                         Some([160]) => return Ok(MmsRecvResult::Message(parse_confirmed_request(message)?)),
                         Some([161]) => return Ok(MmsRecvResult::Message(parse_confirmed_response(message)?)),
+                        Some([163]) => return Ok(MmsRecvResult::Message(parse_unconfirmed(message)?)),
                         x => warn!("Failed to parse unknown MMS PDU: {:?}", x),
                     }
                 }
@@ -442,6 +444,7 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
         let data = match message {
             MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request)?.to_vec(),
             MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
+            MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
         };
         self.acse_writer.send(data.map_err(to_mms_error("Failed to serialise message"))?).await?;
         Ok(())

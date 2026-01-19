@@ -317,6 +317,74 @@ mod tests {
             }
             _ => panic!(),
         };
+        mms_server_writer
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: vec![3],
+                response: MmsConfirmedResponse::Write {
+                    write_results: vec![MmsWriteResult::Success, MmsWriteResult::Success, MmsWriteResult::Failure(MmsAccessError::ObjectInvalidated)],
+                },
+            })
+            .await?;
+        match mms_client_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id, response }) => {
+                assert_eq!(invocation_id, vec![3]);
+                assert_eq!(
+                    response,
+                    MmsConfirmedResponse::Write {
+                        write_results: vec![MmsWriteResult::Success, MmsWriteResult::Success, MmsWriteResult::Failure(MmsAccessError::ObjectInvalidated)],
+                    }
+                );
+            }
+            _ => panic!(),
+        };
+        mms_server_writer
+            .send(MmsMessage::Unconfirmed {
+                unconfirmed_service: MmsUnconfirmedService::InformationReport {
+                    variable_access_specification: MmsVariableAccessSpecification::ListOfVariables(vec![
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Hello".into())),
+                        },
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific("Foo".into(), "Bar".into())),
+                        },
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())),
+                        },
+                    ]),
+                    access_results: vec![
+                        MmsAccessResult::Success(MmsData::Boolean(true)),
+                        MmsAccessResult::Success(MmsData::Integer(vec![0x12, 0x34])),
+                        MmsAccessResult::Success(MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])])),
+                    ],
+                },
+            })
+            .await?;
+        match mms_client_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service }) => {
+                assert_eq!(
+                    unconfirmed_service,
+                    MmsUnconfirmedService::InformationReport {
+                        variable_access_specification: MmsVariableAccessSpecification::ListOfVariables(vec![
+                            ListOfVariablesItem {
+                                variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Hello".into())),
+                            },
+                            ListOfVariablesItem {
+                                variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific("Foo".into(), "Bar".into())),
+                            },
+                            ListOfVariablesItem {
+                                variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("There".into())),
+                            },
+                        ]),
+                        access_results: vec![
+                            MmsAccessResult::Success(MmsData::Boolean(true)),
+                            MmsAccessResult::Success(MmsData::Integer(vec![0x12, 0x34])),
+                            MmsAccessResult::Success(MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])])),
+                        ],
+                    }
+                );
+            }
+            _ => panic!(),
+        };
 
         Ok(())
     }

@@ -168,11 +168,7 @@ impl MmsAccessResult {
 
         match value.header.raw_tag() {
             Some([128]) => access_result = Some(MmsAccessResult::Failure(process_mms_access_error(value, "Failed to parse MMS Access Error on Access Result")?)),
-            Some([131]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
-            Some([133]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
-            Some([134]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
-            Some([144]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
-            Some([161]) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
+            Some(_) => access_result = Some(MmsAccessResult::Success(MmsData::parse(pdu, value)?)),
             x => warn!("Unknown MMS Access Result item {:?}", x),
         }
 
