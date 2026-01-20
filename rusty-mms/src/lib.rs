@@ -386,6 +386,31 @@ mod tests {
             _ => panic!(),
         };
 
+        mms_client_writer
+            .send(MmsMessage::ConfirmedRequest {
+                invocation_id: vec![4],
+                request: MmsConfirmedRequest::GetNameList {
+                    object_class: MmsObjectClass::Basic(MmsBasicObjectClass::NamedVariableList),
+                    object_scope: MmsObjectScope::Domain("Test Domain".into()),
+                    continue_after: Some("AfterThisOne".into()),
+                },
+            })
+            .await?;
+        match mms_server_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedRequest { invocation_id, request }) => {
+                assert_eq!(invocation_id, vec![4]);
+                assert_eq!(
+                    request,
+                    MmsConfirmedRequest::GetNameList {
+                        object_class: MmsObjectClass::Basic(MmsBasicObjectClass::NamedVariableList),
+                        object_scope: MmsObjectScope::Domain("Test Domain".into()),
+                        continue_after: Some("AfterThisOne".into()),
+                    }
+                );
+            }
+            _ => panic!(),
+        }
+
         Ok(())
     }
 }

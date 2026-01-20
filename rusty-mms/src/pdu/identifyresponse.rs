@@ -1,7 +1,7 @@
 use der_parser::{
     Oid,
     asn1_rs::Any,
-    ber::{BerObject, BerObjectContent, Length, parse_ber_content, parse_ber_oid},
+    ber::{BerObject, BerObjectContent, Length, parse_ber_content},
     der::{Class, Header, Tag},
 };
 use tracing::warn;
@@ -29,7 +29,7 @@ pub(crate) fn parse_identify_response(payload: &Any<'_>) -> Result<MmsConfirmedR
                     }
                 }
                 abstract_syntaxes = Some(syntaxes);
-            },
+            }
             x => warn!("Unsupported tag in MMS Identify Response PDU: {:?}", x),
         }
     }

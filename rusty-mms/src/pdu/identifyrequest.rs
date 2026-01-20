@@ -4,11 +4,7 @@ use der_parser::{
     der::{Class, Header, Tag},
 };
 
-use crate::{
-    MmsConfirmedRequest, MmsError, MmsVariableAccessSpecification,
-    error::to_mms_error,
-    parsers::{process_constructed_data, process_mms_boolean_content},
-};
+use crate::{MmsConfirmedRequest, MmsError};
 
 pub(crate) fn parse_identify_request(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
     Ok(MmsConfirmedRequest::Identify)

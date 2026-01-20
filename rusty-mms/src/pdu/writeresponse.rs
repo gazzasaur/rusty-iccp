@@ -1,7 +1,5 @@
-use std::os::unix::process;
-
 use der_parser::{
-    asn1_rs::{Any, ToDer},
+    asn1_rs::Any,
     ber::{BerObject, BerObjectContent, Length},
     der::{Class, Header, Tag},
 };

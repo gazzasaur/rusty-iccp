@@ -1,6 +1,6 @@
 use der_parser::{
     asn1_rs::Any,
-    ber::{BerObject, BerObjectContent, parse_ber_any, parse_ber_content, parse_ber_integer},
+    ber::{BerObject, BerObjectContent, parse_ber_any, parse_ber_content},
     der::{Header, Tag},
     error::BerError,
     num_bigint::BigInt,

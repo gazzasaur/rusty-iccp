@@ -1,5 +1,3 @@
-use std::os::unix::process;
-
 use der_parser::{
     asn1_rs::{Any, ToDer},
     ber::{BerObject, BerObjectContent, Length},
@@ -7,9 +5,7 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::{
-    MmsAccessResult, MmsConfirmedResponse, MmsError, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, error::to_mms_error, parsers::{mms_access_error_to_ber, process_constructed_data, process_mms_access_error}
-};
+use crate::{MmsAccessResult, MmsError, MmsUnconfirmedService, MmsVariableAccessSpecification, error::to_mms_error, parsers::process_constructed_data};
 
 pub(crate) fn parse_information_report(payload: &Any<'_>) -> Result<MmsUnconfirmedService, MmsError> {
     let mut list_of_access_result = Vec::new();
@@ -51,10 +47,7 @@ pub(crate) fn information_report_to_ber<'a>(variable_access_specification: &'a M
         Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
         BerObjectContent::Sequence(vec![
             variable_access_specification.to_ber(),
-            BerObject::from_header_and_content(
-                Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
-                BerObjectContent::Sequence(results_ber),
-            ),
+            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)), BerObjectContent::Sequence(results_ber)),
         ]),
     ))
 }

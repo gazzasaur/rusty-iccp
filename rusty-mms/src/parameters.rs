@@ -1,8 +1,16 @@
 use std::marker::PhantomData;
 
 use der_parser::{
-    ber::{BerObject, BerObjectContent, BitStringObject, Length},
+    asn1_rs::Any,
+    ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_content},
     der::{Class, Header, Tag},
+};
+use tracing::warn;
+
+use crate::{
+    MmsBasicObjectClass, MmsError, MmsObjectClass, MmsObjectScope,
+    error::to_mms_error,
+    parsers::{process_constructed_data, process_mms_string},
 };
 
 pub(crate) struct ParameterSupportOptions {
@@ -17,24 +25,6 @@ pub enum ParameterSupportOption {
     Valt, // Bit 3
     Vlis, // Bit 7
     Unsupported(u8),
-}
-
-#[repr(u8)]
-pub(crate) enum BasicObjectClass {
-    NamedVariable = 0,
-    NamedVariableList = 2,
-    NamedType = 3,
-
-    Semapgore = 4,
-    EventCondition = 5,
-    EventAction = 6,
-    EventEnrollment = 7,
-    Journal = 8,
-    Domain = 9,
-    ProgramInvocation = 10,
-    OperatorStation = 11,
-    DataExchange = 12,
-    AccessControlList = 13,
 }
 
 pub(crate) struct ParameterSupportOptionsBerObject<'a> {
@@ -180,6 +170,98 @@ impl<'a> ServiceSupportOptionsBerObject<'a> {
                 },
             ),
         )
+    }
+}
+
+impl MmsObjectClass {
+    pub(crate) fn parse(_context: &str, value: &Any<'_>) -> Result<MmsObjectClass, MmsError> {
+        match value.header.raw_tag() {
+            Some([160]) => {
+                let constructed_data = process_constructed_data(value.data).map_err(to_mms_error("Failed to parse MMS Object Class"))?;
+                let data = constructed_data.last().ok_or_else(|| MmsError::ProtocolError("No content in MMS Object Class".into()))?;
+                let basic_object_class = MmsBasicObjectClass::parse(data)?;
+                Ok(MmsObjectClass::Basic(basic_object_class))
+            }
+            x => {
+                warn!("Unsupported MMS Object Class tag: {:?}", x);
+                Err(MmsError::ProtocolError(format!("Unsupported MMS Object Class tag: {:?}", x)))
+            }
+        }
+    }
+
+    pub(crate) fn to_ber(&self) -> BerObject<'_> {
+        match self {
+            MmsObjectClass::Basic(mms_basic_object_class) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Integer(mms_basic_object_class.to_ber())),
+        }
+    }
+}
+
+impl MmsBasicObjectClass {
+    pub(crate) fn parse(value: &Any<'_>) -> Result<MmsBasicObjectClass, MmsError> {
+        if value.header.raw_tag() != Some(&[128]) {
+            return Err(MmsError::ProtocolError(format!("MMS Basic Object Class has an unsupported tag {:?}", value.header.raw_tag())));
+        }
+
+        match value.data {
+            [0] => Ok(MmsBasicObjectClass::NamedVariable),
+            [2] => Ok(MmsBasicObjectClass::NamedVariableList),
+            [3] => Ok(MmsBasicObjectClass::NamedType),
+            [4] => Ok(MmsBasicObjectClass::Semaphore),
+            [5] => Ok(MmsBasicObjectClass::EventCondition),
+            [6] => Ok(MmsBasicObjectClass::EventAction),
+            [7] => Ok(MmsBasicObjectClass::EventEnrollment),
+            [8] => Ok(MmsBasicObjectClass::Journal),
+            [9] => Ok(MmsBasicObjectClass::Domain),
+            [10] => Ok(MmsBasicObjectClass::ProgramInvocation),
+            [11] => Ok(MmsBasicObjectClass::OperatorStation),
+            [12] => Ok(MmsBasicObjectClass::DataExchange),
+            [13] => Ok(MmsBasicObjectClass::AccessControlList),
+            x => Err(MmsError::ProtocolError(format!("Unsupported MMS Basic Object Class tag: {:?}", x))),
+        }
+    }
+
+    pub(crate) fn to_ber(&self) -> &[u8] {
+        match self {
+            MmsBasicObjectClass::NamedVariable => &[0],
+            // 1 (Scattered Access is not supported as the vsca option is not supported)
+            MmsBasicObjectClass::NamedVariableList => &[2],
+            MmsBasicObjectClass::NamedType => &[3],
+            MmsBasicObjectClass::Semaphore => &[4],
+            MmsBasicObjectClass::EventCondition => &[5],
+            MmsBasicObjectClass::EventAction => &[6],
+            MmsBasicObjectClass::EventEnrollment => &[7],
+            MmsBasicObjectClass::Journal => &[8],
+            MmsBasicObjectClass::Domain => &[9],
+            MmsBasicObjectClass::ProgramInvocation => &[10],
+            MmsBasicObjectClass::OperatorStation => &[11],
+            MmsBasicObjectClass::DataExchange => &[12],
+            MmsBasicObjectClass::AccessControlList => &[13],
+        }
+    }
+}
+
+impl MmsObjectScope {
+    pub(crate) fn parse(value: &Any<'_>) -> Result<MmsObjectScope, MmsError> {
+        match value.header.raw_tag() {
+            Some([128]) => Ok(MmsObjectScope::Vmd),
+            Some([129]) => {
+                let domain_name = process_mms_string(value, "Failed to parse Domain Name in MMS Object Scope")?;
+                Ok(MmsObjectScope::Domain(domain_name))
+            }
+            Some([130]) => Ok(MmsObjectScope::Aa),
+            x => {
+                warn!("Unsupported MMS Object Scope tag: {:?}", x);
+                Err(MmsError::ProtocolError(format!("Unsupported MMS Object Scope tag: {:?}", x)))
+            }
+        }
+    }
+
+    pub(crate) fn to_ber(&self) -> BerObject<'_> {
+        match self {
+            MmsObjectScope::Vmd => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Null),
+            MmsObjectScope::Domain(domain_name) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::VisibleString(domain_name.as_str())),
+            MmsObjectScope::Aa => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::Null),
+        }
     }
 }
 

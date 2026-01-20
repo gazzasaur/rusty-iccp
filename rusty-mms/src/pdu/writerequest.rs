@@ -1,5 +1,3 @@
-use std::os::unix::process;
-
 use der_parser::{
     asn1_rs::{Any, ToDer},
     ber::{BerObject, BerObjectContent, Length},
@@ -7,11 +5,7 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::{
-    MmsConfirmedRequest, MmsData, MmsError, MmsVariableAccessSpecification,
-    error::to_mms_error,
-    parsers::{process_constructed_data, process_mms_boolean_content},
-};
+use crate::{MmsConfirmedRequest, MmsData, MmsError, MmsVariableAccessSpecification, error::to_mms_error, parsers::process_constructed_data};
 
 pub(crate) fn parse_write_request(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
     let mut list_of_data = Vec::new();
@@ -37,10 +31,7 @@ pub(crate) fn parse_write_request(payload: &Any<'_>) -> Result<MmsConfirmedReque
     }
 
     let variable_access_specification = variable_access_specification.ok_or_else(|| MmsError::ProtocolError("No Variable Access Specification on Request PDU".into()))?;
-    Ok(MmsConfirmedRequest::Write {
-        variable_access_specification,
-        list_of_data,
-    })
+    Ok(MmsConfirmedRequest::Write { variable_access_specification, list_of_data })
 }
 
 pub(crate) fn write_request_to_ber<'a>(variable_access_specification: &'a MmsVariableAccessSpecification, list_of_data: &'a Vec<MmsData>) -> Result<BerObject<'a>, MmsError> {

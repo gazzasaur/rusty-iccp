@@ -5,7 +5,10 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::pdu::{identifyresponse::{identify_response_to_ber, parse_identify_response}, writeresponse::{parse_write_response, write_response_to_ber}};
+use crate::pdu::{
+    identifyresponse::{identify_response_to_ber, parse_identify_response},
+    writeresponse::{parse_write_response, write_response_to_ber},
+};
 use crate::{
     MmsConfirmedResponse, MmsError, MmsMessage,
     error::to_mms_error,
@@ -50,9 +53,7 @@ pub(crate) fn confirmed_response_to_ber<'a>(invocation_id: &'a [u8], payload: &'
                     variable_access_specification,
                     access_results,
                 } => read_response_to_ber(variable_access_specification, access_results)?,
-                MmsConfirmedResponse::Write {
-                    write_results,
-                } => write_response_to_ber(write_results)?,
+                MmsConfirmedResponse::Write { write_results } => write_response_to_ber(write_results)?,
             },
         ]),
     ))

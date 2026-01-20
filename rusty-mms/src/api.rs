@@ -53,6 +53,36 @@ pub enum MmsObjectName {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum MmsObjectScope {
+    Vmd,
+    Domain(String),
+    Aa,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MmsObjectClass {
+    Basic(MmsBasicObjectClass),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MmsBasicObjectClass {
+    NamedVariable,
+    NamedVariableList,
+    NamedType,
+
+    Semaphore,
+    EventCondition,
+    EventAction,
+    EventEnrollment,
+    Journal,
+    Domain,
+    ProgramInvocation,
+    OperatorStation,
+    DataExchange,
+    AccessControlList,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum MmsVariableAccessSpecification {
     ListOfVariables(Vec<ListOfVariablesItem>),
     VariableListName(MmsObjectName),
@@ -127,6 +157,11 @@ pub enum MmsMessage {
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsConfirmedRequest {
     Identify,
+    GetNameList {
+        object_class: MmsObjectClass,
+        object_scope: MmsObjectScope,
+        continue_after: Option<String>, // MMS Identifier
+    },
     Read {
         specification_with_result: Option<bool>,
         variable_access_specification: MmsVariableAccessSpecification,
@@ -145,13 +180,17 @@ pub enum MmsConfirmedResponse {
         revision: String,
         abstract_syntaxes: Option<Vec<Oid<'static>>>,
     },
+    // GetNameList {
+    //     list_of_identifiers: Vec<String>, // MMS Identifiers
+    //     more_follows: Option<bool>,
+    // },
     Read {
         variable_access_specification: Option<MmsVariableAccessSpecification>,
         access_results: Vec<MmsAccessResult>,
     },
     Write {
         write_results: Vec<MmsWriteResult>,
-    }
+    },
 }
 
 #[derive(Debug, PartialEq, Eq)]

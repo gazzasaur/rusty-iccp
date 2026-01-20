@@ -1,4 +1,3 @@
-use std::cmp::{max, min};
 use std::marker::PhantomData;
 
 use der_parser::Oid;
@@ -15,7 +14,6 @@ use crate::pdu::confirmedrequest::{confirmed_request_to_ber, parse_confirmed_req
 use crate::pdu::confirmedresponse::{confirmed_response_to_ber, parse_confirmed_response};
 use crate::pdu::initiaterequest::{InitRequestResponseDetails, InitiateRequestPdu};
 use crate::pdu::initiateresponse::InitiateResponsePdu;
-use crate::pdu::readrequest::read_request_to_ber;
 use crate::pdu::unconfirmed::{parse_unconfirmed, unconfirmed_to_ber};
 use crate::{ListOfVariablesItem, MmsConnection, MmsData, MmsMessage, MmsObjectName, MmsReader, MmsRecvResult, MmsVariableAccessSpecification, MmsWriter, VariableSpecification};
 use crate::{

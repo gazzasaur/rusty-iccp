@@ -5,11 +5,10 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::{MmsUnconfirmedService, pdu::{identifyresponse::{identify_response_to_ber, parse_identify_response}, informationreport::{information_report_to_ber, parse_information_report}, writeresponse::{parse_write_response, write_response_to_ber}}};
+use crate::{MmsError, MmsMessage, error::to_mms_error, parsers::process_constructed_data};
 use crate::{
-    MmsError, MmsMessage,
-    error::to_mms_error,
-    parsers::process_constructed_data,
+    MmsUnconfirmedService,
+    pdu::informationreport::{information_report_to_ber, parse_information_report},
 };
 
 pub(crate) fn parse_unconfirmed(payload: Any<'_>) -> Result<MmsMessage, MmsError> {
@@ -30,13 +29,11 @@ pub(crate) fn parse_unconfirmed(payload: Any<'_>) -> Result<MmsMessage, MmsError
 pub(crate) fn unconfirmed_to_ber<'a>(payload: &'a MmsUnconfirmedService) -> Result<BerObject<'a>, MmsError> {
     Ok(BerObject::from_header_and_content(
         Header::new(Class::ContextSpecific, true, Tag::from(3), Length::Definite(0)),
-        BerObjectContent::Sequence(vec![
-            match payload {
-                MmsUnconfirmedService::InformationReport {
-                    variable_access_specification,
-                    access_results,
-                } => information_report_to_ber(variable_access_specification, access_results)?,
-            },
-        ]),
+        BerObjectContent::Sequence(vec![match payload {
+            MmsUnconfirmedService::InformationReport {
+                variable_access_specification,
+                access_results,
+            } => information_report_to_ber(variable_access_specification, access_results)?,
+        }]),
     ))
 }
