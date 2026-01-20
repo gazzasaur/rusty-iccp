@@ -410,6 +410,26 @@ mod tests {
             }
             _ => panic!(),
         }
+        mms_server_writer.send(MmsMessage::ConfirmedResponse {
+            invocation_id: vec![4],
+            response: MmsConfirmedResponse::GetNameList {
+                list_of_identifiers: vec!["Test1".into(), "Test2".into(), "Test3".into()],
+                more_follows: Option::Some(true),
+            },
+        }).await?;
+        match mms_client_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id, response }) => {
+                assert_eq!(invocation_id, vec![4]);
+                assert_eq!(
+                    response,
+                    MmsConfirmedResponse::GetNameList {
+                        list_of_identifiers: vec!["Test1".into(), "Test2".into(), "Test3".into()],
+                        more_follows: Option::Some(true),
+                    }
+                );
+            }
+            _ => panic!(),
+        }
 
         Ok(())
     }

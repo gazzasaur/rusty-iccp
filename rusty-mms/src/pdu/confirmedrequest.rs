@@ -45,8 +45,8 @@ pub(crate) fn confirmed_request_to_ber<'a>(invocation_id: &'a [u8], payload: &'a
         BerObjectContent::Sequence(vec![
             BerObject::from(BerObjectContent::Integer(invocation_id)),
             match payload {
-                MmsConfirmedRequest::Identify => identify_request_to_ber(),
                 MmsConfirmedRequest::GetNameList { object_class, object_scope, continue_after } => get_name_list_request_to_ber(object_class, object_scope, continue_after)?,
+                MmsConfirmedRequest::Identify => identify_request_to_ber(),
                 MmsConfirmedRequest::Read {
                     specification_with_result,
                     variable_access_specification,

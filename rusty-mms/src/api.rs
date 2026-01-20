@@ -156,12 +156,12 @@ pub enum MmsMessage {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsConfirmedRequest {
-    Identify,
     GetNameList {
         object_class: MmsObjectClass,
         object_scope: MmsObjectScope,
         continue_after: Option<String>, // MMS Identifier
     },
+    Identify,
     Read {
         specification_with_result: Option<bool>,
         variable_access_specification: MmsVariableAccessSpecification,
@@ -174,16 +174,16 @@ pub enum MmsConfirmedRequest {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsConfirmedResponse {
+    GetNameList {
+        list_of_identifiers: Vec<String>, // MMS Identifiers
+        more_follows: Option<bool>, // Defaults to true if not present
+    },
     Identify {
         vendor_name: String,
         model_name: String,
         revision: String,
         abstract_syntaxes: Option<Vec<Oid<'static>>>,
     },
-    // GetNameList {
-    //     list_of_identifiers: Vec<String>, // MMS Identifiers
-    //     more_follows: Option<bool>,
-    // },
     Read {
         variable_access_specification: Option<MmsVariableAccessSpecification>,
         access_results: Vec<MmsAccessResult>,

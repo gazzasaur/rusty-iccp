@@ -6,8 +6,7 @@ use der_parser::{
 use tracing::warn;
 
 use crate::pdu::{
-    identifyresponse::{identify_response_to_ber, parse_identify_response},
-    writeresponse::{parse_write_response, write_response_to_ber},
+    getnamelistrequest::parse_get_name_list_request, getnamelistresponse::{get_name_list_response_to_ber, parse_get_name_list_response}, identifyresponse::{identify_response_to_ber, parse_identify_response}, writeresponse::{parse_write_response, write_response_to_ber}
 };
 use crate::{
     MmsConfirmedResponse, MmsError, MmsMessage,
@@ -23,6 +22,7 @@ pub(crate) fn parse_confirmed_response(payload: Any<'_>) -> Result<MmsMessage, M
     for item in process_constructed_data(payload.data).map_err(to_mms_error("Failed to parse Confirmed Response Payload"))? {
         match item.header.raw_tag() {
             Some(&[2]) => invocation_id = Some(item.data.to_vec()),
+            Some(&[161]) => confirmed_payload = Some(parse_get_name_list_response(&item)?),
             Some(&[162]) => confirmed_payload = Some(parse_identify_response(&item)?),
             Some(&[164]) => confirmed_payload = Some(parse_read_response(&item)?),
             Some(&[165]) => confirmed_payload = Some(parse_write_response(&item)?),
@@ -43,6 +43,10 @@ pub(crate) fn confirmed_response_to_ber<'a>(invocation_id: &'a [u8], payload: &'
         BerObjectContent::Sequence(vec![
             BerObject::from(BerObjectContent::Integer(invocation_id)),
             match payload {
+                MmsConfirmedResponse::GetNameList {
+                    list_of_identifiers,
+                    more_follows,
+                } => get_name_list_response_to_ber(list_of_identifiers, more_follows)?,
                 MmsConfirmedResponse::Identify {
                     vendor_name,
                     model_name,
