@@ -149,6 +149,46 @@ pub enum MmsData {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum MmsTypeSpecification {
+    ObjectName(MmsObjectName),
+    TypeDescription(MmsTypeDescription),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MmsTypeDescription {
+    Array {
+        packed: bool,
+        number_of_elements: Vec<u8>, /* u32 */
+        element_type: Box<MmsTypeSpecification>,
+    },
+    Structure {
+        packed: bool,
+        components: Vec<MmsTypeDescriptionComponent>,
+    },
+    Boolean,
+    BitString(Vec<u8> /* i32 */),
+    Integer(Vec<u8> /* u8 */),
+    Unsigned(Vec<u8> /* u8 */),
+    FloatingPoint {
+        format_width: Vec<u8>,   /* u8 */
+        exponent_width: Vec<u8>, /* u8 */
+    },
+    OctetString(Vec<u8> /* i32 */),
+    VisibleString(Vec<u8> /* i32 */),
+    GeneralizedTime,
+    BinaryTime(bool),
+    Bcd(Vec<u8> /* u8 */),
+    ObjId,
+    MmsString(Vec<u8> /* i32 */),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct MmsTypeDescriptionComponent {
+    component_name: String,
+    component_type: MmsTypeSpecification,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum MmsRecvResult {
     Closed,
     Message(MmsMessage),
@@ -202,6 +242,10 @@ pub enum MmsConfirmedResponse {
     },
     Write {
         write_results: Vec<MmsWriteResult>,
+    },
+    GetVariableAccessAttributes {
+        deletable: bool,
+        type_description: MmsTypeDescription,
     },
 }
 

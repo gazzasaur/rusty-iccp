@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use der_parser::Oid;
 use der_parser::asn1_rs::Any;
+use der_parser::ber::compat::BerObjectHeader;
 use der_parser::ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any};
 use der_parser::der::{Class, Header, Tag};
 use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
@@ -15,7 +16,9 @@ use crate::pdu::confirmedresponse::{confirmed_response_to_ber, parse_confirmed_r
 use crate::pdu::initiaterequest::{InitRequestResponseDetails, InitiateRequestPdu};
 use crate::pdu::initiateresponse::InitiateResponsePdu;
 use crate::pdu::unconfirmed::{parse_unconfirmed, unconfirmed_to_ber};
-use crate::{ListOfVariablesItem, MmsConnection, MmsData, MmsMessage, MmsObjectName, MmsReader, MmsRecvResult, MmsVariableAccessSpecification, MmsWriter, VariableSpecification};
+use crate::{
+    ListOfVariablesItem, MmsConnection, MmsData, MmsMessage, MmsObjectName, MmsReader, MmsRecvResult, MmsTypeDescription, MmsTypeDescriptionComponent, MmsTypeSpecification, MmsVariableAccessSpecification, MmsWriter, VariableSpecification,
+};
 use crate::{
     MmsError, MmsInitiator, MmsListener, MmsResponder,
     error::to_mms_error,
@@ -237,6 +240,56 @@ impl MmsData {
             Some([134]) => Ok(MmsData::Unsigned(data.data.to_owned())),
             Some([144]) => Ok(MmsData::MmsString(String::from_utf8(data.data.to_owned()).map_err(to_mms_error("Failed to parse MMS String"))?)),
             x => Err(MmsError::ProtocolError(format!("Unsupported MMS Data type {:?} on {}", x, pdu))),
+        }
+    }
+}
+
+impl MmsTypeSpecification {
+    pub(crate) fn serialise(&self) -> Result<BerObject<'_>, MmsError> {
+        Ok(match &self {
+            MmsTypeSpecification::ObjectName(object_name) => {
+                let a = object_name.to_ber();
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)), BerObjectContent::Sequence(vec![a]))
+            }
+            MmsTypeSpecification::TypeDescription(type_description) => {
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(vec![type_description.to_ber()?]))
+            }
+        })
+    }
+
+    pub(crate) fn parse(pdu: &str, data: &Any<'_>) -> Result<MmsTypeSpecification, MmsError> {
+        match data.header.raw_tag() {
+            Some([160]) => Ok(MmsTypeSpecification::ObjectName(MmsObjectName::parse(pdu, data.data)?)),
+            Some([161]) => Ok(MmsTypeSpecification::TypeDescription(MmsTypeDescription::parse(pdu, data)?)),
+            x => Err(MmsError::ProtocolError(format!("Unsupported MmsTypeSpecification {:?} on {}", x, pdu))),
+        }
+    }
+}
+
+impl MmsTypeDescription {
+    pub(crate) fn to_ber(&self) -> Result<BerObject<'_>, MmsError> {
+        Ok(match &self {
+            MmsTypeDescription::Array { packed, number_of_elements, element_type } => todo!(),
+            MmsTypeDescription::Structure { packed, components } => todo!(),
+            MmsTypeDescription::Boolean => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Null),
+            MmsTypeDescription::BitString(_) => todo!(),
+            MmsTypeDescription::Integer(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::Integer(length)),
+            MmsTypeDescription::Unsigned(_) => todo!(),
+            MmsTypeDescription::FloatingPoint { format_width, exponent_width } => todo!(),
+            MmsTypeDescription::OctetString(_) => todo!(),
+            MmsTypeDescription::VisibleString(_) => todo!(),
+            MmsTypeDescription::GeneralizedTime => todo!(),
+            MmsTypeDescription::BinaryTime(_) => todo!(),
+            MmsTypeDescription::Bcd(_) => todo!(),
+            MmsTypeDescription::ObjId => todo!(),
+            MmsTypeDescription::MmsString(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(16), Length::Definite(0)), BerObjectContent::Integer(length)),
+        })
+    }
+
+    pub(crate) fn parse(pdu: &str, data: &Any<'_>) -> Result<MmsTypeDescription, MmsError> {
+        match data.header.raw_tag() {
+            // Some([144]) => Ok(MmsData::MmsString(String::from_utf8(data.data.to_owned()).map_err(to_mms_error("Failed to parse MMS String"))?)),
+            x => Err(MmsError::ProtocolError(format!("Unsupported MmsTypeDescription {:?} on {}", x, pdu))),
         }
     }
 }

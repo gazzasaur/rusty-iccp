@@ -11,7 +11,7 @@ use crate::{
     parsers::process_constructed_data,
     pdu::{
         getnamelistrequest::{get_name_list_request_to_ber, parse_get_name_list_request},
-        getvariableaccessattributesrequest::get_variable_access_attributes_reqeust_to_ber,
+        getvariableaccessattributesrequest::{get_variable_access_attributes_reqeust_to_ber, parse_get_variable_access_attributes_reqeust},
         identifyrequest::{identify_request_to_ber, parse_identify_request},
         readrequest::{parse_read_request, read_request_to_ber},
         writerequest::{parse_write_request, write_request_to_ber},
@@ -29,6 +29,7 @@ pub(crate) fn parse_confirmed_request(payload: Any<'_>) -> Result<MmsMessage, Mm
             Some(&[162]) => confirmed_payload = Some(parse_identify_request(&item)?),
             Some(&[164]) => confirmed_payload = Some(parse_read_request(&item)?),
             Some(&[165]) => confirmed_payload = Some(parse_write_request(&item)?),
+            Some(&[166]) => confirmed_payload = Some(parse_get_variable_access_attributes_reqeust(&item)?),
             // TODO Moar!!!
             x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x),
         }

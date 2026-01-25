@@ -1,3 +1,5 @@
+use std::{collections::VecDeque, rc::Rc};
+
 use der_parser::{
     asn1_rs::Any,
     ber::{BerObject, BerObjectContent, Length},
@@ -5,12 +7,9 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::{
-    MmsConfirmedRequest, MmsError, MmsObjectName, error::to_mms_error,
-    parsers::process_constructed_data,
-};
+use crate::{MmsConfirmedRequest, MmsError, MmsObjectName, MmsTypeDescription, error::to_mms_error, parsers::process_constructed_data};
 
-pub(crate) fn parse_get_variable_access_attributes_reqeust(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
+pub(crate) fn parse_get_variable_access_attributes_response(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
     let mut object_name = None;
 
     for item in process_constructed_data(payload.data).map_err(to_mms_error("Failed to parse MMS Get VariableAccess Attributes PDU"))? {
@@ -27,12 +26,12 @@ pub(crate) fn parse_get_variable_access_attributes_reqeust(payload: &Any<'_>) ->
     Ok(MmsConfirmedRequest::GetVariableAccessAttributes { object_name })
 }
 
-pub(crate) fn get_variable_access_attributes_reqeust_to_ber<'a>(object_name: &'a MmsObjectName) -> Result<BerObject<'a>, MmsError> {
+pub(crate) fn get_variable_access_attributes_response_to_ber<'a>(deletable: bool, type_description: &'a MmsTypeDescription) -> Result<BerObject<'a>, MmsError> {
     Ok(BerObject::from_header_and_content(
         Header::new(Class::ContextSpecific, true, Tag::from(6), Length::Definite(0)),
-        BerObjectContent::Sequence(vec![BerObject::from_header_and_content(
-            Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
-            BerObjectContent::Sequence(vec![object_name.to_ber()]),
-        )]),
+        BerObjectContent::Sequence(vec![
+            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(deletable)),
+            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)), BerObjectContent::Sequence(vec![type_description.to_ber()?])),
+        ]),
     ))
 }

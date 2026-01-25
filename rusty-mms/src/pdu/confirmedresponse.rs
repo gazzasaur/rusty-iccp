@@ -6,7 +6,7 @@ use der_parser::{
 use tracing::warn;
 
 use crate::pdu::{
-    getnamelistrequest::parse_get_name_list_request, getnamelistresponse::{get_name_list_response_to_ber, parse_get_name_list_response}, identifyresponse::{identify_response_to_ber, parse_identify_response}, writeresponse::{parse_write_response, write_response_to_ber}
+    getnamelistrequest::parse_get_name_list_request, getnamelistresponse::{get_name_list_response_to_ber, parse_get_name_list_response}, getvariableaccessattributesresponse::get_variable_access_attributes_response_to_ber, identifyresponse::{identify_response_to_ber, parse_identify_response}, writeresponse::{parse_write_response, write_response_to_ber}
 };
 use crate::{
     MmsConfirmedResponse, MmsError, MmsMessage,
@@ -58,6 +58,7 @@ pub(crate) fn confirmed_response_to_ber<'a>(invocation_id: &'a [u8], payload: &'
                     access_results,
                 } => read_response_to_ber(variable_access_specification, access_results)?,
                 MmsConfirmedResponse::Write { write_results } => write_response_to_ber(write_results)?,
+                MmsConfirmedResponse::GetVariableAccessAttributes { deletable, type_description } => get_variable_access_attributes_response_to_ber(*deletable, type_description)?
             },
         ]),
     ))

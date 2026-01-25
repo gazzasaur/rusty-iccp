@@ -441,6 +441,27 @@ mod tests {
                 },
             })
             .await?;
+        match mms_server_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedRequest { invocation_id, request }) => {
+                assert_eq!(invocation_id, vec![5]);
+                assert_eq!(
+                    request,
+                    MmsConfirmedRequest::GetVariableAccessAttributes {
+                        object_name: MmsObjectName::VmdSpecific("Test VMD".into())
+                    }
+                );
+            }
+            _ => panic!(),
+        }
+        mms_server_writer
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: vec![5],
+                response: MmsConfirmedResponse::GetVariableAccessAttributes {
+                    deletable: true,
+                    type_description: MmsTypeDescription::Integer(vec![100]),
+                },
+            })
+            .await?;
 
         sleep(Duration::from_millis(1000)).await;
 
