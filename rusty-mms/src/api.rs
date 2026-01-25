@@ -69,7 +69,6 @@ pub enum MmsBasicObjectClass {
     NamedVariable,
     NamedVariableList,
     NamedType,
-
     Semaphore,
     EventCondition,
     EventAction,
@@ -104,7 +103,17 @@ pub enum VariableSpecification {
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsAccessError {
     ObjectInvalidated,
-    // TODO Add other error codes
+    HardwareFault,
+    TemporarilyUnavailable,
+    ObjectAccessDenied,
+    ObjectUndefined,
+    InvalidAddress,
+    TypeUnsupported,
+    TypeInconsistent,
+    ObjectAttributeInconsistent,
+    ObjectAccessUnsupported,
+    ObjectNonExistent,
+    ObjectValueInvalid,
     Unknown(Vec<u8>),
 }
 
@@ -170,13 +179,16 @@ pub enum MmsConfirmedRequest {
         variable_access_specification: MmsVariableAccessSpecification,
         list_of_data: Vec<MmsData>,
     },
+    GetVariableAccessAttributes {
+        object_name: MmsObjectName,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsConfirmedResponse {
     GetNameList {
         list_of_identifiers: Vec<String>, // MMS Identifiers
-        more_follows: Option<bool>, // Defaults to true if not present
+        more_follows: Option<bool>,       // Defaults to true if not present
     },
     Identify {
         vendor_name: String,

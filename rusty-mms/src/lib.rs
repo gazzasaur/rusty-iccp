@@ -95,7 +95,7 @@ mod tests {
 
     use der_parser::{Oid, num_bigint::BigInt};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
-    use tokio::join;
+    use tokio::{join, time::sleep};
     use tracing_test::traced_test;
 
     use super::*;
@@ -410,13 +410,15 @@ mod tests {
             }
             _ => panic!(),
         }
-        mms_server_writer.send(MmsMessage::ConfirmedResponse {
-            invocation_id: vec![4],
-            response: MmsConfirmedResponse::GetNameList {
-                list_of_identifiers: vec!["Test1".into(), "Test2".into(), "Test3".into()],
-                more_follows: Option::Some(true),
-            },
-        }).await?;
+        mms_server_writer
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: vec![4],
+                response: MmsConfirmedResponse::GetNameList {
+                    list_of_identifiers: vec!["Test1".into(), "Test2".into(), "Test3".into()],
+                    more_follows: Option::Some(true),
+                },
+            })
+            .await?;
         match mms_client_reader.recv().await? {
             MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id, response }) => {
                 assert_eq!(invocation_id, vec![4]);
@@ -430,6 +432,17 @@ mod tests {
             }
             _ => panic!(),
         }
+
+        mms_client_writer
+            .send(MmsMessage::ConfirmedRequest {
+                invocation_id: vec![5],
+                request: MmsConfirmedRequest::GetVariableAccessAttributes {
+                    object_name: MmsObjectName::VmdSpecific("Test VMD".into()),
+                },
+            })
+            .await?;
+
+        sleep(Duration::from_millis(1000)).await;
 
         Ok(())
     }

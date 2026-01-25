@@ -77,10 +77,21 @@ pub(crate) fn process_mms_access_error<'a>(npm_object: &Any<'a>, error_message: 
 pub(crate) fn mms_access_error_to_ber<'a>(error: &'a MmsAccessError) -> BerObject<'a> {
     BerObject::from_header_and_content(
         Header::new(der_parser::der::Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
-        match error {
-            MmsAccessError::ObjectInvalidated => BerObjectContent::Integer(&[0x00]),
-            MmsAccessError::Unknown(x) => BerObjectContent::Integer(x.as_slice()),
-        },
+        BerObjectContent::Integer(match error {
+            MmsAccessError::ObjectInvalidated => &[0],
+            MmsAccessError::HardwareFault => &[1],
+            MmsAccessError::TemporarilyUnavailable => &[2],
+            MmsAccessError::ObjectAccessDenied => &[3],
+            MmsAccessError::ObjectUndefined => &[4],
+            MmsAccessError::InvalidAddress => &[5],
+            MmsAccessError::TypeUnsupported => &[6],
+            MmsAccessError::TypeInconsistent => &[7],
+            MmsAccessError::ObjectAttributeInconsistent => &[8],
+            MmsAccessError::ObjectAccessUnsupported => &[9],
+            MmsAccessError::ObjectNonExistent => &[10],
+            MmsAccessError::ObjectValueInvalid => &[11],
+            MmsAccessError::Unknown(x) => x.as_slice(),
+        }),
     )
 }
 

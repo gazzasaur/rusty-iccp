@@ -11,6 +11,7 @@ use crate::{
     parsers::process_constructed_data,
     pdu::{
         getnamelistrequest::{get_name_list_request_to_ber, parse_get_name_list_request},
+        getvariableaccessattributesrequest::get_variable_access_attributes_reqeust_to_ber,
         identifyrequest::{identify_request_to_ber, parse_identify_request},
         readrequest::{parse_read_request, read_request_to_ber},
         writerequest::{parse_write_request, write_request_to_ber},
@@ -52,6 +53,7 @@ pub(crate) fn confirmed_request_to_ber<'a>(invocation_id: &'a [u8], payload: &'a
                     variable_access_specification,
                 } => read_request_to_ber(specification_with_result, variable_access_specification),
                 MmsConfirmedRequest::Write { variable_access_specification, list_of_data } => write_request_to_ber(variable_access_specification, list_of_data)?,
+                MmsConfirmedRequest::GetVariableAccessAttributes { object_name } => get_variable_access_attributes_reqeust_to_ber(object_name)?,
             },
         ]),
     ))

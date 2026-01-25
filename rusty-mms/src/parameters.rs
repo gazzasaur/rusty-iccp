@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use der_parser::{
     asn1_rs::Any,
-    ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_content},
+    ber::{BerObject, BerObjectContent, BitStringObject, Length},
     der::{Class, Header, Tag},
 };
 use tracing::warn;
