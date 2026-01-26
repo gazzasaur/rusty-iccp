@@ -458,7 +458,27 @@ mod tests {
                 invocation_id: vec![5],
                 response: MmsConfirmedResponse::GetVariableAccessAttributes {
                     deletable: true,
-                    type_description: MmsTypeDescription::Integer(vec![100]),
+                    type_description: MmsTypeDescription::Structure {
+                        packed: true,
+                        components: vec![
+                            MmsTypeDescriptionComponent {
+                                component_name: Some("Name1".into()),
+                                component_type: MmsTypeSpecification::ObjectName(MmsObjectName::AaSpecific("TestDomain1".into())),
+                            },
+                            MmsTypeDescriptionComponent {
+                                component_name: Some("Name2".into()),
+                                component_type: MmsTypeSpecification::TypeDescription(MmsTypeDescription::OctetString(vec![10])),
+                            },
+                            MmsTypeDescriptionComponent {
+                                component_name: None,
+                                component_type: MmsTypeSpecification::TypeDescription(MmsTypeDescription::Array {
+                                    packed: false,
+                                    number_of_elements: vec![100],
+                                    element_type: Box::new(MmsTypeSpecification::TypeDescription(MmsTypeDescription::GeneralizedTime)),
+                                }),
+                            },
+                        ],
+                    },
                 },
             })
             .await?;

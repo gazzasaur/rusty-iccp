@@ -184,8 +184,8 @@ pub enum MmsTypeDescription {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MmsTypeDescriptionComponent {
-    component_name: String,
-    component_type: MmsTypeSpecification,
+    pub component_name: Option<String>,
+    pub component_type: MmsTypeSpecification,
 }
 
 #[derive(Debug, PartialEq, Eq)]

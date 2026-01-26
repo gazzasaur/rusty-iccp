@@ -245,15 +245,13 @@ impl MmsData {
 }
 
 impl MmsTypeSpecification {
-    pub(crate) fn serialise(&self) -> Result<BerObject<'_>, MmsError> {
+    pub(crate) fn to_ber(&self) -> Result<BerObject<'_>, MmsError> {
         Ok(match &self {
             MmsTypeSpecification::ObjectName(object_name) => {
                 let a = object_name.to_ber();
                 BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)), BerObjectContent::Sequence(vec![a]))
             }
-            MmsTypeSpecification::TypeDescription(type_description) => {
-                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(vec![type_description.to_ber()?]))
-            }
+            MmsTypeSpecification::TypeDescription(type_description) => type_description.to_ber()?,
         })
     }
 
@@ -266,22 +264,74 @@ impl MmsTypeSpecification {
     }
 }
 
+impl MmsTypeDescriptionComponent {
+    pub(crate) fn to_ber(&self) -> Result<BerObject<'_>, MmsError> {
+        Ok(BerObject::from(BerObjectContent::Sequence(
+            vec![
+                match &self.component_name {
+                    Some(component_name) => Some(BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)),
+                        BerObjectContent::VisibleString(component_name.as_str()),
+                    )),
+                    None => None,
+                },
+                Some(BerObject::from_header_and_content(
+                    Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
+                    BerObjectContent::Sequence(vec![self.component_type.to_ber()?]),
+                )),
+            ]
+            .into_iter()
+            .filter_map(|x| x)
+            .collect(),
+        )))
+    }
+}
+
 impl MmsTypeDescription {
     pub(crate) fn to_ber(&self) -> Result<BerObject<'_>, MmsError> {
         Ok(match &self {
-            MmsTypeDescription::Array { packed, number_of_elements, element_type } => todo!(),
-            MmsTypeDescription::Structure { packed, components } => todo!(),
+            // TODO Verify
+            MmsTypeDescription::Array { packed, number_of_elements, element_type } => BerObject::from_header_and_content(
+                BerObjectHeader::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
+                BerObjectContent::Sequence(vec![
+                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*packed)),
+                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Integer(number_of_elements)),
+                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)), BerObjectContent::Sequence(vec![element_type.to_ber()?])),
+                ]),
+            ),
+            MmsTypeDescription::Structure { packed, components } => BerObject::from_header_and_content(
+                BerObjectHeader::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)),
+                BerObjectContent::Sequence(vec![
+                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*packed)),
+                    BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
+                        BerObjectContent::Sequence({
+                            let mut list = vec![];
+                            for item in components {
+                                list.push(item.to_ber()?);
+                            }
+                            list
+                        }),
+                    ),
+                ]),
+            ),
             MmsTypeDescription::Boolean => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Null),
-            MmsTypeDescription::BitString(_) => todo!(),
+            MmsTypeDescription::BitString(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)), BerObjectContent::Integer(length)),
             MmsTypeDescription::Integer(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::Integer(length)),
-            MmsTypeDescription::Unsigned(_) => todo!(),
-            MmsTypeDescription::FloatingPoint { format_width, exponent_width } => todo!(),
-            MmsTypeDescription::OctetString(_) => todo!(),
-            MmsTypeDescription::VisibleString(_) => todo!(),
-            MmsTypeDescription::GeneralizedTime => todo!(),
-            MmsTypeDescription::BinaryTime(_) => todo!(),
-            MmsTypeDescription::Bcd(_) => todo!(),
-            MmsTypeDescription::ObjId => todo!(),
+            MmsTypeDescription::Unsigned(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(6), Length::Definite(0)), BerObjectContent::Integer(length)),
+            MmsTypeDescription::FloatingPoint { format_width, exponent_width } => BerObject::from_header_and_content(
+                BerObjectHeader::new(Class::ContextSpecific, true, Tag::from(7), Length::Definite(0)),
+                BerObjectContent::Sequence(vec![
+                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Integer(format_width)),
+                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Integer(exponent_width)),
+                ]),
+            ),
+            MmsTypeDescription::OctetString(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(9), Length::Definite(0)), BerObjectContent::Integer(length)),
+            MmsTypeDescription::VisibleString(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(10), Length::Definite(0)), BerObjectContent::Integer(length)),
+            MmsTypeDescription::GeneralizedTime => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(11), Length::Definite(0)), BerObjectContent::Null),
+            MmsTypeDescription::BinaryTime(value) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(12), Length::Definite(0)), BerObjectContent::Boolean(*value)),
+            MmsTypeDescription::Bcd(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(13), Length::Definite(0)), BerObjectContent::Integer(length)),
+            MmsTypeDescription::ObjId => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(15), Length::Definite(0)), BerObjectContent::Null),
             MmsTypeDescription::MmsString(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(16), Length::Definite(0)), BerObjectContent::Integer(length)),
         })
     }
