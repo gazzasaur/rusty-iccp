@@ -226,6 +226,9 @@ pub enum MmsConfirmedRequest {
         variable_list_name: MmsObjectName,
         list_of_variables: Vec<ListOfVariablesItem>,
     },
+    GetNamedVariableListAttributes {
+        object_name: MmsObjectName,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -252,6 +255,10 @@ pub enum MmsConfirmedResponse {
         type_description: MmsTypeDescription,
     },
     DefineNamedVariableList,
+    GetNamedVariableListAttributes {
+        deletable: bool,
+        list_of_variables: Vec<ListOfVariablesItem>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq)]

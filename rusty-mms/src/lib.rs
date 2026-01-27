@@ -571,6 +571,64 @@ mod tests {
             }
             _ => panic!(),
         }
+
+        mms_client_writer
+            .send(MmsMessage::ConfirmedRequest {
+                invocation_id: vec![5],
+                request: MmsConfirmedRequest::GetNamedVariableListAttributes {
+                    object_name: MmsObjectName::DomainSpecific("Want".into(), "That".into()),
+                },
+            })
+            .await?;
+        match mms_server_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedRequest { invocation_id, request }) => {
+                assert_eq!(invocation_id, vec![5]);
+                assert_eq!(
+                    request,
+                    MmsConfirmedRequest::GetNamedVariableListAttributes {
+                        object_name: MmsObjectName::DomainSpecific("Want".into(), "That".into()),
+                    }
+                );
+            }
+            _ => panic!(),
+        }
+        mms_server_writer
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: vec![5],
+                response: MmsConfirmedResponse::GetNamedVariableListAttributes {
+                    deletable: true,
+                    list_of_variables: vec![
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Yup".into())),
+                        },
+                        ListOfVariablesItem {
+                            variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Nope".into())),
+                        },
+                    ],
+                },
+            })
+            .await?;
+        match mms_client_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id, response }) => {
+                assert_eq!(invocation_id, vec![5]);
+                assert_eq!(
+                    response,
+                    MmsConfirmedResponse::GetNamedVariableListAttributes {
+                        deletable: true,
+                        list_of_variables: vec![
+                            ListOfVariablesItem {
+                                variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Yup".into())),
+                            },
+                            ListOfVariablesItem {
+                                variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Nope".into())),
+                            },
+                        ],
+                    }
+                );
+            }
+            _ => panic!(),
+        }
+
         sleep(Duration::from_millis(1000)).await;
 
         Ok(())

@@ -5,10 +5,7 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::{
-    MmsConfirmedRequest, MmsError, MmsObjectName, error::to_mms_error,
-    parsers::process_constructed_data,
-};
+use crate::{MmsConfirmedRequest, MmsError, MmsObjectName, error::to_mms_error, parsers::process_constructed_data};
 
 pub(crate) fn parse_get_variable_access_attributes_reqeust(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
     let mut object_name = None;
