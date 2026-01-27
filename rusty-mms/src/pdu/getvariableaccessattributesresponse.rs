@@ -7,23 +7,32 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::{MmsConfirmedRequest, MmsError, MmsObjectName, MmsTypeDescription, error::to_mms_error, parsers::process_constructed_data};
+use crate::{
+    MmsConfirmedResponse, MmsError, MmsTypeDescription,
+    error::to_mms_error,
+    parsers::{process_constructed_data, process_mms_boolean_content},
+};
 
-pub(crate) fn parse_get_variable_access_attributes_response(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
-    let mut object_name = None;
+pub(crate) fn parse_get_variable_access_attributes_response(payload: &Any<'_>) -> Result<MmsConfirmedResponse, MmsError> {
+    let mut deletable = None;
+    let mut type_description = None;
 
-    for item in process_constructed_data(payload.data).map_err(to_mms_error("Failed to parse MMS Get VariableAccess Attributes PDU"))? {
+    for item in process_constructed_data(payload.data).map_err(to_mms_error("Failed to parse MMS Get Variable Access Attributes PDU"))? {
         match item.header.raw_tag() {
-            Some([160]) => {
-                object_name = Some(MmsObjectName::parse("Get VariableAccess Attributes Request PDU - Object Class", &item.data)?);
+            Some([128]) => {
+                deletable = Some(process_mms_boolean_content(&item, "Get Variable Access Attributes Response PDU - Deletable Flag")?);
             }
-            x => warn!("Unsupported tag in MMS Get VariableAccess Attributes Request PDU: {:?}", x),
+            Some([162]) => {
+                type_description = Some(MmsTypeDescription::parse("Get Variable Access Attributes Response PDU - Type Description", &item)?);
+            }
+            x => warn!("Unsupported tag in MMS Get Variable Access Attributes Response PDU: {:?}", x),
         }
     }
 
-    let object_name = object_name.ok_or_else(|| MmsError::ProtocolError("No Object Name on Get VariableAccess Attributes Request PDU".into()))?;
+    let deletable = deletable.ok_or_else(|| MmsError::ProtocolError("No Deletable Flag on Get Variable Access Attributes Response PDU".into()))?;
+    let type_description = type_description.ok_or_else(|| MmsError::ProtocolError("No Type Description on Get Variable Access Attributes Response PDU".into()))?;
 
-    Ok(MmsConfirmedRequest::GetVariableAccessAttributes { object_name })
+    Ok(MmsConfirmedResponse::GetVariableAccessAttributes { deletable, type_description })
 }
 
 pub(crate) fn get_variable_access_attributes_response_to_ber<'a>(deletable: bool, type_description: &'a MmsTypeDescription) -> Result<BerObject<'a>, MmsError> {

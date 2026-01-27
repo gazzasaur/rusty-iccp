@@ -157,12 +157,12 @@ pub enum MmsTypeSpecification {
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsTypeDescription {
     Array {
-        packed: bool,
+        packed: Option<bool>,
         number_of_elements: Vec<u8>, /* u32 */
         element_type: Box<MmsTypeSpecification>,
     },
     Structure {
-        packed: bool,
+        packed: Option<bool>,
         components: Vec<MmsTypeDescriptionComponent>,
     },
     Boolean,
@@ -221,6 +221,10 @@ pub enum MmsConfirmedRequest {
     },
     GetVariableAccessAttributes {
         object_name: MmsObjectName,
+    },
+    DefineNamedVariableList {
+        variable_list_name: MmsObjectName,
+        list_of_variables: Vec<ListOfVariablesItem>,
     },
 }
 

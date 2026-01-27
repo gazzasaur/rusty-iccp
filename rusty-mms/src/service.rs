@@ -1,15 +1,15 @@
 use std::marker::PhantomData;
 
 use der_parser::Oid;
-use der_parser::asn1_rs::Any;
+use der_parser::asn1_rs::{Any, ToDer};
 use der_parser::ber::compat::BerObjectHeader;
-use der_parser::ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any};
+use der_parser::ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any, parse_ber_content};
 use der_parser::der::{Class, Header, Tag};
 use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
 use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 use tracing::warn;
 
-use crate::parsers::{process_constructed_data, process_mms_boolean_content, process_mms_string};
+use crate::parsers::{process_constructed_data, process_integer_content, process_mms_boolean_content, process_mms_string};
 use crate::pdu::common::expect_value;
 use crate::pdu::confirmedrequest::{confirmed_request_to_ber, parse_confirmed_request};
 use crate::pdu::confirmedresponse::{confirmed_response_to_ber, parse_confirmed_response};
@@ -100,15 +100,12 @@ impl ListOfVariablesItem {
         BerObject::from_seq(vec![self.variable_specification.to_ber()])
     }
 
-    pub(crate) fn parse(item: &Any<'_>, error_message: &str) -> Result<ListOfVariablesItem, MmsError> {
-        let mut variable_specification = None;
-
-        for item in process_constructed_data(item.data).map_err(to_mms_error(error_message))? {
-            match item.header.raw_tag() {
-                Some([160]) => variable_specification = Some(VariableSpecification::parse(item.data)?),
-                x => warn!("Ignoring unknown variable specification: {:?}", x),
-            }
-        }
+    pub(crate) fn parse(data: &Any<'_>, error_message: &str) -> Result<ListOfVariablesItem, MmsError> {
+        let items = process_constructed_data(data.data).map_err(to_mms_error(error_message))?;
+        let variable_specification = match items.iter().next() {
+            Some(item) => Some(VariableSpecification::parse(&item.to_der_vec().map_err(to_mms_error("Failed to parse ListOfVariablesItem"))?)?),
+            None => None,
+        };
         let variable_specification = expect_value(error_message, "Variable Specification", variable_specification)?;
         Ok(ListOfVariablesItem { variable_specification })
     }
@@ -125,9 +122,7 @@ impl VariableSpecification {
     pub(crate) fn parse(data: &[u8]) -> Result<VariableSpecification, MmsError> {
         let (_, variable_spec_ber) = parse_ber_any(data).map_err(to_mms_error("Failed to parse Variable Specification"))?;
         match variable_spec_ber.header.raw_tag() {
-            Some([128]) => Ok(VariableSpecification::Name(MmsObjectName::parse("", data)?)),
-            Some([161]) => Ok(VariableSpecification::Name(MmsObjectName::parse("", data)?)),
-            Some([130]) => Ok(VariableSpecification::Name(MmsObjectName::parse("", data)?)),
+            Some([160]) => Ok(VariableSpecification::Name(MmsObjectName::parse("Failed to parse Variable Specification", variable_spec_ber.data)?)),
             Some([132]) => Ok(VariableSpecification::Invalidated),
             x => Err(MmsError::ProtocolError(format!("Unknown Variable Specification: {:?}", x))),
         }
@@ -256,9 +251,10 @@ impl MmsTypeSpecification {
     }
 
     pub(crate) fn parse(pdu: &str, data: &Any<'_>) -> Result<MmsTypeSpecification, MmsError> {
-        match data.header.raw_tag() {
-            Some([160]) => Ok(MmsTypeSpecification::ObjectName(MmsObjectName::parse(pdu, data.data)?)),
-            Some([161]) => Ok(MmsTypeSpecification::TypeDescription(MmsTypeDescription::parse(pdu, data)?)),
+        let (_, item) = parse_ber_any(data.data).map_err(to_mms_error("Failed to parse MmsTypeSpecification"))?;
+        match item.header.raw_tag() {
+            Some([160]) => Ok(MmsTypeSpecification::ObjectName(MmsObjectName::parse(pdu, item.data)?)),
+            Some(_) => Ok(MmsTypeSpecification::TypeDescription(MmsTypeDescription::parse(pdu, data)?)),
             x => Err(MmsError::ProtocolError(format!("Unsupported MmsTypeSpecification {:?} on {}", x, pdu))),
         }
     }
@@ -285,35 +281,73 @@ impl MmsTypeDescriptionComponent {
             .collect(),
         )))
     }
+
+    pub(crate) fn parse(pdu: &str, data: &Any<'_>) -> Result<MmsTypeDescriptionComponent, MmsError> {
+        let mut component_name = None;
+        let mut component_type = None;
+
+        for item in process_constructed_data(data.data).map_err(to_mms_error("Failed to parse Mms Type Description Component Specification Container"))? {
+            match item.header.raw_tag() {
+                Some([128]) => component_name = Some(process_mms_string(&item, "Failed to parse Mms Type Description Component Name")?),
+                Some([161]) => component_type = Some(MmsTypeSpecification::parse("Failed to parse Mms Type Description Component Specification", &item)?),
+                x => return Err(MmsError::ProtocolError(format!("Unsupported MmsTypeDescriptionComponent {:?} on {}", x, pdu))),
+            };
+        }
+
+        let component_type = component_type.ok_or_else(|| MmsError::ProtocolError("Failed to parse Mms Type Description Component - No Component Type found".into()))?;
+
+        Ok(MmsTypeDescriptionComponent { component_name, component_type })
+    }
 }
 
 impl MmsTypeDescription {
     pub(crate) fn to_ber(&self) -> Result<BerObject<'_>, MmsError> {
         Ok(match &self {
-            // TODO Verify
             MmsTypeDescription::Array { packed, number_of_elements, element_type } => BerObject::from_header_and_content(
                 BerObjectHeader::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
-                BerObjectContent::Sequence(vec![
-                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*packed)),
-                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Integer(number_of_elements)),
-                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)), BerObjectContent::Sequence(vec![element_type.to_ber()?])),
-                ]),
+                BerObjectContent::Sequence(
+                    vec![
+                        match packed {
+                            Some(x) => Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*x))),
+                            None => None,
+                        },
+                        Some(BerObject::from_header_and_content(
+                            Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)),
+                            BerObjectContent::Integer(number_of_elements),
+                        )),
+                        Some(BerObject::from_header_and_content(
+                            Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)),
+                            BerObjectContent::Sequence(vec![element_type.to_ber()?]),
+                        )),
+                    ]
+                    .into_iter()
+                    .filter_map(|x| x)
+                    .collect(),
+                ),
             ),
             MmsTypeDescription::Structure { packed, components } => BerObject::from_header_and_content(
                 BerObjectHeader::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)),
-                BerObjectContent::Sequence(vec![
-                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*packed)),
-                    BerObject::from_header_and_content(
-                        Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
-                        BerObjectContent::Sequence({
-                            let mut list = vec![];
-                            for item in components {
-                                list.push(item.to_ber()?);
-                            }
-                            list
-                        }),
-                    ),
-                ]),
+                BerObjectContent::Sequence(
+                    vec![
+                        match packed {
+                            Some(x) => Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*x))),
+                            None => None,
+                        },
+                        Some(BerObject::from_header_and_content(
+                            Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
+                            BerObjectContent::Sequence({
+                                let mut list = vec![];
+                                for item in components {
+                                    list.push(item.to_ber()?);
+                                }
+                                list
+                            }),
+                        )),
+                    ]
+                    .into_iter()
+                    .filter_map(|x| x)
+                    .collect(),
+                ),
             ),
             MmsTypeDescription::Boolean => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Null),
             MmsTypeDescription::BitString(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)), BerObjectContent::Integer(length)),
@@ -321,10 +355,7 @@ impl MmsTypeDescription {
             MmsTypeDescription::Unsigned(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(6), Length::Definite(0)), BerObjectContent::Integer(length)),
             MmsTypeDescription::FloatingPoint { format_width, exponent_width } => BerObject::from_header_and_content(
                 BerObjectHeader::new(Class::ContextSpecific, true, Tag::from(7), Length::Definite(0)),
-                BerObjectContent::Sequence(vec![
-                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Integer(format_width)),
-                    BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Integer(exponent_width)),
-                ]),
+                BerObjectContent::Sequence(vec![BerObject::from(BerObjectContent::Integer(format_width)), BerObject::from(BerObjectContent::Integer(exponent_width))]),
             ),
             MmsTypeDescription::OctetString(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(9), Length::Definite(0)), BerObjectContent::Integer(length)),
             MmsTypeDescription::VisibleString(length) => BerObject::from_header_and_content(BerObjectHeader::new(Class::ContextSpecific, false, Tag::from(10), Length::Definite(0)), BerObjectContent::Integer(length)),
@@ -337,10 +368,63 @@ impl MmsTypeDescription {
     }
 
     pub(crate) fn parse(pdu: &str, data: &Any<'_>) -> Result<MmsTypeDescription, MmsError> {
-        match data.header.raw_tag() {
-            // Some([144]) => Ok(MmsData::MmsString(String::from_utf8(data.data.to_owned()).map_err(to_mms_error("Failed to parse MMS String"))?)),
-            x => Err(MmsError::ProtocolError(format!("Unsupported MmsTypeDescription {:?} on {}", x, pdu))),
-        }
+        let (_, description) = parse_ber_any(data.data).map_err(to_mms_error("Failed to parse Mms Type Description"))?;
+
+        Ok(match description.header.raw_tag() {
+            Some([161]) => {
+                let mut packed = None;
+                let mut number_of_elements = None;
+                let mut type_specification = None;
+
+                for npm_object in process_constructed_data(description.data).map_err(to_mms_error("Failed to parse Mms Type Description Structure".into()))? {
+                    match npm_object.header.raw_tag() {
+                        Some(&[128]) => packed = Some(process_mms_boolean_content(&npm_object, "Failed to parse Mms Type Description Array Packed Flag")?),
+                        Some(&[129]) => number_of_elements = Some(process_integer_content(&npm_object, "Failed to parse Mms Type Description Array Number Of Elements")?),
+                        Some(&[162]) => type_specification = Some(MmsTypeSpecification::parse(pdu, &npm_object)?),
+                        x => warn!("Unknown attribute on Mms Type Description Structure: {:?}", x),
+                    }
+                }
+
+                let number_of_elements = number_of_elements.ok_or_else(|| MmsError::ProtocolError("Failed to parse Mms Type Description Array - Number of Elements not found".into()))?;
+                let type_specification = type_specification.ok_or_else(|| MmsError::ProtocolError("Failed to parse Mms Type Description Array - Type Specification not found".into()))?;
+
+                MmsTypeDescription::Array {
+                    packed,
+                    number_of_elements,
+                    element_type: Box::new(type_specification),
+                }
+            }
+            Some([162]) => {
+                let mut packed = None;
+                let mut type_descriptions = None;
+
+                for npm_object in process_constructed_data(description.data).map_err(to_mms_error("Failed to parse Mms Type Description Structure".into()))? {
+                    match npm_object.header.raw_tag() {
+                        Some(&[128]) => packed = Some(process_mms_boolean_content(&npm_object, "Failed to parse Mms Type Description Structure Packed Flag")?),
+                        Some(&[161]) => {
+                            type_descriptions = Some({
+                                let mut list = vec![];
+                                for type_descriptions_npm_object in process_constructed_data(npm_object.data).map_err(to_mms_error("Failed to parse Mms Type Description Structure Items".into()))? {
+                                    list.push(MmsTypeDescriptionComponent::parse(pdu, &type_descriptions_npm_object)?);
+                                }
+                                list
+                            })
+                        }
+                        x => warn!("Unknown attribute on Mms Type Description Structure: {:?}", x),
+                    }
+                }
+
+                let type_descriptions = type_descriptions.ok_or_else(|| MmsError::ProtocolError("Failed to parse Mms Type Description Structure - Type Descriptions not found".into()))?;
+
+                MmsTypeDescription::Structure { packed, components: type_descriptions }
+            }
+            Some([137]) => {
+                let value = process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?;
+                MmsTypeDescription::OctetString(value)
+            }
+            Some([139]) => MmsTypeDescription::GeneralizedTime,
+            x => return Err(MmsError::ProtocolError(format!("Unsupported MmsTypeDescription {:?} on {}", x, pdu))),
+        })
     }
 }
 

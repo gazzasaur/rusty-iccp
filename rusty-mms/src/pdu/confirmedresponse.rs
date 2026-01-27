@@ -6,7 +6,7 @@ use der_parser::{
 use tracing::warn;
 
 use crate::pdu::{
-    getnamelistrequest::parse_get_name_list_request, getnamelistresponse::{get_name_list_response_to_ber, parse_get_name_list_response}, getvariableaccessattributesresponse::get_variable_access_attributes_response_to_ber, identifyresponse::{identify_response_to_ber, parse_identify_response}, writeresponse::{parse_write_response, write_response_to_ber}
+    getnamelistrequest::parse_get_name_list_request, getnamelistresponse::{get_name_list_response_to_ber, parse_get_name_list_response}, getvariableaccessattributesresponse::{get_variable_access_attributes_response_to_ber, parse_get_variable_access_attributes_response}, identifyresponse::{identify_response_to_ber, parse_identify_response}, writeresponse::{parse_write_response, write_response_to_ber}
 };
 use crate::{
     MmsConfirmedResponse, MmsError, MmsMessage,
@@ -26,6 +26,7 @@ pub(crate) fn parse_confirmed_response(payload: Any<'_>) -> Result<MmsMessage, M
             Some(&[162]) => confirmed_payload = Some(parse_identify_response(&item)?),
             Some(&[164]) => confirmed_payload = Some(parse_read_response(&item)?),
             Some(&[165]) => confirmed_payload = Some(parse_write_response(&item)?),
+            Some(&[166]) => confirmed_payload = Some(parse_get_variable_access_attributes_response(&item)?),
             // TODO Moar!!!
             x => warn!("Failed to parse unknown MMS Confirmed Response Item: {:?}", x),
         }
