@@ -639,6 +639,20 @@ mod tests {
                 },
             })
             .await?;
+        match mms_server_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedRequest { invocation_id, request }) => {
+                assert_eq!(invocation_id, vec![5]);
+                assert_eq!(
+                    request,
+                    MmsConfirmedRequest::DeleteNamedVariableList {
+                        scope_of_delete: Some(MmsScope::Specific),
+                        list_of_variable_list_names: Some(vec![MmsObjectName::VmdSpecific("Hello".into()), MmsObjectName::VmdSpecific("There".into())]),
+                        domain_name: Some("Domain".into()),
+                    }
+                );
+            }
+            _ => panic!(),
+        }
 
         sleep(Duration::from_millis(1000)).await;
 

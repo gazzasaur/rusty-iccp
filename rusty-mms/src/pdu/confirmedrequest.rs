@@ -11,7 +11,7 @@ use crate::{
     parsers::process_constructed_data,
     pdu::{
         definenamedvariablelistrequest::{define_named_variable_list_reqeust_to_ber, parse_define_named_variable_list_reqeust},
-        deletenamedvariablelistrequest::delete_named_variable_list_reqeust_to_ber,
+        deletenamedvariablelistrequest::{delete_named_variable_list_reqeust_to_ber, parse_delete_named_variable_list_reqeust},
         getnamedvariablelistattributerequest::{get_named_variable_list_attributes_reqeust_to_ber, parse_get_named_variable_list_attributes_reqeust},
         getnamelistrequest::{get_name_list_request_to_ber, parse_get_name_list_request},
         getvariableaccessattributesrequest::{get_variable_access_attributes_reqeust_to_ber, parse_get_variable_access_attributes_reqeust},
@@ -35,6 +35,7 @@ pub(crate) fn parse_confirmed_request(payload: Any<'_>) -> Result<MmsMessage, Mm
             Some(&[166]) => confirmed_payload = Some(parse_get_variable_access_attributes_reqeust(&item)?),
             Some(&[171]) => confirmed_payload = Some(parse_define_named_variable_list_reqeust(&item)?),
             Some(&[172]) => confirmed_payload = Some(parse_get_named_variable_list_attributes_reqeust(&item)?),
+            Some(&[173]) => confirmed_payload = Some(parse_delete_named_variable_list_reqeust(&item)?),
             // TODO Moar!!!
             x => warn!("Failed to parse unknown MMS Confirmed Request Item: {:?}", x),
         }
