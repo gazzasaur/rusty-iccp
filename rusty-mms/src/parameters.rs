@@ -2,13 +2,13 @@ use std::marker::PhantomData;
 
 use der_parser::{
     asn1_rs::Any,
-    ber::{BerObject, BerObjectContent, BitStringObject, Length},
+    ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_content},
     der::{Class, Header, Tag},
 };
 use tracing::warn;
 
 use crate::{
-    MmsBasicObjectClass, MmsError, MmsObjectClass, MmsObjectScope,
+    MmsBasicObjectClass, MmsError, MmsObjectClass, MmsObjectScope, MmsScope,
     error::to_mms_error,
     parsers::{process_constructed_data, process_mms_string},
 };
@@ -261,6 +261,29 @@ impl MmsObjectScope {
             MmsObjectScope::Vmd => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Null),
             MmsObjectScope::Domain(domain_name) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::VisibleString(domain_name.as_str())),
             MmsObjectScope::Aa => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::Null),
+        }
+    }
+}
+
+impl MmsScope {
+    pub(crate) fn parse(value: &Any<'_>) -> Result<MmsScope, MmsError> {
+        let (_, value) = parse_ber_content(Tag::Integer)(value.data, &value.header, value.data.len()).map_err(to_mms_error("Failed to parse MmsScope"))?;
+
+        match value {
+            BerObjectContent::Integer(&[0]) => Ok(MmsScope::Specific),
+            BerObjectContent::Integer(&[1]) => Ok(MmsScope::AaSpecific),
+            BerObjectContent::Integer(&[2]) => Ok(MmsScope::Domain),
+            BerObjectContent::Integer(&[3]) => Ok(MmsScope::Vmd),
+            x => Err(MmsError::ProtocolError(format!("Unknown MmsScope: {:?}", x))),
+        }
+    }
+
+    pub(crate) fn to_ber(&self, header: Header<'static>) -> BerObject<'static> {
+        match self {
+            MmsScope::Specific => BerObject::from_header_and_content(header, BerObjectContent::Integer(&[0])),
+            MmsScope::AaSpecific => BerObject::from_header_and_content(header, BerObjectContent::Integer(&[1])),
+            MmsScope::Domain => BerObject::from_header_and_content(header, BerObjectContent::Integer(&[2])),
+            MmsScope::Vmd => BerObject::from_header_and_content(header, BerObjectContent::Integer(&[3])),
         }
     }
 }

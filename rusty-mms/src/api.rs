@@ -82,6 +82,14 @@ pub enum MmsBasicObjectClass {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum MmsScope {
+    Specific,
+    AaSpecific,
+    Domain,
+    Vmd,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum MmsVariableAccessSpecification {
     ListOfVariables(Vec<ListOfVariablesItem>),
     VariableListName(MmsObjectName),
@@ -228,6 +236,11 @@ pub enum MmsConfirmedRequest {
     },
     GetNamedVariableListAttributes {
         object_name: MmsObjectName,
+    },
+    DeleteNamedVariableList {
+        scope_of_delete: Option<MmsScope>, // Default: Specific
+        list_of_variable_list_names: Option<Vec<MmsObjectName>>,
+        domain_name: Option<String>,
     },
 }
 
