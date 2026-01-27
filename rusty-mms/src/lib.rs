@@ -558,7 +558,19 @@ mod tests {
             }
             _ => panic!(),
         }
-
+        mms_server_writer
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: vec![5],
+                response: MmsConfirmedResponse::DefineNamedVariableList,
+            })
+            .await?;
+        match mms_client_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id, response }) => {
+                assert_eq!(invocation_id, vec![5]);
+                assert_eq!(response, MmsConfirmedResponse::DefineNamedVariableList,);
+            }
+            _ => panic!(),
+        }
         sleep(Duration::from_millis(1000)).await;
 
         Ok(())

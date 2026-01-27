@@ -251,6 +251,7 @@ pub enum MmsConfirmedResponse {
         deletable: bool,
         type_description: MmsTypeDescription,
     },
+    DefineNamedVariableList,
 }
 
 #[derive(Debug, PartialEq, Eq)]

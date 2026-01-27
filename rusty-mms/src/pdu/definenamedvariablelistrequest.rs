@@ -25,7 +25,6 @@ pub(crate) fn parse_define_named_variable_list_reqeust(payload: &Any<'_>) -> Res
             .to_der_vec()
             .map_err(to_mms_error("Failed to parse MMS DefineNamedVariableList PDU - Failed to parse Variable Specification"))?;
         let (_, unwrapped_variable_specifications_item) = parse_ber_any(&variable_specifications_item_data).map_err(to_mms_error("Failed to parse MMS DefineNamedVariableList PDU - Failed to parse List Of Variables Item Sequence"))?;
-        warn!("=========== {:?}", unwrapped_variable_specifications_item);
         variable_specifications.push(ListOfVariablesItem::parse(
             &unwrapped_variable_specifications_item,
             "Failed to parse MMS DefineNamedVariableList PDU - Failed to parse List Of Variables Item",

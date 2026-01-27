@@ -16,3 +16,4 @@ pub(crate) mod getnamelistresponse;
 pub(crate) mod getvariableaccessattributesrequest;
 pub(crate) mod getvariableaccessattributesresponse;
 pub(crate) mod definenamedvariablelistrequest;
+pub(crate) mod definenamedvariablelistresponse;
