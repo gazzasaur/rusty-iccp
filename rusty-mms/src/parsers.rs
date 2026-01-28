@@ -26,12 +26,21 @@ pub(crate) fn process_constructed_data<'a>(data: &'a [u8]) -> Result<Vec<Any<'a>
     Ok(results)
 }
 
-// Pretty much visible string.
+// Pretty much visible string as we are not supporting the MMS char feature.
 pub(crate) fn process_mms_string<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<String, MmsError> {
     let (_, inner_object) = parse_ber_content(Tag::VisibleString)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
 
     match inner_object {
         BerObjectContent::VisibleString(value) => Ok(value.into()),
+        _ => Err(MmsError::ProtocolError(error_message.into())),
+    }
+}
+
+pub(crate) fn process_mms_bitstring_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<MmsData, MmsError> {
+    let (_, inner_object) = parse_ber_content(Tag::BitString)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
+
+    match inner_object {
+        BerObjectContent::BitString(padding, data) => Ok(MmsData::BitString(padding, data.data.to_vec())),
         _ => Err(MmsError::ProtocolError(error_message.into())),
     }
 }

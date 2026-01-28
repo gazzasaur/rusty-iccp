@@ -9,7 +9,7 @@ use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
 use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 use tracing::warn;
 
-use crate::parsers::{process_constructed_data, process_integer_content, process_mms_boolean_content, process_mms_string};
+use crate::parsers::{process_constructed_data, process_integer_content, process_mms_bitstring_content, process_mms_boolean_content, process_mms_string};
 use crate::pdu::common::expect_value;
 use crate::pdu::confirmedrequest::{confirmed_request_to_ber, parse_confirmed_request};
 use crate::pdu::confirmedresponse::{confirmed_response_to_ber, parse_confirmed_response};
@@ -199,8 +199,8 @@ impl MmsData {
             MmsData::Integer(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
             MmsData::Unsigned(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(6), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
             MmsData::FloatingPoint(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(7), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
-            MmsData::OctetString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(8), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
-            MmsData::VisibleString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
+            MmsData::OctetString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(9), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
+            MmsData::VisibleString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(10), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
             MmsData::GeneralizedTime(_instant) => todo!(),
             MmsData::BinaryTime(_items) => todo!(),
             MmsData::Bcd(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(13), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
@@ -231,8 +231,12 @@ impl MmsData {
                 Ok(MmsData::Structure(items))
             }
             Some([131]) => Ok(MmsData::Boolean(process_mms_boolean_content(data, format!("Failed to parse Boolean on {}", pdu).as_str())?)),
+            Some([132]) => process_mms_bitstring_content(data, format!("Failed to parse BitString on {}", pdu).as_str()),
             Some([133]) => Ok(MmsData::Integer(data.data.to_owned())),
             Some([134]) => Ok(MmsData::Unsigned(data.data.to_owned())),
+            Some([135]) => Ok(MmsData::FloatingPoint(data.data.to_owned())),
+            Some([137]) => Ok(MmsData::OctetString(data.data.to_owned())),
+            Some([138]) => Ok(MmsData::VisibleString(String::from_utf8(data.data.to_vec()).map_err(to_mms_error("Illegal characters found in MMS Data Visible String"))?)),
             Some([144]) => Ok(MmsData::MmsString(String::from_utf8(data.data.to_owned()).map_err(to_mms_error("Failed to parse MMS String"))?)),
             x => Err(MmsError::ProtocolError(format!("Unsupported MMS Data type {:?} on {}", x, pdu))),
         }
