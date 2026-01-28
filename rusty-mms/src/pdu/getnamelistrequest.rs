@@ -1,14 +1,13 @@
 use der_parser::{
-    asn1_rs::{Any, ToDer},
-    ber::{BerObject, BerObjectContent, Length, parse_ber_any, parse_ber_content},
+    asn1_rs::Any,
+    ber::{BerObject, BerObjectContent, Length, parse_ber_any},
     der::{Class, Header, Tag},
 };
 use tracing::warn;
 
 use crate::{
-    MmsConfirmedRequest, MmsData, MmsError, MmsObjectClass, MmsObjectScope, MmsVariableAccessSpecification,
-    error::to_mms_error,
-    parsers::{process_constructed_data, process_mms_boolean_content, process_mms_string},
+    MmsConfirmedRequest, MmsError, MmsObjectClass, MmsObjectScope, error::to_mms_error,
+    parsers::{process_constructed_data, process_mms_string},
 };
 
 pub(crate) fn parse_get_name_list_request(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {

@@ -5,7 +5,7 @@ use der_parser::{
 };
 use tracing::warn;
 
-use crate::{ListOfVariablesItem, MmsConfirmedRequest, MmsError, MmsObjectName, MmsScope, error::to_mms_error, parsers::{process_constructed_data, process_integer_content, process_mms_string}};
+use crate::{MmsConfirmedRequest, MmsError, MmsObjectName, MmsScope, error::to_mms_error, parsers::{process_constructed_data, process_mms_string}};
 
 pub(crate) fn parse_delete_named_variable_list_reqeust(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
     let mut scope_of_delete = None;

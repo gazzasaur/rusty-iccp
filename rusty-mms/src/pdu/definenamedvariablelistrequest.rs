@@ -3,9 +3,8 @@ use der_parser::{
     ber::{BerObject, BerObjectContent, Length, parse_ber_any},
     der::{Class, Header, Tag},
 };
-use tracing::warn;
 
-use crate::{ListOfVariablesItem, MmsConfirmedRequest, MmsError, MmsObjectName, VariableSpecification, error::to_mms_error, parsers::process_constructed_data};
+use crate::{ListOfVariablesItem, MmsConfirmedRequest, MmsError, MmsObjectName, error::to_mms_error, parsers::process_constructed_data};
 
 pub(crate) fn parse_define_named_variable_list_reqeust(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
     // Order Matters Here

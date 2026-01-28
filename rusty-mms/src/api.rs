@@ -272,6 +272,10 @@ pub enum MmsConfirmedResponse {
         deletable: bool,
         list_of_variables: Vec<ListOfVariablesItem>,
     },
+    DeleteNamedVariableList {
+        number_matched: Vec<u8>,
+        number_deleted: Vec<u8>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq)]

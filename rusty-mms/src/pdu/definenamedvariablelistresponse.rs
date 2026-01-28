@@ -1,13 +1,12 @@
 use der_parser::{
-    asn1_rs::{Any, ToDer},
-    ber::{BerObject, BerObjectContent, Length, parse_ber_any},
+    asn1_rs::Any,
+    ber::{BerObject, BerObjectContent, Length},
     der::{Class, Header, Tag},
 };
-use tracing::warn;
 
-use crate::{ListOfVariablesItem, MmsConfirmedRequest, MmsConfirmedResponse, MmsError, MmsObjectName, VariableSpecification, error::to_mms_error, parsers::process_constructed_data};
+use crate::{MmsConfirmedResponse, MmsError};
 
-pub(crate) fn parse_define_named_variable_list_response(payload: &Any<'_>) -> Result<MmsConfirmedResponse, MmsError> {
+pub(crate) fn parse_define_named_variable_list_response(_: &Any<'_>) -> Result<MmsConfirmedResponse, MmsError> {
     // This is a Null payload. We'll be super loose and just not bother parsing anything out of it.
     Ok(MmsConfirmedResponse::DefineNamedVariableList)
 }

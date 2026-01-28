@@ -6,13 +6,7 @@ use der_parser::{
 use tracing::warn;
 
 use crate::pdu::{
-    definenamedvariablelistresponse::{define_named_variable_list_response_to_ber, parse_define_named_variable_list_response},
-    getnamedvariablelistattributesresponse::{get_named_variable_list_attributes_response_to_ber, parse_get_named_variable_list_attributes_response},
-    getnamelistrequest::parse_get_name_list_request,
-    getnamelistresponse::{get_name_list_response_to_ber, parse_get_name_list_response},
-    getvariableaccessattributesresponse::{get_variable_access_attributes_response_to_ber, parse_get_variable_access_attributes_response},
-    identifyresponse::{identify_response_to_ber, parse_identify_response},
-    writeresponse::{parse_write_response, write_response_to_ber},
+    definenamedvariablelistresponse::{define_named_variable_list_response_to_ber, parse_define_named_variable_list_response}, deletenamedvariablelistresponse::{delete_named_variable_list_response_to_ber, parse_delete_named_variable_list_response}, getnamedvariablelistattributesresponse::{get_named_variable_list_attributes_response_to_ber, parse_get_named_variable_list_attributes_response}, getnamelistresponse::{get_name_list_response_to_ber, parse_get_name_list_response}, getvariableaccessattributesresponse::{get_variable_access_attributes_response_to_ber, parse_get_variable_access_attributes_response}, identifyresponse::{identify_response_to_ber, parse_identify_response}, writeresponse::{parse_write_response, write_response_to_ber}
 };
 use crate::{
     MmsConfirmedResponse, MmsError, MmsMessage,
@@ -35,7 +29,8 @@ pub(crate) fn parse_confirmed_response(payload: Any<'_>) -> Result<MmsMessage, M
             Some(&[166]) => confirmed_payload = Some(parse_get_variable_access_attributes_response(&item)?),
             Some(&[139]) => confirmed_payload = Some(parse_define_named_variable_list_response(&item)?),
             Some(&[172]) => confirmed_payload = Some(parse_get_named_variable_list_attributes_response(&item)?),
-            // TODO Moar!!!
+            Some(&[173]) => confirmed_payload = Some(parse_delete_named_variable_list_response(&item)?),
+            // TODO Send an error if the message is not known
             x => warn!("Failed to parse unknown MMS Confirmed Response Item: {:?}", x),
         }
     }
@@ -67,6 +62,7 @@ pub(crate) fn confirmed_response_to_ber<'a>(invocation_id: &'a [u8], payload: &'
                 MmsConfirmedResponse::GetVariableAccessAttributes { deletable, type_description } => get_variable_access_attributes_response_to_ber(*deletable, type_description)?,
                 MmsConfirmedResponse::DefineNamedVariableList => define_named_variable_list_response_to_ber()?,
                 MmsConfirmedResponse::GetNamedVariableListAttributes { deletable, list_of_variables } => get_named_variable_list_attributes_response_to_ber(*deletable, list_of_variables)?,
+                MmsConfirmedResponse::DeleteNamedVariableList { number_matched, number_deleted } => delete_named_variable_list_response_to_ber(number_matched, number_deleted)?,
             },
         ]),
     ))

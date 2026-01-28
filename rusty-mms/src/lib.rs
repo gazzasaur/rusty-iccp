@@ -653,6 +653,28 @@ mod tests {
             }
             _ => panic!(),
         }
+        mms_server_writer
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: vec![5],
+                response: MmsConfirmedResponse::DeleteNamedVariableList {
+                    number_matched: vec![10],
+                    number_deleted: vec![6],
+                },
+            })
+            .await?;
+        match mms_client_reader.recv().await? {
+            MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id, response }) => {
+                assert_eq!(invocation_id, vec![5]);
+                assert_eq!(
+                    response,
+                    MmsConfirmedResponse::DeleteNamedVariableList {
+                        number_matched: vec![10],
+                        number_deleted: vec![6],
+                    }
+                );
+            }
+            _ => panic!(),
+        }
 
         sleep(Duration::from_millis(1000)).await;
 

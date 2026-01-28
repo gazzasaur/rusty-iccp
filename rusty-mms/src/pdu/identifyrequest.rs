@@ -6,7 +6,7 @@ use der_parser::{
 
 use crate::{MmsConfirmedRequest, MmsError};
 
-pub(crate) fn parse_identify_request(payload: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
+pub(crate) fn parse_identify_request(_: &Any<'_>) -> Result<MmsConfirmedRequest, MmsError> {
     Ok(MmsConfirmedRequest::Identify)
 }
 

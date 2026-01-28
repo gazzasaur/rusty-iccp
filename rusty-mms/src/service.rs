@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use der_parser::Oid;
 use der_parser::asn1_rs::{Any, ToDer};
 use der_parser::ber::compat::BerObjectHeader;
-use der_parser::ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any, parse_ber_content};
+use der_parser::ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any};
 use der_parser::der::{Class, Header, Tag};
 use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
 use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
@@ -54,7 +54,7 @@ impl MmsObjectName {
                 Ok(MmsObjectName::DomainSpecific(process_mms_string(domain, &error_message)?, process_mms_string(name, &error_message)?))
             }
             Some([130]) => Ok(MmsObjectName::AaSpecific(process_mms_string(&npm_object, error_message.as_str())?)),
-            x => Err(MmsError::ProtocolError(error_message)),
+            x => Err(MmsError::ProtocolError(format!("{}: {:?}", error_message, x))),
         }
     }
 }
@@ -201,8 +201,8 @@ impl MmsData {
             MmsData::FloatingPoint(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(7), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
             MmsData::OctetString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(8), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
             MmsData::VisibleString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
-            MmsData::GeneralizedTime(instant) => todo!(),
-            MmsData::BinaryTime(items) => todo!(),
+            MmsData::GeneralizedTime(_instant) => todo!(),
+            MmsData::BinaryTime(_items) => todo!(),
             MmsData::Bcd(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(13), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
             MmsData::BooleanArray(paddibg, object_data) => BerObject::from_header_and_content(
                 Header::new(Class::ContextSpecific, false, Tag::from(14), Length::Definite(0)),
@@ -463,12 +463,13 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
         );
         let request_data = pdu.serialise()?;
 
-        let (acse_connection, response, user_data) = self
+        // TODO Figure out what to do with these.
+        let (acse_connection, _response, user_data) = self
             .acse_initiator
             .initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error("Failed to create MMS OID. This is a bug."))?.to_owned(), request_data)
             .await
             .map_err(to_mms_error("Failed yo initiate MMS connection"))?;
-        let response = InitiateResponsePdu::parse(user_data)?;
+        let _response = InitiateResponsePdu::parse(user_data)?;
 
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
 
@@ -632,16 +633,6 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
             MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
         };
         self.acse_writer.send(data.map_err(to_mms_error("Failed to serialise message"))?).await?;
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_serialises_parameter_support_options_empty() -> Result<(), anyhow::Error> {
         Ok(())
     }
 }

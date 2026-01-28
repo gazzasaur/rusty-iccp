@@ -20,3 +20,4 @@ pub(crate) mod writerequest;
 pub(crate) mod writeresponse;
 pub(crate) mod getnamedvariablelistattributesresponse;
 pub(crate) mod deletenamedvariablelistrequest;
+pub(crate) mod deletenamedvariablelistresponse;

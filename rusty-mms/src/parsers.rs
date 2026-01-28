@@ -45,15 +45,6 @@ pub(crate) fn process_mms_boolean_content<'a>(npm_object: &Any<'a>, error_messag
     }
 }
 
-pub(crate) fn process_mms_bit_string_data<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<(u8, Vec<u8>), MmsError> {
-    let (_, inner_object) = parse_ber_content(Tag::BitString)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
-
-    match inner_object {
-        BerObjectContent::BitString(padding, value) => Ok((padding, value.data.to_vec())),
-        _ => Err(MmsError::ProtocolError(error_message.into())),
-    }
-}
-
 pub(crate) fn process_integer_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<Vec<u8>, MmsError> {
     let (_, inner_object) = parse_ber_content(Tag::Integer)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
 
