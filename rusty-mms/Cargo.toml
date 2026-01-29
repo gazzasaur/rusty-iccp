@@ -2,13 +2,17 @@
 name = "rusty-mms"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Implements the Manufacturing Message Specification (MMS)/ISO 9506/IEC 9506. The operations supported in this package are those required for TASE2/ICCP."
+homepage = "https://github.com/gazzasaur/rusty-iccp"
+repository = "https://github.com/gazzasaur/rusty-iccp"
 
 [dependencies]
-rusty-acse = { path = "../rusty-acse" }
-rusty-copp = { path = "../rusty-copp" }
-rusty-cosp = { path = "../rusty-cosp" }
-rusty-cotp = { path = "../rusty-cotp" }
-rusty-tpkt = { path = "../rusty-tpkt" }
+rusty-acse = { path = "../rusty-acse", version = "0.1.0" }
+rusty-copp = { path = "../rusty-copp", version = "0.1.0" }
+rusty-cosp = { path = "../rusty-cosp", version = "0.1.0" }
+rusty-cotp = { path = "../rusty-cotp", version = "0.1.0" }
+rusty-tpkt = { path = "../rusty-tpkt", version = "0.1.0" }
 
 tracing = "0.1.41"
 thiserror = "2.0.12"

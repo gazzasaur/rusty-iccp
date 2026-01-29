@@ -2,12 +2,16 @@
 name = "rusty-acse"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Implements the Application Control Service Element (ACSE)/ISO 8650-1/IEC 8650-1/ITU-T X.227 standard targeting ISO protocol transport."
+homepage = "https://github.com/gazzasaur/rusty-iccp"
+repository = "https://github.com/gazzasaur/rusty-iccp"
 
 [dependencies]
-rusty-copp = { path = "../rusty-copp" }
-rusty-cosp = { path = "../rusty-cosp" }
-rusty-cotp = { path = "../rusty-cotp" }
-rusty-tpkt = { path = "../rusty-tpkt" }
+rusty-copp = { path = "../rusty-copp", version = "0.1.0" }
+rusty-cosp = { path = "../rusty-cosp", version = "0.1.0" }
+rusty-cotp = { path = "../rusty-cotp", version = "0.1.0" }
+rusty-tpkt = { path = "../rusty-tpkt", version = "0.1.0" }
 
 rand = "0.9.2"
 tracing = "0.1.41"

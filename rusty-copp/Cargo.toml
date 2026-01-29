@@ -2,11 +2,15 @@
 name = "rusty-copp"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Implements the Kernel Function of Connection Oriented Presentation Protocol/ISO 8823-1/IEC 8823-1/ITU-T X.226 standard."
+homepage = "https://github.com/gazzasaur/rusty-iccp"
+repository = "https://github.com/gazzasaur/rusty-iccp"
 
 [dependencies]
-rusty-cosp = { path = "../rusty-cosp" }
-rusty-cotp = { path = "../rusty-cotp" }
-rusty-tpkt = { path = "../rusty-tpkt" }
+rusty-cosp = { path = "../rusty-cosp", version = "0.1.0" }
+rusty-cotp = { path = "../rusty-cotp", version = "0.1.0" }
+rusty-tpkt = { path = "../rusty-tpkt", version = "0.1.0" }
 
 tracing = "0.1.41"
 thiserror = "2.0.12"

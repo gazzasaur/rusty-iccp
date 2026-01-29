@@ -58,9 +58,9 @@ This is a rough roadmap based on what I know so far. I am using the open version
 * [COMPLETE] COTP / RFC905 / ISO 8073 - Connection Orientated Transport Protocol (Class 0 only)
 * [TESTING] ISO Session Protocol (ISO SP) / X.225 / ISO 8327 -  Version 2 implementing the Kernel and Duplex functional units
 * [IN PROGRESS] ISO Presentation Protocol (ISO PP) / X.226 / ISO 8823 - Kernel only
-* [NOT STARTED] ACSE / X.227 / ISO 8650 - Association Control Service Element
-* [NOT STARTED] MMS / ISO 9506 - Manufacturing Message Specification
-* [NOT STARTED] ICCP / TASE.2 - Inter-Control Center Communication Protocol
+* [IN PROGRESS] ACSE / X.227 / ISO 8650 - Association Control Service Element
+* [IN PROGRESS] MMS / ISO 9506 - Manufacturing Message Specification
+* [IN PROGRESS] ICCP / TASE.2 - Inter-Control Center Communication Protocol
 * [NOT STARTED] ICCP Simulator Web Application
 * [NOT STARTED] TLS TPKT Layer
 
