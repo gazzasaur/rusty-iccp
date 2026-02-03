@@ -1,0 +1,10 @@
+[package]
+name = "rusty-mms-service"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "A high level service wrapper around the Manufacturing Message Specification (MMS)/ISO 9506/IEC 9506 provided by the rusty-mms crate."
+homepage = "https://github.com/gazzasaur/rusty-iccp"
+repository = "https://github.com/gazzasaur/rusty-iccp"
+
+[dependencies]

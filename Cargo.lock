@@ -676,6 +676,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusty-iccp"
+version = "0.1.0"
+
+[[package]]
 name = "rusty-mms"
 version = "0.1.0"
 dependencies = [
@@ -693,6 +697,10 @@ dependencies = [
  "tracing",
  "tracing-test",
 ]
+
+[[package]]
+name = "rusty-mms-service"
+version = "0.1.0"
 
 [[package]]
 name = "rusty-tpkt"

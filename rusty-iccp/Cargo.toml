@@ -1,0 +1,10 @@
+[package]
+name = "rusty-iccp"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Implements the TASE.2/ISO 60870-3-503/IEC 60870-3-503/ICCP standard version 2000.8."
+homepage = "https://github.com/gazzasaur/rusty-iccp"
+repository = "https://github.com/gazzasaur/rusty-iccp"
+
+[dependencies]
