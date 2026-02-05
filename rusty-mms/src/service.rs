@@ -422,10 +422,14 @@ impl MmsTypeDescription {
 
                 MmsTypeDescription::Structure { packed, components: type_descriptions }
             }
-            Some([137]) => {
-                let value = process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?;
-                MmsTypeDescription::OctetString(value)
-            }
+            Some([131]) => MmsTypeDescription::Boolean,
+            Some([132]) => MmsTypeDescription::BitString(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
+            Some([133]) => MmsTypeDescription::Integer(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
+            Some([134]) => MmsTypeDescription::Unsigned(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
+            Some([167]) => {
+                MmsTypeDescription::FloatingPoint(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
+            },
+            Some([137]) => MmsTypeDescription::OctetString(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
             Some([139]) => MmsTypeDescription::GeneralizedTime,
             x => return Err(MmsError::ProtocolError(format!("Unsupported MmsTypeDescription {:?} on {}", x, pdu))),
         })
