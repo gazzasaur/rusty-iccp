@@ -8,3 +8,16 @@ homepage = "https://github.com/gazzasaur/rusty-iccp"
 repository = "https://github.com/gazzasaur/rusty-iccp"
 
 [dependencies]
+rusty-mms = { path = "../rusty-mms", version = "0.1.0" }
+rusty-acse = { path = "../rusty-acse", version = "0.1.0" }
+rusty-copp = { path = "../rusty-copp", version = "0.1.0" }
+rusty-cosp = { path = "../rusty-cosp", version = "0.1.0" }
+rusty-cotp = { path = "../rusty-cotp", version = "0.1.0" }
+rusty-tpkt = { path = "../rusty-tpkt", version = "0.1.0" }
+
+tracing = "0.1.41"
+num-bigint = "0.4.6"
+thiserror = "2.0.12"
+num-bigfloat = "1.7.2"
+tokio = { version = "1.47.1", features = ["full"] }
+der-parser = { version = "10.0.0", features = ["bigint", "serialize"] }

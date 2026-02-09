@@ -300,60 +300,12 @@ pub trait MmsResponder: Send {
 
 pub trait MmsConnection: Send {
     fn split(self) -> impl std::future::Future<Output = Result<(impl MmsReader, impl MmsWriter), MmsError>> + Send;
-
-    // ParameterSupportOption::Str1, Array
-    // ParameterSupportOption::Str2, Map
-    // ParameterSupportOption::Vnam,
-    // ParameterSupportOption::Valt,
-    // ParameterSupportOption::Vlis,
-
-    // ServiceSupportOption::GetNameList,
-    // ServiceSupportOption::Identify,
-    // ServiceSupportOption::Read,
-    // ServiceSupportOption::Write,
-    // ServiceSupportOption::GetVariableAccessAttributes,
-    // ServiceSupportOption::GetNamedVariableListAttribute,
-    // ServiceSupportOption::DefineNamedVariableList,
-    // ServiceSupportOption::DeleteNamedVariableList,
-    // ServiceSupportOption::InformationReport,
 }
 
 pub trait MmsReader: Send {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<MmsRecvResult, MmsError>> + Send;
-
-    // ParameterSupportOption::Str1, Array
-    // ParameterSupportOption::Str2, Map
-    // ParameterSupportOption::Vnam,
-    // ParameterSupportOption::Valt,
-    // ParameterSupportOption::Vlis,
-
-    // ServiceSupportOption::GetNameList,
-    // ServiceSupportOption::Identify,
-    // ServiceSupportOption::Read,
-    // ServiceSupportOption::Write,
-    // ServiceSupportOption::GetVariableAccessAttributes,
-    // ServiceSupportOption::GetNamedVariableListAttribute,
-    // ServiceSupportOption::DefineNamedVariableList,
-    // ServiceSupportOption::DeleteNamedVariableList,
-    // ServiceSupportOption::InformationReport,
 }
 
 pub trait MmsWriter: Send {
     fn send(&mut self, message: MmsMessage) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
-
-    // ParameterSupportOption::Str1, Array
-    // ParameterSupportOption::Str2, Map
-    // ParameterSupportOption::Vnam,
-    // ParameterSupportOption::Valt,
-    // ParameterSupportOption::Vlis,
-
-    // ServiceSupportOption::GetNameList,
-    // ServiceSupportOption::Identify,
-    // ServiceSupportOption::Read,
-    // ServiceSupportOption::Write,
-    // ServiceSupportOption::GetVariableAccessAttributes,
-    // ServiceSupportOption::GetNamedVariableListAttribute,
-    // ServiceSupportOption::DefineNamedVariableList,
-    // ServiceSupportOption::DeleteNamedVariableList,
-    // ServiceSupportOption::InformationReport,
 }
