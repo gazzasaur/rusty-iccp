@@ -112,5 +112,10 @@ pub trait MmsInitiatorService: Send + Sync {
 
     fn read(&mut self, specification: MmsVariableAccessSpecification) -> impl std::future::Future<Output = Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>> + Send;
     fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> impl std::future::Future<Output = Result<MmsWriteResult, MmsServiceError>> + Send;
+
+    fn information_report(variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> impl std::future::Future<Output = Result<(), MmsServiceError>> + Send;
 }
 
+pub trait MmsResponderService: Send + Sync {
+    fn information_report(variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> impl std::future::Future<Output = Result<(), MmsServiceError>> + Send;
+}

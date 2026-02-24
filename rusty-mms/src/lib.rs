@@ -9,8 +9,7 @@ use std::marker::PhantomData;
 
 pub use api::*;
 use rusty_acse::{
-    AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
-    RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseResponderIsoStack, RustyOsiSingleValueAcseWriterIsoStack,
+    AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack, RustyOsiSingleValueAcseReader, RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseResponderIsoStack, RustyOsiSingleValueAcseWriter, RustyOsiSingleValueAcseWriterIsoStack
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
 use rusty_cosp::{CospConnectionInformation, TcpCospInitiator, TcpCospListener};
@@ -24,6 +23,8 @@ pub type RustyMmsConnectionIsoStack<R, W> = RustyMmsConnection<RustyOsiSingleVal
 pub type RustyMmsInitiatorIsoStack<R, W> = RustyMmsInitiator<RustyOsiSingleValueAcseInitiatorIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsListenerIsoStack<R, W> = RustyMmsListener<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsResponderIsoStack<R, W> = RustyMmsResponder<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
+pub type RustyMmsReaderIsoStack<R> = RustyMmsReader<RustyOsiSingleValueAcseReaderIsoStack<R>>;
+pub type RustyMmsWriterIsoStack<W> = RustyMmsWriter<RustyOsiSingleValueAcseWriterIsoStack<W>>;
 
 pub struct OsiMmsInitiatorConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
     _tpkt_connection: PhantomData<T>,
