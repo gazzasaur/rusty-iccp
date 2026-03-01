@@ -33,7 +33,7 @@ pub enum MmsServiceBcd {
     Bcd9,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum MmsServiceData {
     Array(Vec<MmsServiceData>), // Arrays are meant to contain a consistent type across all elements. This is not enforced as it means traversing trees.
     Structure(Vec<MmsServiceData>),
@@ -41,7 +41,7 @@ pub enum MmsServiceData {
     BitString(Vec<bool>),
     Integer(BigInt),
     Unsigned(BigUint),
-    FloatingPoint(BigFloat),
+    FloatingPoint(f64),
     OctetString(Vec<u8>),
     VisibleString(String),
     GeneralizedTime(ASN1DateTime),

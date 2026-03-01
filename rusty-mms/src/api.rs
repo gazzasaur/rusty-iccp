@@ -308,4 +308,5 @@ pub trait MmsReader: Send {
 
 pub trait MmsWriter: Send {
     fn send(&mut self, message: MmsMessage) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
+    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
 }

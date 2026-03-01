@@ -641,4 +641,8 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
         self.acse_writer.send(data.map_err(to_mms_error("Failed to serialise message"))?).await?;
         Ok(())
     }
+
+    async fn continue_send(&mut self) -> Result<(), MmsError> {
+        self.acse_writer.continue_send().await.map_err(to_mms_error("Failed to transmit MMS data"))
+    }
 }
