@@ -7,12 +7,13 @@ use tokio::{
     time::error::Elapsed,
 };
 
-use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsData, MmsError, MmsReader, MmsWriter, RustyMmsConnection, RustyMmsConnectionIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
+use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsData, MmsError, MmsMessage, MmsReader, MmsWriter, RustyMmsConnection, RustyMmsConnectionIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
 use rusty_tpkt::{TpktConnection, TpktReader, TpktWriter};
 
 use crate::api::{MmsInitiatorService, MmsServiceData};
 
 pub mod api;
+pub(crate) mod error;
 
 enum MmsReceiveWorkerResult {}
 
@@ -62,7 +63,9 @@ fn convert_high_level_data_to_low_level_data(service_data: &MmsServiceData) -> R
         MmsServiceData::Unsigned(big_uint) => Ok(MmsData::Unsigned(
             big_uint.to_bigint().ok_or_else(|| MmsError::InternalError("This is a bug. Please contact the project team.".into()))?.to_signed_bytes_be(),
         )),
-        MmsServiceData::FloatingPoint(big_float) => todo!(),
+        MmsServiceData::FloatingPoint(value) => Ok({
+            MmsData::FloatingPoint(value.get_raw_data().clone())
+        }),
         MmsServiceData::OctetString(items) => todo!(),
         MmsServiceData::VisibleString(_) => todo!(),
         MmsServiceData::GeneralizedTime(asn1_date_time) => todo!(),
@@ -76,26 +79,51 @@ fn convert_high_level_data_to_low_level_data(service_data: &MmsServiceData) -> R
 
 struct EventPollItem {}
 
-async fn mms_transceiver_worker(reader: RustyMmsReaderIsoStack<impl TpktReader>, writer: RustyMmsWriterIsoStack<impl TpktWriter>, mut event_queue: mpsc::Receiver<MmsReceiveWorkerEvent>) {
+async fn mms_transceiver_worker(reader: RustyMmsReaderIsoStack<impl TpktReader>, writer: RustyMmsWriterIsoStack<impl TpktWriter>, mut event_queue_sender: mpsc::Sender<MmsReceiveWorkerEvent>, mut event_queue: mpsc::Receiver<MmsReceiveWorkerEvent>) {
     loop {
+        let (writer_sender, writer_receiver) = mpsc::unbounded_channel();
+        tokio::spawn(mms_sender_worker(writer, writer_receiver));
+
         let confirmed_reqeust_map = HashMap::new();
 
         let event_poll = tokio::time::timeout(Duration::from_millis(1), event_queue.recv()).await;
         let event = match event_poll {
             Ok(Some(MmsReceiveWorkerEvent::Close)) => return,
-            Ok(Some(MmsReceiveWorkerEvent::MmsReceiveWorkerConfirmedReqeust(x))) => {}
+            Ok(Some(MmsReceiveWorkerEvent::MmsReceiveWorkerConfirmedReqeust(x))) => {
+                confirmed_reqeust_map.get(x.)
+            }
             Ok(None) => return,
             Err(_) => continue,
         };
     }
 }
 
-async fn mms_sender_worker(mut writer: RustyMmsWriterIsoStack<impl TpktWriter>, mut event_queue: mpsc::Receiver<MmsConfirmedRequest>) {
+async fn mms_sender_worker(mut writer: RustyMmsWriterIsoStack<impl TpktWriter>, mut event_queue: mpsc::UnboundedReceiver<MmsMessage>) {
     loop {
         let event_poll = tokio::time::timeout(Duration::from_millis(1), event_queue.recv()).await;
         match event_poll {
             Ok(Some(x)) => {
-                // Conversion and send
+                writer.send(x);
+            }
+            Ok(None) => return,
+            Err(_) => {
+                // If comms is failing we can spend to on the send rather than servicing the queue as this is the blocker.
+                if let Err(_) = tokio::time::timeout(Duration::from_millis(1), writer.continue_send()).await {
+                    // TODO Log with some kind of de-dup or metric
+                }
+            }
+        };
+    }
+}
+
+async fn mms_receiver_worker(mut reader: RustyMmsReaderIsoStack<impl TpktReader>, mut event_queue: mpsc::Sender<MmsReceiveWorkerEvent>) {
+    loop {
+        let received_value = reader.recv().await;
+
+        let event_poll = tokio::time::timeout(Duration::from_millis(1), event_queue.recv()).await;
+        match event_poll {
+            Ok(Some(x)) => {
+                writer.send(x);
             }
             Ok(None) => return,
             Err(_) => {

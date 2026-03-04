@@ -1,8 +1,9 @@
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
-use num_bigfloat::BigFloat;
 use num_bigint::{BigInt, BigUint};
-use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsError, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult};
+use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsError, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
 use thiserror::Error;
+
+use crate::error::to_mms_error;
 
 #[derive(Error, Debug)]
 pub enum MmsServiceError {
@@ -34,6 +35,37 @@ pub enum MmsServiceBcd {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct MmsServiceDataFloat {
+    data: Vec<u8>,
+}
+
+impl MmsServiceDataFloat {
+    pub fn new(data: Vec<u8>) -> Self {
+        Self { data }
+    }
+
+    pub fn from_f32(value: f32) -> Self {
+        Self { data: value.to_be_bytes().to_vec() }
+    }
+
+    pub fn to_f32(&self) -> Result<f32, MmsServiceError> {
+        Ok(f32::from_be_bytes(self.data[..].try_into().map_err(to_mms_error("Failed to convert to f32"))?))
+    }
+
+    pub fn from_f64(value: f64) -> Self {
+        Self { data: value.to_be_bytes().to_vec() }
+    }
+
+    pub fn to_f64(&self) -> Result<f64, MmsServiceError> {
+        Ok(f64::from_be_bytes(self.data[..].try_into().map_err(to_mms_error("Failed to convert to f64"))?))
+    }
+
+    pub fn get_raw_data(&self) -> &Vec<u8> {
+        &self.data
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum MmsServiceData {
     Array(Vec<MmsServiceData>), // Arrays are meant to contain a consistent type across all elements. This is not enforced as it means traversing trees.
     Structure(Vec<MmsServiceData>),
@@ -41,7 +73,7 @@ pub enum MmsServiceData {
     BitString(Vec<bool>),
     Integer(BigInt),
     Unsigned(BigUint),
-    FloatingPoint(f64),
+    FloatingPoint(MmsServiceDataFloat),
     OctetString(Vec<u8>),
     VisibleString(String),
     GeneralizedTime(ASN1DateTime),
@@ -64,36 +96,9 @@ pub struct NameList {
     pub more_follows: bool,
 }
 
-pub enum TypeDescription {
-    Array {
-        packed: Option<bool>,
-        number_of_elements: u32,
-        element_type: Box<TypeDescription>,
-    },
-    Structure {
-        packed: Option<bool>,
-        components: Vec<TypeDescription>,
-    },
-    Boolean,
-    BitString(i32),
-    Integer(i32),
-    Unsigned(u8),
-    FloatingPoint {
-        format_width: u8,
-        exponent_width: u8,
-    },
-    OctetString(i32),
-    VisibleString(i32),
-    GeneralizedTime,
-    BinaryTime(bool),
-    Bcd(u8),
-    ObjId,
-    MmsString(i32),
-}
-
 pub struct VariableAccessAttributes {
     pub deletable: bool,
-    pub type_description: TypeDescription,
+    pub type_description: MmsTypeDescription,
 }
 
 pub trait MmsInitiatorService: Send + Sync {
