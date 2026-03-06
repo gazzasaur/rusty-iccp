@@ -9,7 +9,7 @@ pub use crate::service::*;
 
 #[cfg(test)]
 mod tests {
-    use std::{ops::Range, time::Duration};
+    use std::{collections::VecDeque, ops::Range, time::Duration};
 
     use rand::RngCore;
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
@@ -28,13 +28,13 @@ mod tests {
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
 
-        client_writer.send("ABCD".as_bytes()).await?;
+        client_writer.send(&mut VecDeque::from(vec![b"ABCD".to_vec()])).await?;
         match server_read.recv().await? {
             api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
             api::CotpRecvResult::Data(items) => assert_eq!(items, "ABCD".as_bytes().to_vec()),
         }
 
-        server_writer.send("EFGH".as_bytes()).await?;
+        server_writer.send(VecDeque::from(vec![b"EFGH".to_vec()])).await?;
         match client_read.recv().await? {
             api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
             api::CotpRecvResult::Data(items) => assert_eq!(items, "EFGH".as_bytes().to_vec()),
@@ -51,13 +51,13 @@ mod tests {
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
 
-        client_writer.send("ABCD".as_bytes()).await?;
+        client_writer.send(VecDeque::from(vec![b"ABCD".to_vec()])).await?;
         match server_read.recv().await? {
             api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
             api::CotpRecvResult::Data(items) => assert_eq!(items, "ABCD".as_bytes().to_vec()),
         }
 
-        server_writer.send("EFGH".as_bytes()).await?;
+        server_writer.send(VecDeque::from(vec![b"EFGH".to_vec()])).await?;
         match client_read.recv().await? {
             api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
             api::CotpRecvResult::Data(items) => assert_eq!(items, "EFGH".as_bytes().to_vec()),
@@ -78,13 +78,13 @@ mod tests {
         rand::rng().fill_bytes(&mut over_buffer[..]);
 
         for _ in 0..10 {
-            client_writer.send(over_buffer.as_slice()).await?;
+            client_writer.send(VecDeque::from(vec![over_buffer.to_vec()])).await?;
             match server_read.recv().await? {
                 api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
                 api::CotpRecvResult::Data(items) => assert_eq!(items, over_buffer.to_vec()),
             }
 
-            server_writer.send(over_buffer.as_slice()).await?;
+            server_writer.send(VecDeque::from(vec![over_buffer.to_vec()])).await?;
             match client_read.recv().await? {
                 api::CotpRecvResult::Closed => assert!(false, "Connection was unexpectedly closed."),
                 api::CotpRecvResult::Data(items) => assert_eq!(items, over_buffer.to_vec()),
@@ -109,7 +109,7 @@ mod tests {
             data_buffer.extend_from_slice(&over_buffer);
         }
 
-        match timeout(Duration::from_millis(100), client_writer.send(data_buffer.as_slice())).await {
+        match timeout(Duration::from_millis(100), client_writer.send(VecDeque::from(vec![data_buffer.to_vec()]))).await {
             Ok(_) => assert!(false, "Expected the data to be too large for the buffer."),
             Err(_) => (),
         }
@@ -128,7 +128,7 @@ mod tests {
             api::CotpRecvResult::Data(items) => assert_eq!(items, data_buffer.to_vec()),
         }
 
-        match timeout(Duration::from_millis(100), server_writer.send(data_buffer.as_slice())).await {
+        match timeout(Duration::from_millis(100), server_writer.send(VecDeque::from(vec![data_buffer.to_vec()]))).await {
             Ok(_) => assert!(false, "Expected the data to be too large for the buffer."),
             Err(_) => (),
         }

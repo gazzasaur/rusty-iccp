@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -26,6 +28,6 @@ pub trait TpktReader: Send {
 }
 
 pub trait TpktWriter: Send {
-    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
+    fn send(&mut self, data: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
 }

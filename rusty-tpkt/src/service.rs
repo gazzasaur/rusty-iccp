@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{collections::VecDeque, net::SocketAddr};
 
 use bytes::{Buf, BytesMut};
 use tokio::{
@@ -102,10 +102,10 @@ impl TcpTpktWriter {
 }
 
 impl TpktWriter for TcpTpktWriter {
-    async fn send(&mut self, data: &[u8]) -> Result<(), TpktError> {
-        self.write_buffer.extend(self.serialiser.serialise(data)?);
-        while self.write_buffer.has_remaining() {
-            self.writer.write_buf(&mut self.write_buffer).await?;
+    async fn send(&mut self, data: &mut VecDeque<Vec<u8>>) -> Result<(), TpktError> {
+        while let Some(packet) = data.pop_front() {
+            self.write_buffer.extend(self.serialiser.serialise(&packet)?);
+            self.continue_send().await?
         }
         Ok(())
     }

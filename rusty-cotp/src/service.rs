@@ -174,10 +174,15 @@ impl<W: TpktWriter> TcpCotpWriter<W> {
 }
 
 impl<W: TpktWriter> CotpWriter for TcpCotpWriter<W> {
-    async fn send(&mut self, data: &[u8]) -> Result<(), CotpError> {
+    async fn send(&mut self, data: &mut VecDeque<Vec<u8>>) -> Result<(), CotpError> {
         const HEADER_LENGTH: usize = 3;
 
-        let chunks = data.chunks(self.max_payload_size - HEADER_LENGTH);
+        let data_item = data.pop_front();
+        if let None = data_item {
+            return Ok(())
+        }
+
+        let chunks = data_item.as_slice().chunks(self.max_payload_size - HEADER_LENGTH);
         let chunk_count = chunks.len();
         for (chunk_index, chunk_data) in chunks.enumerate() {
             let end_of_transmission = chunk_index + 1 >= chunk_count;
@@ -189,8 +194,8 @@ impl<W: TpktWriter> CotpWriter for TcpCotpWriter<W> {
     }
 
     async fn continue_send(&mut self) -> Result<(), CotpError> {
-        while let Some(data) = self.chunks.pop_front() {
-            self.writer.send(data.as_slice()).await?;
+        while !self.chunks.is_empty() {
+            self.writer.send(&mut self.chunks).await?;
         }
         Ok(())
     }
@@ -283,7 +288,7 @@ async fn send_connection_confirm<W: TpktWriter>(writer: &mut W, source_reference
         parameters,
         &[],
     )))?;
-    Ok(writer.send(&payload.as_slice()).await?)
+    Ok(writer.send(&mut VecDeque::from_iter(vec![payload].into_iter())).await?)
 }
 
 async fn send_connection_request(writer: &mut impl TpktWriter, source_reference: u16, options: CotpConnectInformation) -> Result<(), CotpError> {
@@ -296,7 +301,7 @@ async fn send_connection_request(writer: &mut impl TpktWriter, source_reference:
     }
 
     let payload = serialise(&TransportProtocolDataUnit::CR(ConnectionRequest::new(source_reference, 0, ConnectionClass::Class0, vec![], parameters, &[])))?;
-    Ok(writer.send(&payload.as_slice()).await?)
+    Ok(writer.send(&mut VecDeque::from_iter(vec![payload].into_iter())).await?)
 }
 
 async fn receive_connection_confirm(reader: &mut impl TpktReader, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionConfirm, CotpError> {

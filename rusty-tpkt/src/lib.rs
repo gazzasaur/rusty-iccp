@@ -9,7 +9,7 @@ pub use crate::service::*;
 #[cfg(test)]
 mod tests {
 
-    use std::{io::ErrorKind, ops::Range};
+    use std::{collections::VecDeque, io::ErrorKind, ops::Range};
 
     use rand::RngCore;
     use tracing_test::traced_test;
@@ -33,8 +33,8 @@ mod tests {
             (client_reader, client_writer, server_reader, server_writer)
         };
 
-        server_writer.send(b"Hello").await?;
-        client_writer.send(b"World").await?;
+        server_writer.send(&mut VecDeque::from_iter(vec![b"Hello".to_vec()])).await?;
+        client_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         drop(server);
 
@@ -42,28 +42,28 @@ mod tests {
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
@@ -107,8 +107,8 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        server_writer.send(b"Hello").await?;
-        server_writer.send(b"World").await?;
+        server_writer.send(&mut VecDeque::from_iter(vec![b"Hello".to_vec()])).await?;
+        server_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         drop(server);
 
@@ -116,28 +116,28 @@ mod tests {
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => panic!("Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => panic!("Connection was unexpectedly closed"),
             }
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => panic!("Connection was unexpectedly closed"),
             }
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => panic!("Connection was unexpectedly closed"),
             }
@@ -181,8 +181,8 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        server_writer.send(b"Hello").await?;
-        client_writer.send(b"World").await?;
+        server_writer.send(&mut VecDeque::from_iter(vec![b"Hello".to_vec()])).await?;
+        client_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         drop(server);
 
@@ -190,28 +190,28 @@ mod tests {
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"Hello"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
@@ -257,35 +257,35 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        server_writer.send(b"").await?;
-        client_writer.send(b"World").await?;
+        server_writer.send(&mut VecDeque::from_iter(vec![b"".to_vec()])).await?;
+        client_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         for _ in 0..1000 {
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b""));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b""));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
@@ -334,35 +334,35 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        server_writer.send(&buffer).await?;
-        client_writer.send(b"World").await?;
+        server_writer.send(&mut VecDeque::from_iter(vec![buffer.to_vec()])).await?;
+        client_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         for _ in 0..1000 {
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(buffer));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(buffer));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
@@ -411,7 +411,7 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        match server_writer.send(&over_buffer).await {
+        match server_writer.send(&mut VecDeque::from_iter(vec![over_buffer.to_vec()])).await {
             Ok(_) => assert!(false, "This was expected to fail as it is over the max payload limit"),
             Err(TpktError::ProtocolError(x)) => assert_eq!(x, "TPKT user data must be less than or equal to 65531 but was 65532"),
             _ => assert!(false, "Something unexpected happened"),
@@ -420,35 +420,35 @@ mod tests {
         // Try again and lets keep going
         let mut buffer = [0u8; 65531];
         rand::rng().fill_bytes(&mut buffer[..]);
-        server_writer.send(&buffer).await?;
-        client_writer.send(b"World").await?;
+        server_writer.send(&mut VecDeque::from_iter(vec![buffer.to_vec()])).await?;
+        client_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         for _ in 0..100 {
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(buffer));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match server_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(buffer));
-                    server_writer.send(x.as_slice()).await?;
+                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }
             match client_reader.recv().await? {
                 TpktRecvResult::Data(x) => {
                     assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(x.as_slice()).await?;
+                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
                 }
                 _ => assert!(false, "Connection was unexpectedly closed"),
             }

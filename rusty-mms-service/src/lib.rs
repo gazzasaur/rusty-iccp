@@ -7,7 +7,7 @@ use tokio::{
     time::error::Elapsed,
 };
 
-use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsData, MmsError, MmsMessage, MmsReader, MmsWriter, RustyMmsConnection, RustyMmsConnectionIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
+use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsData, MmsError, MmsMessage, MmsReader, MmsRecvResult, MmsWriter, RustyMmsConnection, RustyMmsConnectionIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
 use rusty_tpkt::{TpktConnection, TpktReader, TpktWriter};
 
 use crate::api::{MmsInitiatorService, MmsServiceData};
@@ -15,18 +15,9 @@ use crate::api::{MmsInitiatorService, MmsServiceData};
 pub mod api;
 pub(crate) mod error;
 
-enum MmsReceiveWorkerResult {}
-
-struct MmsReceiveWorkerConfirmedReqeust {
-    notify: Notify,
-    expiry_timestamp: u64,
-    request: MmsConfirmedRequest,
-    response: Arc<Mutex<Option<MmsConfirmedResponse>>>,
-}
-
-enum MmsReceiveWorkerEvent {
+enum MmsTxRxWorkerEvent {
     Close,
-    MmsReceiveWorkerConfirmedReqeust(MmsReceiveWorkerConfirmedReqeust),
+    ConfirmedReqeust { request: MmsConfirmedRequest, sender: mpsc::UnboundedSender<Result<MmsConfirmedResponse, MmsError>> },
 }
 
 fn convert_high_level_data_to_low_level_data(service_data: &MmsServiceData) -> Result<MmsData, MmsError> {
@@ -79,61 +70,62 @@ fn convert_high_level_data_to_low_level_data(service_data: &MmsServiceData) -> R
 
 struct EventPollItem {}
 
-async fn mms_transceiver_worker(reader: RustyMmsReaderIsoStack<impl TpktReader>, writer: RustyMmsWriterIsoStack<impl TpktWriter>, mut event_queue_sender: mpsc::Sender<MmsReceiveWorkerEvent>, mut event_queue: mpsc::Receiver<MmsReceiveWorkerEvent>) {
+async fn mms_transceiver_worker(event_queue: mpsc::Receiver<MmsTxRxWorkerEvent>, reader: RustyMmsReaderIsoStack<impl TpktReader>) {
+    // We will allow these to wrap. It is unlikely that 4B messages can be sent before the earlier ones timeout.
+    // let mut sequence_number_counter: u32 = 0;
+
+    // loop {
+    //     tokio::select! {
+    //         Some(x) 
+    //     }
+    // }
+}
+
+async fn mms_reader_worker(mut reader: RustyMmsReaderIsoStack<impl TpktReader>, mut message_queue: mpsc::UnboundedSender<Result<MmsMessage, MmsError>>) {
     loop {
-        let (writer_sender, writer_receiver) = mpsc::unbounded_channel();
-        tokio::spawn(mms_sender_worker(writer, writer_receiver));
-
-        let confirmed_reqeust_map = HashMap::new();
-
-        let event_poll = tokio::time::timeout(Duration::from_millis(1), event_queue.recv()).await;
-        let event = match event_poll {
-            Ok(Some(MmsReceiveWorkerEvent::Close)) => return,
-            Ok(Some(MmsReceiveWorkerEvent::MmsReceiveWorkerConfirmedReqeust(x))) => {
-                confirmed_reqeust_map.get(x.)
+        match reader.recv().await {
+            Ok(MmsRecvResult::Message(message)) => message_queue.send(Ok(message)),
+            Ok(MmsRecvResult::Closed) => return,
+            Err(e) => {
+                message_queue.send(Err(e));
+                return;
             }
-            Ok(None) => return,
-            Err(_) => continue,
         };
     }
 }
 
 async fn mms_sender_worker(mut writer: RustyMmsWriterIsoStack<impl TpktWriter>, mut event_queue: mpsc::UnboundedReceiver<MmsMessage>) {
     loop {
-        let event_poll = tokio::time::timeout(Duration::from_millis(1), event_queue.recv()).await;
-        match event_poll {
-            Ok(Some(x)) => {
-                writer.send(x);
-            }
-            Ok(None) => return,
-            Err(_) => {
-                // If comms is failing we can spend to on the send rather than servicing the queue as this is the blocker.
-                if let Err(_) = tokio::time::timeout(Duration::from_millis(1), writer.continue_send()).await {
-                    // TODO Log with some kind of de-dup or metric
+        match event_queue.recv().await {
+            Some(x) => {
+                if let Err(e) = writer.send(x).await {
+                    // TODO Log some kind of sane error.
+                    event_queue.close();
                 }
-            }
+            },
+            None => return,
         };
     }
 }
 
-async fn mms_receiver_worker(mut reader: RustyMmsReaderIsoStack<impl TpktReader>, mut event_queue: mpsc::Sender<MmsReceiveWorkerEvent>) {
-    loop {
-        let received_value = reader.recv().await;
+async fn mms_receiver_worker(mut reader: RustyMmsReaderIsoStack<impl TpktReader>, mut event_queue: mpsc::Sender<MmsTxRxWorkerEvent>) {
+    // loop {
+    //     let received_value = reader.recv().await;
 
-        let event_poll = tokio::time::timeout(Duration::from_millis(1), event_queue.recv()).await;
-        match event_poll {
-            Ok(Some(x)) => {
-                writer.send(x);
-            }
-            Ok(None) => return,
-            Err(_) => {
-                // If comms is failing we can spend to on the send rather than servicing the queue as this is the blocker.
-                if let Err(_) = tokio::time::timeout(Duration::from_millis(1), writer.continue_send()).await {
-                    // TODO Log with some kind of de-dup or metric
-                }
-            }
-        };
-    }
+    //     let event_poll = tokio::time::timeout(Duration::from_millis(1), event_queue.recv()).await;
+    //     match event_poll {
+    //         Ok(Some(x)) => {
+    //             writer.send(x);
+    //         }
+    //         Ok(None) => return,
+    //         Err(_) => {
+    //             // If comms is failing we can spend to on the send rather than servicing the queue as this is the blocker.
+    //             if let Err(_) = tokio::time::timeout(Duration::from_millis(1), writer.continue_send()).await {
+    //                 // TODO Log with some kind of de-dup or metric
+    //             }
+    //         }
+    //     };
+    // }
 }
 
 // pub struct RustyMmsInitiatorService<R: TpktReader, W: TpktWriter> {

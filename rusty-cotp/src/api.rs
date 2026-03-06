@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use rusty_tpkt::TpktError;
 use thiserror::Error;
 
@@ -62,6 +64,6 @@ pub trait CotpReader: Send {
 }
 
 pub trait CotpWriter: Send {
-    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
+    fn send(&mut self, data: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
     fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;
 }
