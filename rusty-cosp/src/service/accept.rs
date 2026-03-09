@@ -19,7 +19,8 @@ pub(crate) async fn send_accept(writer: &mut impl CotpWriter, initiator_size: &T
     let optimistic_size = optimistic_accept.len() + user_data.as_ref().map(|data| data.len()).unwrap_or(0) + 8;
 
     if optimistic_size <= MAX_PAYLOAD_SIZE {
-        return Ok(writer.send(&serialise_accept(initiator_size, None, None, user_data.as_ref().map(|x| x.as_slice()))?).await?);
+        let payload_data = serialise_accept(initiator_size, None, None, user_data.as_ref().map(|x| x.as_slice()))?;
+        return Ok(writer.send(&mut VecDeque::from(vec![payload_data])).await?);
     }
 
     let mut cursor = 0;
@@ -38,7 +39,8 @@ pub(crate) async fn send_accept(writer: &mut impl CotpWriter, initiator_size: &T
             cursor = user_data.len()
         }
 
-        writer.send(&serialise_accept(initiator_size, Some(beginning), Some(cursor >= user_data.len()), Some(&user_data[start_index..cursor]))?).await?;
+        let payload_data = serialise_accept(initiator_size, Some(beginning), Some(cursor >= user_data.len()), Some(&user_data[start_index..cursor]))?;
+        writer.send(&mut VecDeque::from(vec![payload_data])).await?;
         if cursor >= user_data.len() {
             return Ok(());
         }

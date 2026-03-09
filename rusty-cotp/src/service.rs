@@ -174,29 +174,26 @@ impl<W: TpktWriter> TcpCotpWriter<W> {
 }
 
 impl<W: TpktWriter> CotpWriter for TcpCotpWriter<W> {
-    async fn send(&mut self, data: &mut VecDeque<Vec<u8>>) -> Result<(), CotpError> {
+    async fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> Result<(), CotpError> {
         const HEADER_LENGTH: usize = 3;
 
-        let data_item = data.pop_front();
-        if let None = data_item {
-            return Ok(())
+        while let Some(data_item) = input.pop_front() {
+            let chunks = data_item.as_slice().chunks(self.max_payload_size - HEADER_LENGTH);
+            let chunk_count = chunks.len();
+            for (chunk_index, chunk_data) in chunks.enumerate() {
+                let end_of_transmission = chunk_index + 1 >= chunk_count;
+                let tpdu = DataTransfer::new(end_of_transmission, chunk_data);
+                let tpdu_data = serialise(&TransportProtocolDataUnit::DT(tpdu))?;
+                self.chunks.push_back(tpdu_data);
+            }
         }
 
-        let chunks = data_item.as_slice().chunks(self.max_payload_size - HEADER_LENGTH);
-        let chunk_count = chunks.len();
-        for (chunk_index, chunk_data) in chunks.enumerate() {
-            let end_of_transmission = chunk_index + 1 >= chunk_count;
-            let tpdu = DataTransfer::new(end_of_transmission, chunk_data);
-            let tpdu_data = serialise(&TransportProtocolDataUnit::DT(tpdu))?;
-            self.chunks.push_back(tpdu_data);
-        }
-        self.continue_send().await
-    }
-
-    async fn continue_send(&mut self) -> Result<(), CotpError> {
         while !self.chunks.is_empty() {
             self.writer.send(&mut self.chunks).await?;
         }
+
+        // Perform one more to ensure lower levels are also flushed even if this layer is complete.
+        self.writer.send(&mut self.chunks).await?;
         Ok(())
     }
 }

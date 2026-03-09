@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{collections::VecDeque, marker::PhantomData};
 
 use der_parser::{
     Oid,
@@ -228,28 +228,32 @@ impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R
 
 pub struct RustyOsiSingleValueAcseWriter<W: CoppWriter> {
     copp_writer: W,
+    buffer: VecDeque<UserData>,
 }
 
 impl<W: CoppWriter> RustyOsiSingleValueAcseWriter<W> {
     pub fn new(copp_writer: W) -> Self {
-        Self { copp_writer }
+        Self { copp_writer, buffer: VecDeque::new() }
     }
 }
 
 impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W> {
-    async fn send(&mut self, data: Vec<u8>) -> Result<(), AcseError> {
-        Ok(self
-            .copp_writer
-            .send(&UserData::FullyEncoded(vec![PresentationDataValueList {
+    async fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> Result<(), AcseError> {
+        while let Some(data_item) = input.pop_front() {
+            self.buffer.push_back(UserData::FullyEncoded(vec![PresentationDataValueList {
                 transfer_syntax_name: None,
                 presentation_context_identifier: vec![3],
-                presentation_data_values: PresentationDataValues::SingleAsn1Type(data),
-            }]))
-            .await?)
-    }
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(data_item),
+            }]));
+        }
 
-    async fn continue_send(&mut self) -> Result<(), AcseError> {
-        Ok(self.copp_writer.continue_send().await?)
+        while !self.buffer.is_empty() {
+            self.copp_writer.send(&mut self.buffer).await?
+        }
+
+        // Perform one more to ensure lower levels are also flushed even if this layer is complete.
+        self.copp_writer.send(&mut self.buffer).await?;
+        Ok(())
     }
 }
 

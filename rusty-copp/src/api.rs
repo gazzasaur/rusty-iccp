@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use der_parser::Oid;
 use rusty_cosp::CospError;
 use thiserror::Error;
@@ -126,6 +128,5 @@ pub trait CoppReader: Send {
 }
 
 pub trait CoppWriter: Send {
-    fn send(&mut self, data: &UserData) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
-    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    fn send(&mut self, user_data: &mut VecDeque<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }

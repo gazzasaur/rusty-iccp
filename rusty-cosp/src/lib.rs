@@ -18,7 +18,7 @@ pub type RustyCospConnectionIsoStack<R, W> = TcpCospConnection<TcpCotpReader<R>,
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Range;
+    use std::{collections::VecDeque, ops::Range};
 
     use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
@@ -35,12 +35,12 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
-        server_writer.send(&[1, 2, 3, 4]).await?;
+        server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
@@ -57,12 +57,12 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
-        server_writer.send(&[1, 2, 3, 4]).await?;
+        server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
@@ -85,12 +85,12 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
-        server_writer.send(&[1, 2, 3, 4]).await?;
+        server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
@@ -116,12 +116,12 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
-        server_writer.send(&[1, 2, 3, 4]).await?;
+        server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
@@ -153,12 +153,12 @@ mod tests {
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
-        client_writer.send(&[0x61, 0x02, 0x05, 0x00]).await?;
+        client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
-        server_writer.send(&[1, 2, 3, 4]).await?;
+        server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),

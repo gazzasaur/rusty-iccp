@@ -6,7 +6,8 @@ use der_parser::{
 use tracing::warn;
 
 use crate::{
-    MmsConfirmedResponse, MmsError, error::to_mms_error,
+    MmsConfirmedResponse, MmsError,
+    error::to_mms_error,
     parsers::{process_constructed_data, process_mms_boolean_content, process_mms_string},
 };
 

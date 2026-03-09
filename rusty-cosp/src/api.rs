@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use rusty_cotp::CotpError;
 use thiserror::Error;
 
@@ -62,8 +64,7 @@ pub trait CospReader: Send {
 }
 
 pub trait CospWriter: Send {
-    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
-    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 
     // fn finish(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
     // fn abort(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;

@@ -101,8 +101,68 @@ pub struct VariableAccessAttributes {
     pub type_description: MmsTypeDescription,
 }
 
+pub struct InformationReportMmsServiceMessage {
+    variable_access_specification: MmsVariableAccessSpecification,
+    access_results: Vec<MmsAccessResult>,
+}
+
+pub struct IdentifyMmsServiceMessage {
+    invocation_id: u32,
+}
+
+pub struct GetNameListMmsServiceMessage {
+    invocation_id: u32,
+    object_class: MmsObjectClass,
+    object_scope: MmsObjectScope,
+    continue_after: Option<String>,
+}
+
+pub struct GetVariableAccessAttributesMmsServiceMessage {
+    invocation_id: u32,
+    object_name: MmsObjectName,
+}
+
+pub struct DefineNamedVariableListMmsServiceMessage {
+    invocation_id: u32,
+    variable_list_name: MmsObjectName,
+    list_of_variables: Vec<ListOfVariablesItem>,
+}
+
+pub struct GetNamedVariableListAttributesMmsServiceMessage {
+    invocation_id: u32,
+    variable_list_name: MmsObjectName,
+}
+
+pub struct DeleteNamedVariableListMmsServiceMessage {
+    invocation_id: u32,
+    variable_list_name: MmsObjectName,
+}
+
+pub struct ReadMmsServiceMessage {
+    invocation_id: u32,
+    specification: MmsVariableAccessSpecification,
+}
+
+pub struct WriteMmsServiceMessage {
+    invocation_id: u32,
+    specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>,
+}
+
+pub enum MmsServiceMessage {
+    Identify(IdentifyMmsServiceMessage),
+    GetNameList(GetNameListMmsServiceMessage),
+    GetVariableAccessAttributes(GetVariableAccessAttributesMmsServiceMessage),
+    DefineNamedVariableList(DefineNamedVariableListMmsServiceMessage),
+    GetNamedVariableListAttributes(GetNamedVariableListAttributesMmsServiceMessage),
+    DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage),
+    Read(ReadMmsServiceMessage),
+    Write(WriteMmsServiceMessage),
+
+    InformationReport(InformationReportMmsServiceMessage),
+}
+
 pub trait MmsInitiatorService: Send + Sync {
-    fn idemtify(&mut self) -> impl std::future::Future<Output = Result<Identity, MmsServiceError>> + Send;
+    fn identify(&mut self) -> impl std::future::Future<Output = Result<Identity, MmsServiceError>> + Send;
 
     fn get_name_list(&mut self, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>) -> impl std::future::Future<Output = Result<NameList, MmsServiceError>> + Send;
     fn get_variable_access_attributes(&mut self, object_name: MmsObjectName) -> impl std::future::Future<Output = Result<VariableAccessAttributes, MmsServiceError>> + Send;
@@ -118,9 +178,11 @@ pub trait MmsInitiatorService: Send + Sync {
     fn read(&mut self, specification: MmsVariableAccessSpecification) -> impl std::future::Future<Output = Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>> + Send;
     fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> impl std::future::Future<Output = Result<MmsWriteResult, MmsServiceError>> + Send;
 
-    fn information_report(variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> impl std::future::Future<Output = Result<(), MmsServiceError>> + Send;
+    fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> impl std::future::Future<Output = Result<(), MmsServiceError>> + Send;
+    fn receive_information_report(&mut self) -> impl std::future::Future<Output = Result<InformationReportMmsServiceMessage, MmsServiceError>> + Send;
 }
 
 pub trait MmsResponderService: Send + Sync {
-    fn information_report(variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> impl std::future::Future<Output = Result<(), MmsServiceError>> + Send;
+    fn receive_message(&mut self) -> impl std::future::Future<Output = Result<MmsServiceMessage, MmsServiceError>> + Send;
+    fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> impl std::future::Future<Output = Result<(), MmsServiceError>> + Send;
 }

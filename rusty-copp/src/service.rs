@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{collections::VecDeque, marker::PhantomData};
 
 use der_parser::Oid;
 use rusty_cosp::{CospConnection, CospInitiator, CospListener, CospReader, CospResponder, CospWriter};
@@ -171,23 +171,27 @@ impl<R: CospReader> CoppReader for RustyCoppReader<R> {
 
 pub struct RustyCoppWriter<W: CospWriter> {
     cosp_writer: W,
+    buffer: VecDeque<Vec<u8>>,
 }
 
 impl<W: CospWriter> RustyCoppWriter<W> {
     fn new(cosp_writer: W) -> RustyCoppWriter<impl CospWriter> {
-        RustyCoppWriter { cosp_writer }
+        RustyCoppWriter { cosp_writer, buffer: VecDeque::new() }
     }
 }
 
 impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
-    async fn send(&mut self, user_data: &UserData) -> Result<(), CoppError> {
-        self.cosp_writer
-            .send(user_data.to_ber().to_vec().map_err(|e| CoppError::ProtocolError(e.to_string()))?.as_slice())
-            .await
-            .map_err(|e| CoppError::ProtocolStackError(e))
-    }
+    async fn send(&mut self, user_data: &mut VecDeque<UserData>) -> Result<(), CoppError> {
+        while let Some(user_data_item) = user_data.pop_front() {
+            self.buffer.push_back(user_data_item.to_ber().to_vec().map_err(|e| CoppError::ProtocolError(e.to_string()))?);
+        }
 
-    async fn continue_send(&mut self) -> Result<(), CoppError> {
-        Ok(self.cosp_writer.continue_send().await?)
+        while !self.buffer.is_empty() {
+            self.cosp_writer.send(&mut self.buffer).await?;
+        }
+
+        // Perform one more to ensure lower levels are also flushed even if this layer is complete.
+        self.cosp_writer.send(&mut self.buffer).await?;
+        Ok(())
     }
 }

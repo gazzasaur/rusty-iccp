@@ -173,6 +173,7 @@ impl<R: CotpReader, W: CotpWriter> CospConnection for TcpCospConnection<R, W> {
                 buffer: VecDeque::new(),
             },
             TcpCospWriter {
+                buffer: VecDeque::new(),
                 cotp_writer: self.cotp_writer,
                 remote_max_size: self.remote_max_size,
             },
@@ -213,46 +214,52 @@ impl<R: CotpReader> CospReader for TcpCospReader<R> {
 
 pub struct TcpCospWriter<W: CotpWriter> {
     cotp_writer: W,
+    buffer: VecDeque<Vec<u8>>,
     remote_max_size: TsduMaximumSize,
 }
 
 impl<W: CotpWriter> CospWriter for TcpCospWriter<W> {
-    async fn send(&mut self, data: &[u8]) -> Result<(), CospError> {
+    async fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> Result<(), CospError> {
         const HEADER_LENGTH_WITHOUT_ENCLOSURE: usize = 4; // GT + DT
 
-        match self.remote_max_size {
-            TsduMaximumSize::Size(x) if data.len() < MAX_PAYLOAD_SIZE && data.len() + HEADER_LENGTH_WITHOUT_ENCLOSURE < x as usize => {
-                let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data.to_vec()).serialise()?;
-                self.cotp_writer.send(&payload).await?;
-            }
-            TsduMaximumSize::Unlimited => {
-                let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data.to_vec()).serialise()?;
-                self.cotp_writer.send(&payload).await?;
-            }
-            TsduMaximumSize::Size(x) => {
-                let mut cursor: usize = 0;
-                let payload_length = usize::max(MIN_PAYLOAD_SIZE, usize::min(MAX_PAYLOAD_SIZE, x as usize));
+        while let Some(data_item) = input.pop_front() {
+            match self.remote_max_size {
+                TsduMaximumSize::Size(x) if data_item.len() < MAX_PAYLOAD_SIZE && data_item.len() + HEADER_LENGTH_WITHOUT_ENCLOSURE < x as usize => {
+                    let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data_item).serialise()?;
+                    self.buffer.push_back(payload);
+                }
+                TsduMaximumSize::Unlimited => {
+                    let payload = SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![])], data_item).serialise()?;
+                    self.buffer.push_back(payload);
+                }
+                TsduMaximumSize::Size(x) => {
+                    let mut cursor: usize = 0;
+                    let payload_length = usize::max(MIN_PAYLOAD_SIZE, usize::min(MAX_PAYLOAD_SIZE, x as usize));
 
-                while cursor < data.len() {
-                    let start = cursor;
-                    cursor = match cursor + payload_length as usize {
-                        cursor if cursor > data.len() => data.len(),
-                        cursor => cursor,
-                    };
-                    let enclosure = EnclosureField(if start == 0 { 1 } else { 0 } + if cursor == data.len() { 2 } else { 0 });
-                    let payload = SessionPduList::new(
-                        vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![SessionPduParameter::EnclosureParameter(enclosure)])],
-                        data[start..cursor].to_vec(),
-                    )
-                    .serialise()?;
-                    self.cotp_writer.send(&payload).await?;
+                    while cursor < data_item.len() {
+                        let start = cursor;
+                        cursor = match cursor + payload_length as usize {
+                            cursor if cursor > data_item.len() => data_item.len(),
+                            cursor => cursor,
+                        };
+                        let enclosure = EnclosureField(if start == 0 { 1 } else { 0 } + if cursor == data_item.len() { 2 } else { 0 });
+                        let payload = SessionPduList::new(
+                            vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![SessionPduParameter::EnclosureParameter(enclosure)])],
+                            data_item[start..cursor].to_vec(),
+                        )
+                        .serialise()?;
+                        self.buffer.push_back(payload);
+                    }
                 }
             }
         }
-        Ok(())
-    }
 
-    async fn continue_send(&mut self) -> Result<(), CospError> {
+        while !self.buffer.is_empty() {
+            self.cotp_writer.send(&mut self.buffer).await?;
+        }
+
+        // Perform one more to ensure lower levels are also flushed even if this layer is complete.
+        self.cotp_writer.send(&mut self.buffer).await?;
         Ok(())
     }
 }

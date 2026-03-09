@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use rusty_cotp::CotpWriter;
 
 use crate::{
@@ -54,7 +56,7 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: 
     };
 
     let pdus = SessionPduList::new(vec![SessionPduParameter::Connect(parameters)], vec![]);
-    writer.send(&pdus.serialise()?).await?;
+    writer.send(&mut VecDeque::from(vec![pdus.serialise()?])).await?;
     Ok(match overflow_length {
         0 => SendConnectionRequestResult::Complete,
         _ => SendConnectionRequestResult::Overflow(overflow_length),

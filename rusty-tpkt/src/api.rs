@@ -28,6 +28,5 @@ pub trait TpktReader: Send {
 }
 
 pub trait TpktWriter: Send {
-    fn send(&mut self, data: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
-    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
+    fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
 }

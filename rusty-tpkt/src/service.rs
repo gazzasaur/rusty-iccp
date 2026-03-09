@@ -102,15 +102,11 @@ impl TcpTpktWriter {
 }
 
 impl TpktWriter for TcpTpktWriter {
-    async fn send(&mut self, data: &mut VecDeque<Vec<u8>>) -> Result<(), TpktError> {
-        while let Some(packet) = data.pop_front() {
+    async fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> Result<(), TpktError> {
+        while let Some(packet) = input.pop_front() {
             self.write_buffer.extend(self.serialiser.serialise(&packet)?);
-            self.continue_send().await?
         }
-        Ok(())
-    }
 
-    async fn continue_send(&mut self) -> Result<(), TpktError> {
         while self.write_buffer.has_remaining() {
             self.writer.write_buf(&mut self.write_buffer).await?;
         }

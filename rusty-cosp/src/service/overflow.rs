@@ -21,7 +21,7 @@ pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter, initiator
     sub_parameters.push(SessionPduParameter::VersionNumberParameter(VersionNumberField(2))); // Accept version 2
 
     let pdus = SessionPduList::new(vec![SessionPduParameter::OverflowAccept(sub_parameters)], vec![]);
-    Ok(writer.send(&pdus.serialise()?).await?)
+    Ok(writer.send(&mut VecDeque::from(vec![pdus.serialise()?])).await?)
 }
 
 // We do not really need to return anything here. We will inspect the accept payload at the end.
@@ -51,18 +51,12 @@ pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter, max
             end_flag = 1
         };
 
-        writer
-            .send(
-                &SessionPduList::new(
-                    vec![SessionPduParameter::ConnectDataOverflow(vec![
-                        SessionPduParameter::EnclosureParameter(EnclosureField(2 * end_flag)),
-                        SessionPduParameter::UserDataParameter(data[start_index..cursor].to_vec()),
-                    ])],
-                    vec![],
-                )
-                .serialise()?,
-            )
-            .await?;
+        let session_pdus = vec![SessionPduParameter::ConnectDataOverflow(vec![
+            SessionPduParameter::EnclosureParameter(EnclosureField(2 * end_flag)),
+            SessionPduParameter::UserDataParameter(data[start_index..cursor].to_vec()),
+        ])];
+        let payload_data = SessionPduList::new(session_pdus, vec![]).serialise()?;
+        writer.send(&mut VecDeque::from(vec![payload_data])).await?;
     }
     Ok(())
 }

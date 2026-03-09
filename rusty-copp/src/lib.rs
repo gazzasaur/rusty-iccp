@@ -16,7 +16,7 @@ pub type RustyCoppConnectionIsoStack<R, W> = RustyCoppConnection<RustyCospReader
 
 #[cfg(test)]
 mod tests {
-    use std::{time::Duration, vec};
+    use std::{collections::VecDeque, time::Duration, vec};
 
     use der_parser::Oid;
     use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
@@ -69,19 +69,19 @@ mod tests {
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
 
         client_writer
-            .send(&UserData::FullyEncoded(vec![PresentationDataValueList {
+            .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
                 presentation_context_identifier: vec![0x03],
                 presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x60, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
                 transfer_syntax_name: None,
-            }]))
+            }])]))
             .await?;
         server_reader.recv().await?;
         server_writer
-            .send(&UserData::FullyEncoded(vec![PresentationDataValueList {
+            .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
                 presentation_context_identifier: vec![0x03],
                 presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x60, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
                 transfer_syntax_name: None,
-            }]))
+            }])]))
             .await?;
         client_reader.recv().await?;
 

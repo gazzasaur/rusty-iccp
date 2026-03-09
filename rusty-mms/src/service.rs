@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::marker::PhantomData;
 
 use der_parser::Oid;
@@ -623,26 +624,31 @@ impl<R: OsiSingleValueAcseReader> MmsReader for RustyMmsReader<R> {
 
 pub struct RustyMmsWriter<W: OsiSingleValueAcseWriter> {
     acse_writer: W,
+    buffer: VecDeque<Vec<u8>>,
 }
 
 impl<R: OsiSingleValueAcseWriter> RustyMmsWriter<R> {
     fn new(acse_writer: R) -> Self {
-        RustyMmsWriter { acse_writer }
+        RustyMmsWriter { acse_writer, buffer: VecDeque::new() }
     }
 }
 
 impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
-    async fn send(&mut self, message: MmsMessage) -> Result<(), MmsError> {
-        let data = match message {
-            MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request)?.to_vec(),
-            MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
-            MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
-        };
-        self.acse_writer.send(data.map_err(to_mms_error("Failed to serialise message"))?).await?;
-        Ok(())
-    }
+    async fn send(&mut self, messages: &mut VecDeque<MmsMessage>) -> Result<(), MmsError> {
+        while let Some(message) = messages.pop_front() {
+            let data = match message {
+                MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request)?.to_vec(),
+                MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
+                MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
+            }
+            .map_err(to_mms_error("Failed to serialise message"))?;
+            self.buffer.push_back(data);
+        }
 
-    async fn continue_send(&mut self) -> Result<(), MmsError> {
-        self.acse_writer.continue_send().await.map_err(to_mms_error("Failed to transmit MMS data"))
+        while !self.buffer.is_empty() {
+            self.acse_writer.send(&mut self.buffer).await?;
+        }
+        self.acse_writer.send(&mut self.buffer).await?;
+        Ok(())
     }
 }

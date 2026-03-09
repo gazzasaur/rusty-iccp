@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
 use rusty_acse::AcseError;
 use thiserror::Error;
@@ -307,6 +309,5 @@ pub trait MmsReader: Send {
 }
 
 pub trait MmsWriter: Send {
-    fn send(&mut self, message: MmsMessage) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
-    fn continue_send(&mut self) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
+    fn send(&mut self, message: &mut VecDeque<MmsMessage>) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
 }

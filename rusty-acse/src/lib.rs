@@ -16,7 +16,7 @@ pub type RustyOsiSingleValueAcseConnectionIsoStack<R, W> = RustyAcseConnection<R
 #[cfg(test)]
 mod tests {
     use der_parser::num_bigint::BigInt;
-    use std::time::Duration;
+    use std::{collections::VecDeque, time::Duration};
 
     use der_parser::Oid;
     use rusty_copp::{CoppError, RustyCoppListener};
@@ -62,9 +62,9 @@ mod tests {
         let (mut client_reader, mut client_writer) = client.split().await?;
         let (mut server_reader, mut server_writer) = server.split().await?;
 
-        client_writer.send(vec![0xa0, 0x03, 0x02, 0x01, 0x01]).await?;
+        client_writer.send(&mut VecDeque::from(vec![[0xa0, 0x03, 0x02, 0x01, 0x01].to_vec()])).await?;
         assert_eq!(AcseRecvResult::Data(vec![160, 3, 2, 1, 1]), server_reader.recv().await?);
-        server_writer.send(vec![0xa0, 0x03, 0x02, 0x01, 0x02]).await?;
+        server_writer.send(&mut VecDeque::from(vec![[0xa0, 0x03, 0x02, 0x01, 0x02].to_vec()])).await?;
         assert_eq!(AcseRecvResult::Data(vec![160, 3, 2, 1, 2]), client_reader.recv().await?);
 
         Ok(())

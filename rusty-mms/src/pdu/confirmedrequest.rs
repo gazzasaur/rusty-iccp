@@ -63,7 +63,11 @@ pub(crate) fn confirmed_request_to_ber<'a>(invocation_id: &'a [u8], payload: &'a
                 MmsConfirmedRequest::GetVariableAccessAttributes { object_name } => get_variable_access_attributes_reqeust_to_ber(object_name)?,
                 MmsConfirmedRequest::DefineNamedVariableList { variable_list_name, list_of_variables } => define_named_variable_list_reqeust_to_ber(variable_list_name, list_of_variables)?,
                 MmsConfirmedRequest::GetNamedVariableListAttributes { object_name } => get_named_variable_list_attributes_reqeust_to_ber(object_name)?,
-                MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name } => delete_named_variable_list_reqeust_to_ber(scope_of_delete, list_of_variable_list_names, domain_name)?,
+                MmsConfirmedRequest::DeleteNamedVariableList {
+                    scope_of_delete,
+                    list_of_variable_list_names,
+                    domain_name,
+                } => delete_named_variable_list_reqeust_to_ber(scope_of_delete, list_of_variable_list_names, domain_name)?,
             },
         ]),
     ))
