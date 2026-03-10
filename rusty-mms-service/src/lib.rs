@@ -1,10 +1,13 @@
 use der_parser::Oid;
 use futures::{StreamExt, TryFutureExt, channel::mpsc::UnboundedReceiver, select, stream::FuturesUnordered};
 use num_bigint::ToBigInt;
-use rusty_acse::{AcseRequestInformation, AeQualifier, ApTitle, RustyOsiSingleValueAcseInitiatorIsoStack};
-use rusty_copp::{CoppConnectionInformation, RustyCoppConnectionIsoStack, RustyCoppInitiatorIsoStack};
-use rusty_cosp::{CospConnectionInformation, RustyCospInitiatorIsoStack};
-use rusty_cotp::{CotpConnectInformation, CotpConnection, TcpCotpConnection};
+use rusty_acse::{
+    AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack,
+    RustyOsiSingleValueAcseListenerIsoStack, RustyOsiSingleValueAcseResponderIsoStack,
+};
+use rusty_copp::{CoppConnectionInformation, RustyCoppConnectionIsoStack, RustyCoppInitiatorIsoStack, RustyCoppListener, RustyCoppListenerIsoStack};
+use rusty_cosp::{CospConnectionInformation, CospListener, RustyCospInitiatorIsoStack, RustyCospListenerIsoStack};
+use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpConnection, CotpResponder, TcpCotpAcceptor, TcpCotpConnection};
 use std::{
     collections::{HashMap, VecDeque},
     marker::PhantomData,
@@ -26,14 +29,14 @@ use tokio::{
 use tracing::warn;
 
 use rusty_mms::{
-    MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsMessage, MmsReader, MmsRecvResult, MmsRequestInformation, MmsUnconfirmedService, MmsWriter, RustyMmsInitiator, RustyMmsInitiatorIsoStack,
-    RustyMmsReaderIsoStack, RustyMmsWriterIsoStack,
+    MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsReader, MmsRecvResult, MmsRequestInformation, MmsResponder, MmsUnconfirmedService, MmsWriter, RustyMmsInitiator,
+    RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack, RustyMmsReaderIsoStack, RustyMmsResponderIsoStack, RustyMmsWriterIsoStack,
     parameters::{ParameterSupportOption, ServiceSupportOption},
 };
-use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter, TpktConnection, TpktReader, TpktWriter};
+use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktService, TcpTpktWriter, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
-    api::{MmsServiceData, MmsServiceError},
+    api::{IdentifyMmsServiceMessage, MmsServiceData, MmsServiceError},
     error::to_mms_error,
 };
 
@@ -108,15 +111,22 @@ impl MmsServiceDataPump {
         MmsServiceDataPump { running, bindings }
     }
 
-    pub async fn register(&self, reader: impl MmsReader + 'static, writer: impl MmsWriter + 'static) -> (mpsc::UnboundedSender<MmsServiceDataPumpReaderType>, mpsc::UnboundedReceiver<Result<MmsMessage, MmsError>>) {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        self.bindings.lock().await.push(Box::pin(process_binding(reader, writer, sender)));
-        receiver
+    pub async fn register_initiator(&self, reader: impl MmsReader + 'static, writer: impl MmsWriter + 'static) -> (mpsc::UnboundedSender<MmsServiceDataPumpReaderType>, mpsc::UnboundedReceiver<Result<MmsMessage, MmsError>>) {
+        let (sender, inbound_queue) = mpsc::unbounded_channel();
+        let (outbound_queue, receiver) = mpsc::unbounded_channel();
+        self.bindings.lock().await.push(Box::pin(process_initiator_binding(reader, writer, inbound_queue, outbound_queue)));
+        (sender, receiver)
+    }
+
+    pub async fn register_responder(&self, reader: impl MmsReader + 'static, writer: impl MmsWriter + 'static) -> (mpsc::UnboundedSender<MmsServiceDataPumpReaderType>, mpsc::UnboundedReceiver<Result<MmsMessage, MmsError>>) {
+        let (sender, inbound_queue) = mpsc::unbounded_channel();
+        let (outbound_queue, receiver) = mpsc::unbounded_channel();
+        self.bindings.lock().await.push(Box::pin(process_responder_binding(reader, writer, inbound_queue, outbound_queue)));
+        (sender, receiver)
     }
 }
 
-// Client
-async fn process_binding(mut reader: impl MmsReader, mut writer: impl MmsWriter, mut inbound_queue: mpsc::UnboundedReceiver<MmsServiceDataPumpReaderType>, outbound_queue: mpsc::UnboundedSender<Result<MmsMessage, MmsError>>) {
+async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl MmsWriter, mut inbound_queue: mpsc::UnboundedReceiver<MmsServiceDataPumpReaderType>, outbound_queue: mpsc::UnboundedSender<Result<MmsMessage, MmsError>>) {
     let mut confirmed_request_counter = 0u32;
     let mut confirmed_requests = HashMap::new();
     let mut buffer = VecDeque::new();
@@ -130,9 +140,7 @@ async fn process_binding(mut reader: impl MmsReader, mut writer: impl MmsWriter,
         tokio::pin!(reader_messages);
 
         tokio::select! {
-            _ = &mut waker => {
-                break;
-            },
+            _ = &mut waker => (),
             x = inbound_queue.recv() => {
                 match x {
                     Some(MmsServiceDataPumpReaderType::Unconfirmed(message)) => {
@@ -179,6 +187,89 @@ async fn process_binding(mut reader: impl MmsReader, mut writer: impl MmsWriter,
                         warn!("Initiator got an unsupported message: {:?}", m);
                         return;
                     },
+                    Ok(MmsRecvResult::Closed) => {
+                        warn!("Connection closed");
+                        return;
+                    },
+                    Err(e) => {
+                        warn!("Failed to read from buffer: {:?}", e);
+                        return;
+                    },
+                }
+            },
+            else => {
+                break;
+            }
+        }
+
+        println!("{:?}", buffer);
+        if let Err(x) = writer.send(&mut buffer).await {
+            warn!("Error sending data. Closing");
+            break;
+        }
+    }
+}
+
+async fn process_responder_binding(mut reader: impl MmsReader, mut writer: impl MmsWriter, mut inbound_queue: mpsc::UnboundedReceiver<MmsServiceDataPumpReaderType>, outbound_queue: mpsc::UnboundedSender<Result<MmsMessage, MmsError>>) {
+    let mut confirmed_request_counter = 0u32;
+    let mut confirmed_requests = HashMap::new();
+    let mut buffer = VecDeque::new();
+    let mut inactive_timeout = Instant::now() + Duration::from_mins(15);
+
+    loop {
+        println!("ASDF");
+
+        let waker = tokio::time::sleep(Duration::from_secs(1));
+        let reader_messages = reader.recv();
+
+        tokio::pin!(waker);
+        tokio::pin!(reader_messages);
+
+        tokio::select! {
+            _ = &mut waker => (),
+            x = inbound_queue.recv() => {
+                match x {
+                    Some(MmsServiceDataPumpReaderType::Unconfirmed(message)) => {
+                        buffer.push_back(MmsMessage::Unconfirmed { unconfirmed_service: message });
+                    },
+                    Some(MmsServiceDataPumpReaderType::Confirmed(message_data, return_queue)) => {
+                        let reqeust_id = confirmed_request_counter;
+                        confirmed_request_counter += 1;
+
+                        if let Some(_) = confirmed_requests.insert(reqeust_id, return_queue) {
+                            warn!("Overlapping Requests Detected");
+                            return;
+                        };
+
+                        buffer.push_back(MmsMessage::ConfirmedRequest { invocation_id: reqeust_id.to_be_bytes().to_vec(), request: message_data });
+                    },
+                    None => return,
+                }
+            },
+            x = &mut reader_messages => {
+                match x {
+                    Ok(MmsRecvResult::Message(MmsMessage::ConfirmedRequest { invocation_id, request })) => {
+                        let b = match invocation_id.as_slice().try_into().map_err(to_mms_error("")) {
+                            Ok(x) => x,
+                            Err(e) => {
+                                warn!("Failed to convert invocation id: {:?}", e);
+                                return;
+                            },
+                        };
+                        let request_id = u32::from_be_bytes(b);
+
+                    },
+                    Ok(MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service })) => {
+                        outbound_queue.send(Ok(MmsMessage::Unconfirmed { unconfirmed_service }));
+                    },
+                    Ok(MmsRecvResult::Message(m)) => {
+                        warn!("Responder got an unsupported message: {:?}", m);
+                        return;
+                    },
+                    Ok(MmsRecvResult::Closed) => {
+                        warn!("Connection closed");
+                        return;
+                    },
                     Err(e) => {
                         warn!("Failed to read from buffer: {:?}", e);
                         return;
@@ -196,14 +287,14 @@ pub async fn process_bindings(running: Arc<AtomicBool>, bindings: Arc<Mutex<Vec<
     let mut current_bindings = FuturesUnordered::new();
 
     while running.load(Ordering::Acquire) {
+        tokio::time::sleep(Duration::from_secs(1)).await;
         let new_bindings: Vec<_> = { bindings.lock().await.drain(..).collect() };
         for binding in new_bindings {
             current_bindings.push(binding);
         }
         match timeout(Duration::from_secs(1), current_bindings.next()).await {
-            Ok(Some(())) => tokio::time::sleep(Duration::from_secs(1)).await,
-            Result::Err(_) => continue,
-            Ok(None) => continue,
+            Ok(_) => (),
+            Err(_) => (),
         }
     }
 }
@@ -214,6 +305,10 @@ pub struct RustyMmsInitiatorService<R: TpktReader, W: TpktWriter> {
 }
 
 pub trait TpktClientConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
+    fn create_connection<'a>(&mut self) -> impl std::future::Future<Output = Result<impl TpktConnection + 'a, MmsServiceError>> + Send;
+}
+
+pub trait TpktServerConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
     fn create_connection<'a>(&mut self) -> impl std::future::Future<Output = Result<impl TpktConnection + 'a, MmsServiceError>> + Send;
 }
 
@@ -302,6 +397,30 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
     }
 }
 
+pub struct TB<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> {
+    server: TcpTpktServer,
+    _tpkt_reader: PhantomData<R>,
+    _tpkt_writer: PhantomData<W>,
+    _tpkt_connection: PhantomData<T>,
+}
+
+impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> TB<T, R, W> {
+    pub async fn new() -> Result<TB<T, R, W>, MmsServiceError> {
+        Ok(TB {
+            server: TcpTpktServer::listen("127.0.0.1:8102".parse().map_err(to_mms_error(""))?).await.map_err(to_mms_error(""))?,
+            _tpkt_reader: PhantomData,
+            _tpkt_writer: PhantomData,
+            _tpkt_connection: PhantomData,
+        })
+    }
+}
+
+impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> TpktServerConnectionFactory<T, R, W> for TB<T, R, W> {
+    async fn create_connection<'a>(&mut self) -> Result<impl TpktConnection + 'a, MmsServiceError> {
+        Ok(self.server.accept().await.map_err(to_mms_error(""))?.0)
+    }
+}
+
 pub struct RustyMmsInitiatorServiceFactory<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> {
     data_pump: Arc<MmsServiceDataPump>,
     _tpkt_connection: PhantomData<T>,
@@ -319,7 +438,11 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         }
     }
 
-    async fn create_connection(&mut self, tpkt_connection_factory: &mut impl TpktClientConnectionFactory<T, R, W>, parameters: MmsServiceConnectionParameters) -> Result<impl MmsWriter, MmsServiceError> {
+    async fn create_connection(
+        &mut self,
+        tpkt_connection_factory: &mut impl TpktClientConnectionFactory<T, R, W>,
+        parameters: MmsServiceConnectionParameters,
+    ) -> Result<(tokio::sync::mpsc::UnboundedSender<MmsServiceDataPumpReaderType>, tokio::sync::mpsc::UnboundedReceiver<Result<MmsMessage, MmsError>>), MmsServiceError> {
         let tpkt_connection = tpkt_connection_factory.create_connection().await?;
 
         let cotp_connection_info = CotpConnectInformation {
@@ -368,33 +491,100 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         let mms_initiator = RustyMmsInitiatorIsoStack::<R, W>::new(acse_initiator, mms_connection_info);
         let mms_connection = mms_initiator.initiate().await?;
         let (mms_reader, mms_writer) = mms_connection.split().await?;
-        let reader_queue = self.data_pump.register_reader(mms_reader).await;
+        let (a, b) = self.data_pump.register_initiator(mms_reader, mms_writer).await;
 
-        Ok(mms_writer)
+        Ok((a, b))
+    }
+
+    async fn create_server_connection(
+        &mut self,
+        tpkt_connection_factory: &mut impl TpktServerConnectionFactory<T, R, W>,
+        parameters: MmsServiceConnectionParameters,
+    ) -> Result<(tokio::sync::mpsc::UnboundedSender<MmsServiceDataPumpReaderType>, tokio::sync::mpsc::UnboundedReceiver<Result<MmsMessage, MmsError>>), MmsServiceError> {
+        let tpkt_connection = tpkt_connection_factory.create_connection().await?;
+
+        let cotp_connection_info = CotpAcceptInformation { ..Default::default() };
+        let (cotp_listener, _) = TcpCotpAcceptor::<R, W>::new(tpkt_connection).await.map_err(to_mms_error("Failed to create COTP Server"))?;
+        let cotp_connection = cotp_listener.accept(cotp_connection_info).await.map_err(to_mms_error(""))?;
+
+        let (cosp_listener, _) = RustyCospListenerIsoStack::<R, W>::new(cotp_connection).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
+
+        let copp_connection_info = CoppConnectionInformation {
+            called_presentation_selector: parameters.called_presentation_selector,
+            calling_presentation_selector: parameters.calling_presentation_selector,
+        };
+        let (copp_responder, _) = RustyCoppListenerIsoStack::<R, W>::new(cosp_listener).await.map_err(to_mms_error(""))?;
+
+        let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseListenerIsoStack::<R, W>::new(copp_responder).await.map_err(to_mms_error(""))?;
+        acse_listener.set_response(Some(AcseResponseInformation {
+            application_context_name: Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error(""))?,
+            associate_result: AssociateResult::Accepted,
+            associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
+            responding_ap_title: acse_request_info.called_ap_title,
+            responding_ae_qualifier: acse_request_info.called_ae_qualifier,
+            responding_ap_invocation_identifier: acse_request_info.called_ap_invocation_identifier,
+            responding_ae_invocation_identifier: acse_request_info.called_ae_invocation_identifier,
+            implementation_information: None,
+        }));
+
+        let (mms_listener, _) = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
+        let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
+        let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
+
+        let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
+        let (a, b) = self.data_pump.register_responder(mms_reader, mms_writer).await;
+
+        Ok((a, b))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, atomic::AtomicBool};
+    use std::{
+        sync::{Arc, atomic::AtomicBool},
+        time::Duration,
+    };
 
+    use rusty_mms::MmsConfirmedRequest;
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter};
-    use tokio::sync::Mutex;
+    use tokio::{
+        join,
+        sync::{Mutex, mpsc},
+    };
 
-    use crate::{MmsServiceDataPump, RustyMmsInitiatorServiceFactory, TA, api::MmsServiceError, process_bindings};
+    use crate::{MmsServiceConnectionParameters, MmsServiceDataPump, MmsServiceDataPumpReaderType, RustyMmsInitiatorServiceFactory, TA, TB, api::MmsServiceError, error::to_mms_error, process_bindings};
 
     #[tokio::test]
     async fn main() -> Result<(), MmsServiceError> {
         let running = Arc::new(AtomicBool::new(true));
         let bindings = Arc::new(Mutex::new(Vec::new()));
 
-        let dp = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
-        let mut a = RustyMmsInitiatorServiceFactory::new(dp);
+        let data_pump = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
+        tokio::task::spawn(process_bindings(running, bindings.clone()));
 
-        let mut b = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
-        a.create_connection(&mut b, crate::MmsServiceConnectionParameters::default()).await?;
+        let (client_results, server_results) = join!(
+            async {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let mut tpkt_client_factory = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
+                let mut client_factory = RustyMmsInitiatorServiceFactory::new(data_pump.clone());
+                client_factory.create_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
+            },
+            async {
+                let mut tpkt_server_factory = TB::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new().await?;
+                let mut server_factory = RustyMmsInitiatorServiceFactory::new(data_pump.clone());
+                server_factory.create_server_connection(&mut tpkt_server_factory, MmsServiceConnectionParameters::default()).await
+            }
+        );
 
-        process_bindings(running, bindings).await;
+        let (client_send_queue, client_receive_queue) = client_results?;
+        let (server_send_queue, mut server_receive_queue) = server_results?;
+
+        let (s, r) = mpsc::unbounded_channel();
+        client_send_queue.send(MmsServiceDataPumpReaderType::Confirmed(MmsConfirmedRequest::Identify, s)).map_err(to_mms_error(""))?;
+
+        println!("------ {:?}", server_receive_queue.recv().await);
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
 
         Ok(())
     }

@@ -1,6 +1,7 @@
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
+use futures::{SinkExt, channel::mpsc::{self, UnboundedSender}};
 use num_bigint::{BigInt, BigUint};
-use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsError, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
+use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsError, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
 use thiserror::Error;
 
 use crate::error::to_mms_error;
@@ -108,6 +109,25 @@ pub struct InformationReportMmsServiceMessage {
 
 pub struct IdentifyMmsServiceMessage {
     invocation_id: u32,
+    sender: mpsc::UnboundedSender<MmsMessage>,
+}
+impl IdentifyMmsServiceMessage {
+    pub(crate) fn new(invocation_id: u32, sender: UnboundedSender<MmsMessage>) -> Self {
+        Self { invocation_id, sender }
+    }
+
+    pub async fn respond(self, identity: Identity) -> Result<(), MmsServiceError> {
+        let mut sender = self.sender;
+        sender.send(MmsMessage::ConfirmedResponse {
+            invocation_id: self.invocation_id.to_be_bytes().to_vec(),
+            response: rusty_mms::MmsConfirmedResponse::Identify {
+                vendor_name: identity.vendor_name,
+                model_name: identity.model_name,
+                revision: identity.revision,
+                abstract_syntaxes: identity.abstract_syntaxes,
+            },
+        }).await.map_err(to_mms_error(""))
+    }
 }
 
 pub struct GetNameListMmsServiceMessage {
@@ -115,37 +135,52 @@ pub struct GetNameListMmsServiceMessage {
     object_class: MmsObjectClass,
     object_scope: MmsObjectScope,
     continue_after: Option<String>,
+
+    sender: mpsc::UnboundedSender<MmsMessage>,
 }
 
 pub struct GetVariableAccessAttributesMmsServiceMessage {
     invocation_id: u32,
     object_name: MmsObjectName,
+
+    sender: mpsc::UnboundedSender<MmsMessage>,
 }
 
 pub struct DefineNamedVariableListMmsServiceMessage {
     invocation_id: u32,
     variable_list_name: MmsObjectName,
     list_of_variables: Vec<ListOfVariablesItem>,
+
+    sender: mpsc::UnboundedSender<MmsMessage>,
 }
 
 pub struct GetNamedVariableListAttributesMmsServiceMessage {
     invocation_id: u32,
     variable_list_name: MmsObjectName,
+
+    sender: mpsc::UnboundedSender<MmsMessage>,
 }
 
 pub struct DeleteNamedVariableListMmsServiceMessage {
     invocation_id: u32,
     variable_list_name: MmsObjectName,
+
+    sender: mpsc::UnboundedSender<MmsMessage>,
 }
 
 pub struct ReadMmsServiceMessage {
     invocation_id: u32,
     specification: MmsVariableAccessSpecification,
+
+    sender: mpsc::UnboundedSender<MmsMessage>,
 }
 
 pub struct WriteMmsServiceMessage {
     invocation_id: u32,
-    specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>,
+    specification: MmsVariableAccessSpecification,
+    values: Vec<MmsServiceData>,
+
+    sender: mpsc::UnboundedSender<MmsMessage>,
 }
 
 pub enum MmsServiceMessage {
