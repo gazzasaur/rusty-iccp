@@ -1,5 +1,4 @@
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
-use futures::{SinkExt};
 use num_bigint::{BigInt, BigUint};
 use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsError, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
 use thiserror::Error;

@@ -22,3 +22,7 @@ num-bigfloat = "1.7.2"
 tokio = { version = "1.47.1", features = ["full"] }
 der-parser = { version = "10.0.0", features = ["bigint", "serialize"] }
 futures = "0.3.32"
+
+[dev-dependencies]
+anyhow = "1.0.98"
+tracing-test = "0.2.5"

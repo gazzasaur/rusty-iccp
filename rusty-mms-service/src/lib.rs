@@ -34,7 +34,7 @@ use rusty_mms::{
 use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
-    api::{IdentifyMmsServiceMessage, Identity, InformationReportMmsServiceMessage, MmsServiceData, MmsServiceError, MmsServiceMessage},
+    api::{IdentifyMmsServiceMessage, InformationReportMmsServiceMessage, MmsServiceData, MmsServiceError, MmsServiceMessage},
     error::to_mms_error,
 };
 
@@ -124,6 +124,12 @@ impl MmsServiceDataPump {
     }
 }
 
+async fn write_wait(writer: &mut impl MmsWriter, message: &mut VecDeque<MmsMessage>) -> Result<(), MmsError> {
+    writer.send(message).await?;
+    tokio::time::sleep(Duration::from_millis(10000)).await;
+    Ok(())
+}
+
 async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl MmsWriter, mut inbound_queue: mpsc::UnboundedReceiver<MmsServiceDataPumpReaderType>, outbound_queue: mpsc::UnboundedSender<Result<MmsMessage, MmsError>>) {
     let mut confirmed_request_counter = 0u32;
     let mut confirmed_requests = HashMap::new();
@@ -131,14 +137,12 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
     let mut inactive_timeout = Instant::now() + Duration::from_mins(15);
 
     loop {
-        let waker = tokio::time::sleep(Duration::from_millis(1));
         let reader_messages = reader.recv();
 
-        tokio::pin!(waker);
         tokio::pin!(reader_messages);
 
         tokio::select! {
-            _ = &mut waker => (),
+            _ = write_wait(&mut writer, &mut buffer) => (),
             x = inbound_queue.recv() => {
                 match x {
                     Some(MmsServiceDataPumpReaderType::Unconfirmed(message)) => {
@@ -150,12 +154,14 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
 
                         if let Some(_) = confirmed_requests.insert(reqeust_id, return_queue) {
                             warn!("Overlapping Requests Detected");
-                            return;
+                            break;
                         };
 
                         buffer.push_back(MmsMessage::ConfirmedRequest { invocation_id: reqeust_id.to_be_bytes().to_vec(), request: message_data });
                     },
-                    None => return,
+                    None => {
+                        break;
+                    },
                 }
             },
             x = &mut reader_messages => {
@@ -165,7 +171,7 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
                             Ok(x) => x,
                             Err(e) => {
                                 warn!("Failed to convert invocation id: {:?}", e);
-                                return;
+                                break;
                             },
                         };
                         let request_id = u32::from_be_bytes(b);
@@ -183,26 +189,21 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
                     },
                     Ok(MmsRecvResult::Message(m)) => {
                         warn!("Initiator got an unsupported message: {:?}", m);
-                        return;
+                        break;
                     },
                     Ok(MmsRecvResult::Closed) => {
                         warn!("Connection closed");
-                        return;
+                        break;
                     },
                     Err(e) => {
                         warn!("Failed to read from buffer: {:?}", e);
-                        return;
+                        break;
                     },
                 }
             },
             else => {
                 break;
             }
-        }
-
-        if let Err(x) = writer.send(&mut buffer).await {
-            warn!("Error sending data. Closing");
-            break;
         }
     }
 }
@@ -218,21 +219,22 @@ async fn process_responder_binding(
     let mut buffer = VecDeque::new();
     let mut inactive_timeout = Instant::now() + Duration::from_mins(15);
 
+    let mut write_buffer = false;
     loop {
-        let waker = tokio::time::sleep(Duration::from_millis(1));
         let reader_messages = reader.recv();
 
-        tokio::pin!(waker);
         tokio::pin!(reader_messages);
 
         tokio::select! {
-            _ = &mut waker => (),
+            _ = write_wait(&mut writer, &mut buffer) => (),
             x = inbound_queue.recv() => {
                 match x {
                     Some(x) => {
                         buffer.push_back(x);
                     },
-                    None => return,
+                    None => {
+                        break;
+                    },
                 }
             },
             x = &mut reader_messages => {
@@ -242,7 +244,7 @@ async fn process_responder_binding(
                             Ok(x) => x,
                             Err(e) => {
                                 warn!("Failed to convert invocation id: {:?}", e);
-                                return;
+                                break;
                             },
                         };
                         let invocation_id = u32::from_be_bytes(b);
@@ -263,20 +265,32 @@ async fn process_responder_binding(
                     },
                     Ok(MmsRecvResult::Message(m)) => {
                         warn!("Responder got an unsupported message: {:?}", m);
-                        return;
+                        break;
                     },
                     Ok(MmsRecvResult::Closed) => {
                         warn!("Connection closed");
-                        return;
+                        break;
                     },
                     Err(e) => {
                         warn!("Failed to read from buffer: {:?}", e);
-                        return;
+                        break;
                     },
                 }
-            },
+            }
             else => {
                 break;
+            }
+        }
+
+        if write_buffer || !buffer.is_empty() {
+            write_buffer = write_buffer || !buffer.is_empty();
+            match timeout(Duration::from_nanos(100), writer.send(&mut buffer)).await {
+                Ok(Err(e)) => {
+                    warn!("Failed to send data to client: {:?}", e);
+                    break;
+                }
+                Ok(Ok(())) => write_buffer = false,
+                Err(_) => (),
             }
         }
     }
@@ -286,7 +300,7 @@ pub async fn process_bindings(running: Arc<AtomicBool>, bindings: Arc<Mutex<Vec<
     let mut current_bindings = FuturesUnordered::new();
 
     while running.load(Ordering::Acquire) {
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
         let new_bindings: Vec<_> = { bindings.lock().await.drain(..).collect() };
         for binding in new_bindings {
             current_bindings.push(binding);
@@ -544,12 +558,13 @@ mod tests {
         time::Duration,
     };
 
-    use rusty_mms::MmsConfirmedRequest;
+    use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsMessage};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter};
     use tokio::{
         join,
         sync::{Mutex, mpsc},
     };
+    use tracing_test::traced_test;
 
     use crate::{
         MmsServiceConnectionParameters, MmsServiceDataPump, MmsServiceDataPumpReaderType, RustyMmsInitiatorServiceFactory, TA, TB,
@@ -558,8 +573,9 @@ mod tests {
         process_bindings,
     };
 
-    #[tokio::test]
-    async fn main() -> Result<(), MmsServiceError> {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[traced_test]
+    async fn main() -> Result<(), anyhow::Error> {
         let running = Arc::new(AtomicBool::new(true));
         let bindings = Arc::new(Mutex::new(Vec::new()));
 
@@ -580,28 +596,46 @@ mod tests {
             }
         );
 
-        let (client_send_queue, client_receive_queue) = client_results?;
+        let (client_send_queue, mut client_receive_queue) = client_results?;
         let (server_send_queue, mut server_receive_queue) = server_results?;
 
-        let (s, r) = mpsc::unbounded_channel();
+        let m = client_send_queue.clone();
 
-        join!(
-            async {
+        let (s, r) = mpsc::unbounded_channel();
+        let (t1, t2) = join!(
+            tokio::task::spawn(async move {
                 for _ in 1..1000000 {
-                    client_send_queue.send(MmsServiceDataPumpReaderType::Confirmed(MmsConfirmedRequest::Identify, s.clone())).map_err(to_mms_error("")).expect("");
+                    client_send_queue
+                        .clone()
+                        .send(MmsServiceDataPumpReaderType::Confirmed(MmsConfirmedRequest::Identify, s.clone()))
+                        .map_err(to_mms_error(""))
+                        .expect("");
                 }
-            },
-            async {
+            }),
+            tokio::task::spawn(async move {
                 for _ in 1..1000000 {
-                    let value = server_receive_queue.recv().await.expect("");
-                    if let MmsServiceMessage::Identify(IdentifyMmsServiceMessage { invocation_id, sender }) = value {
-                        // println!("{:?}", invocation_id);
+                    let value = match server_receive_queue.recv().await {
+                        Some(x) => x,
+                        None => {
+                            break;
+                        }
+                    };
+                    if let MmsServiceMessage::Identify(message) = value {
+                        message
+                            .respond(Identity {
+                                vendor_name: "Yo".into(),
+                                model_name: "There".into(),
+                                revision: "Fool".into(),
+                                abstract_syntaxes: None,
+                            })
+                            .await
+                            .expect("")
                     }
                 }
-            }
+            })
         );
-
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        t1?;
+        t2?;
 
         Ok(())
     }
