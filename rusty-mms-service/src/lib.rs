@@ -34,7 +34,10 @@ use rusty_mms::{
 use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
-    api::{IdentifyMmsServiceMessage, InformationReportMmsServiceMessage, MmsServiceData, MmsServiceError, MmsServiceMessage},
+    api::{
+        DefineNamedVariableListMmsServiceMessage, DeleteNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetNamedVariableListAttributesMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage,
+        IdentifyMmsServiceMessage, InformationReportMmsServiceMessage, MmsServiceData, MmsServiceError, MmsServiceMessage,
+    },
     error::to_mms_error,
 };
 
@@ -249,14 +252,14 @@ async fn process_responder_binding(
                         };
                         let invocation_id = u32::from_be_bytes(b);
                         let value = match request {
-                            MmsConfirmedRequest::GetNameList { object_class, object_scope, continue_after } => todo!(),
-                            MmsConfirmedRequest::Identify => MmsServiceMessage::Identify(IdentifyMmsServiceMessage { invocation_id, sender: external_outbound_queue.clone() }),
+                            MmsConfirmedRequest::GetNameList { object_class, object_scope, continue_after } => MmsServiceMessage::GetNameList(GetNameListMmsServiceMessage::new(invocation_id, object_class, object_scope, continue_after, external_outbound_queue.clone())),
+                            MmsConfirmedRequest::Identify => MmsServiceMessage::Identify(IdentifyMmsServiceMessage::new(invocation_id, external_outbound_queue.clone())),
                             MmsConfirmedRequest::Read { specification_with_result, variable_access_specification } => todo!(),
                             MmsConfirmedRequest::Write { variable_access_specification, list_of_data } => todo!(),
-                            MmsConfirmedRequest::GetVariableAccessAttributes { object_name } => todo!(),
-                            MmsConfirmedRequest::DefineNamedVariableList { variable_list_name, list_of_variables } => todo!(),
-                            MmsConfirmedRequest::GetNamedVariableListAttributes { object_name } => todo!(),
-                            MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name } => todo!(),
+                            MmsConfirmedRequest::GetVariableAccessAttributes { object_name } => MmsServiceMessage::GetVariableAccessAttributes(GetVariableAccessAttributesMmsServiceMessage::new(invocation_id, object_name, external_outbound_queue.clone())),
+                            MmsConfirmedRequest::DefineNamedVariableList { variable_list_name, list_of_variables } => MmsServiceMessage::DefineNamedVariableList(DefineNamedVariableListMmsServiceMessage::new(invocation_id, variable_list_name, list_of_variables, external_outbound_queue.clone())),
+                            MmsConfirmedRequest::GetNamedVariableListAttributes { object_name } => MmsServiceMessage::GetNamedVariableListAttributes(GetNamedVariableListAttributesMmsServiceMessage::new(invocation_id, object_name, external_outbound_queue.clone())),
+                            MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name } => MmsServiceMessage::DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage::new(invocation_id, scope_of_delete, list_of_variable_list_names, domain_name, external_outbound_queue.clone())),
                         };
                         outbound_queue.send(value);
                     },
