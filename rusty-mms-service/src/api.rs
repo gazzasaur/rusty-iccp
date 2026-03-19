@@ -1,10 +1,10 @@
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
-use num_bigint::{BigInt, BigUint, ToBigInt};
-use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsError, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
+use num_bigint::{BigInt, BigUint};
+use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsError, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
 use thiserror::Error;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::error::to_mms_error;
+use crate::{convert_low_level_data_to_high_level_data, error::to_mms_error};
 
 #[derive(Error, Debug)]
 pub enum MmsServiceError {
@@ -316,9 +316,38 @@ impl DeleteNamedVariableListMmsServiceMessage {
 #[derive(Debug)]
 pub struct ReadMmsServiceMessage {
     invocation_id: u32,
+    specification_with_result: bool,
     specification: MmsVariableAccessSpecification,
 
     sender: UnboundedSender<MmsMessage>,
+}
+impl ReadMmsServiceMessage {
+    pub(crate) fn new(invocation_id: u32, specification: MmsVariableAccessSpecification, specification_with_result: Option<bool>, sender: UnboundedSender<MmsMessage>) -> Self {
+        Self {
+            invocation_id,
+            // TODO HIGH What is the default behaviour for this?
+            specification_with_result: specification_with_result.unwrap_or(true),
+            specification,
+            sender,
+        }
+    }
+
+    pub fn specification(&self) -> &MmsVariableAccessSpecification {
+        &self.specification
+    }
+
+    pub async fn respond(self, access_results: Vec<MmsAccessResult>) -> Result<(), MmsServiceError> {
+        let sender = self.sender;
+
+        let variable_access_specification = if self.specification_with_result { Some(self.specification) } else { None };
+
+        sender
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
+                response: rusty_mms::MmsConfirmedResponse::Read { variable_access_specification, access_results },
+            })
+            .map_err(to_mms_error("The receive channel has been closed"))
+    }
 }
 
 #[derive(Debug)]
@@ -328,6 +357,40 @@ pub struct WriteMmsServiceMessage {
     values: Vec<MmsServiceData>,
 
     sender: UnboundedSender<MmsMessage>,
+}
+impl WriteMmsServiceMessage {
+    pub(crate) fn new(invocation_id: u32, specification: MmsVariableAccessSpecification, values: Vec<MmsData>, sender: UnboundedSender<MmsMessage>) -> Result<Self, MmsServiceError> {
+        let mut high_level_values = vec![];
+        for value in values {
+            high_level_values.push(convert_low_level_data_to_high_level_data(&value)?);
+        }
+
+        Ok(Self {
+            invocation_id,
+            specification,
+            values: high_level_values,
+            sender,
+        })
+    }
+
+    pub fn specification(&self) -> &MmsVariableAccessSpecification {
+        &self.specification
+    }
+
+    pub fn values(&self) -> &Vec<MmsServiceData> {
+        &self.values
+    }
+
+    pub async fn respond(self, write_results: Vec<MmsWriteResult>) -> Result<(), MmsServiceError> {
+        let sender = self.sender;
+
+        sender
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
+                response: rusty_mms::MmsConfirmedResponse::Write { write_results },
+            })
+            .map_err(to_mms_error("The receive channel has been closed"))
+    }
 }
 
 #[derive(Debug)]
