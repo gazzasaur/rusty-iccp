@@ -413,27 +413,28 @@ pub enum MmsServiceMessage {
 
 #[async_trait]
 pub trait MmsInitiatorService: Send + Sync {
-    fn identify(&mut self) -> impl std::future::Future<Output = Result<Identity, MmsServiceError>> + Send;
+    async fn identify(&mut self) -> Result<Identity, MmsServiceError>;
 
-    fn get_name_list(&mut self, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>) -> impl std::future::Future<Output = Result<NameList, MmsServiceError>> + Send;
-    fn get_variable_access_attributes(&mut self, object_name: MmsObjectName) -> impl std::future::Future<Output = Result<VariableAccessAttributes, MmsServiceError>> + Send;
+    async fn get_name_list(&mut self, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>) -> Result<NameList, MmsServiceError>;
+    async fn get_variable_access_attributes(&mut self, object_name: MmsObjectName) -> Result<VariableAccessAttributes, MmsServiceError>;
 
-    fn define_named_variable_list(
+    async fn define_named_variable_list(
         &mut self,
         variable_list_name: MmsObjectName,
         list_of_variables: Vec<ListOfVariablesItem>,
-    ) -> impl std::future::Future<Output = Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>> + Send;
-    fn get_named_variable_list_attributes(&mut self, variable_list_name: MmsObjectName) -> impl std::future::Future<Output = Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>> + Send;
-    fn delete_named_variable_list(&mut self, variable_list_name: MmsObjectName) -> impl std::future::Future<Output = Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>> + Send;
+    ) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
+    async fn get_named_variable_list_attributes(&mut self, variable_list_name: MmsObjectName) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
+    async fn delete_named_variable_list(&mut self, variable_list_name: MmsObjectName) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
 
-    fn read(&mut self, specification: MmsVariableAccessSpecification) -> impl std::future::Future<Output = Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>> + Send;
-    fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> impl std::future::Future<Output = Result<MmsWriteResult, MmsServiceError>> + Send;
+    async fn read(&mut self, specification: MmsVariableAccessSpecification) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
+    async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<MmsWriteResult, MmsServiceError>;
 
-    fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> impl std::future::Future<Output = Result<(), MmsServiceError>> + Send;
-    fn receive_information_report(&mut self) -> impl std::future::Future<Output = Result<InformationReportMmsServiceMessage, MmsServiceError>> + Send;
+    async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> Result<(), MmsServiceError>;
+    async fn receive_information_report(&mut self) -> Result<InformationReportMmsServiceMessage, MmsServiceError>;
 }
 
+#[async_trait]
 pub trait MmsResponderService: Send + Sync {
-    fn receive_message(&mut self) -> impl std::future::Future<Output = Result<MmsServiceMessage, MmsServiceError>> + Send;
-    fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> impl std::future::Future<Output = Result<(), MmsServiceError>> + Send;
+    async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError>;
+    async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> Result<(), MmsServiceError>;
 }

@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use der_parser::Oid;
 use futures::{StreamExt, stream::FuturesUnordered};
 use num_bigint::ToBigInt;
@@ -530,6 +531,7 @@ pub struct RustyMmsInitiatorService {
     sender_queue: mpsc::UnboundedSender<MmsServiceDataPumpReaderType>,
     receiver_queue: mpsc::UnboundedReceiver<Result<MmsMessage, MmsError>>,
 }
+#[async_trait]
 impl MmsInitiatorService for RustyMmsInitiatorService {
     async fn identify(&mut self) -> Result<api::Identity, MmsServiceError> {
         let (s, mut r) = mpsc::unbounded_channel();
