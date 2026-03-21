@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
 use num_bigint::{BigInt, BigUint};
 use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsError, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
@@ -344,7 +345,10 @@ impl ReadMmsServiceMessage {
         sender
             .send(MmsMessage::ConfirmedResponse {
                 invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::Read { variable_access_specification, access_results },
+                response: rusty_mms::MmsConfirmedResponse::Read {
+                    variable_access_specification,
+                    access_results,
+                },
             })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
@@ -407,6 +411,7 @@ pub enum MmsServiceMessage {
     InformationReport(InformationReportMmsServiceMessage),
 }
 
+#[async_trait]
 pub trait MmsInitiatorService: Send + Sync {
     fn identify(&mut self) -> impl std::future::Future<Output = Result<Identity, MmsServiceError>> + Send;
 
