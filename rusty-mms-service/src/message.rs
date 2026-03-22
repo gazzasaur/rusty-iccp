@@ -2,11 +2,9 @@ use num_bigint::BigInt;
 use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::convert_low_level_data_to_high_level_data;
-use crate::data::{InformationReportMmsServiceMessage, MmsServiceData};
+use crate::data::{InformationReportMmsServiceMessage, MmsServiceData, convert_low_level_data_to_high_level_data};
 use crate::error::to_mms_error;
 use crate::{data::Identity, error::MmsServiceError};
-use futures::SinkExt;
 
 #[derive(Debug)]
 pub struct IdentifyMmsServiceMessage {
