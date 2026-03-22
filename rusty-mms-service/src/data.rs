@@ -1,7 +1,10 @@
+use std::clone;
+use std::ops::Deref;
+
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
-use num_bigint::{BigInt, BigUint};
-use rusty_mms::{MmsAccessResult, MmsData, MmsError, MmsTypeDescription, MmsVariableAccessSpecification};
 use num_bigint::ToBigInt;
+use num_bigint::{BigInt, BigUint};
+use rusty_mms::{MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsVariableAccessSpecification};
 
 use crate::error::{MmsServiceError, to_mms_error};
 
@@ -82,9 +85,39 @@ pub struct NameList {
     pub more_follows: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum MmsServiceTypeDescription {
+    Array { packed: bool, number_of_elements: u32, element_type: Box<MmsServiceTypeSpecification> },
+    Structure { packed: bool, components: Vec<MmsServiceTypeDescriptionComponent> },
+    Boolean,
+    BitString(i32),
+    Integer(u8),
+    Unsigned(u8),
+    FloatingPoint { format_width: u8, exponent_width: u8 },
+    OctetString(i32),
+    VisibleString(i32),
+    GeneralizedTime,
+    BinaryTime(bool),
+    Bcd(u8),
+    ObjId,
+    MmsString(i32),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum MmsServiceTypeSpecification {
+    ObjectName(MmsObjectName),
+    TypeDescription(MmsServiceTypeDescription),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct MmsServiceTypeDescriptionComponent {
+    pub component_name: Option<String>,
+    pub component_type: MmsServiceTypeDescription,
+}
+
 pub struct VariableAccessAttributes {
     pub deletable: bool,
-    pub type_description: MmsTypeDescription,
+    pub type_description: MmsServiceTypeDescription,
 }
 
 #[derive(Debug)]
@@ -137,6 +170,32 @@ pub(crate) fn convert_high_level_data_to_low_level_data(service_data: &MmsServic
     }
 }
 
+pub(crate) fn convert_high_level_data_types_to_low_level_data_types(service_data: &MmsServiceTypeDescription) -> Result<MmsTypeDescription, MmsError> {
+    match service_data {
+        MmsServiceTypeDescription::Array { packed, number_of_elements, element_type } => Ok(MmsTypeDescription::Array {
+            packed: if *packed { Some(true) } else { None },
+            number_of_elements: BigInt::from(*number_of_elements).to_signed_bytes_be(),
+            element_type: Box::new(match element_type.deref() {
+                MmsServiceTypeSpecification::ObjectName(mms_object_name) => rusty_mms::MmsTypeSpecification::ObjectName(mms_object_name.clone()),
+                MmsServiceTypeSpecification::TypeDescription(mms_service_type_description) => rusty_mms::MmsTypeSpecification::TypeDescription(convert_high_level_data_types_to_low_level_data_types(&mms_service_type_description)?),
+            }),
+        }),
+        MmsServiceTypeDescription::Structure { packed, components } => todo!(),
+        MmsServiceTypeDescription::Boolean => todo!(),
+        MmsServiceTypeDescription::BitString(_) => todo!(),
+        MmsServiceTypeDescription::Integer(_) => todo!(),
+        MmsServiceTypeDescription::Unsigned(_) => todo!(),
+        MmsServiceTypeDescription::FloatingPoint { format_width, exponent_width } => todo!(),
+        MmsServiceTypeDescription::OctetString(_) => todo!(),
+        MmsServiceTypeDescription::VisibleString(_) => todo!(),
+        MmsServiceTypeDescription::GeneralizedTime => todo!(),
+        MmsServiceTypeDescription::BinaryTime(_) => todo!(),
+        MmsServiceTypeDescription::Bcd(_) => todo!(),
+        MmsServiceTypeDescription::ObjId => todo!(),
+        MmsServiceTypeDescription::MmsString(_) => todo!(),
+    }
+}
+
 pub(crate) fn convert_low_level_data_to_high_level_data(service_data: &MmsData) -> Result<MmsServiceData, MmsError> {
     match service_data {
         MmsData::Array(items) => {
@@ -181,5 +240,35 @@ pub(crate) fn convert_low_level_data_to_high_level_data(service_data: &MmsData) 
         // MmsServiceData::ObjectId(oid) => todo!(),
         // MmsServiceData::MmsString(_) => todo!(),
         _ => todo!(),
+    }
+}
+
+pub(crate) fn convert_low_level_data_types_to_high_level_data_types(service_data: &MmsTypeDescription) -> Result<MmsServiceTypeDescription, MmsServiceError> {
+    match service_data {
+        MmsTypeDescription::Array { packed, number_of_elements, element_type } => Ok(MmsServiceTypeDescription::Array {
+            packed: packed.unwrap_or(false),
+            number_of_elements: BigInt::from_signed_bytes_be(number_of_elements)
+                .to_biguint()
+                .ok_or(MmsServiceError::ProtocolError("Type Description Element Count is expected to be an unisgned 32 bit integer.".to_string()))?
+                .try_into()
+                .map_err(to_mms_error("Type Description Element Count is expected to be an unisgned 32 bit integer."))?,
+            element_type: Box::new(match element_type.deref() {
+                rusty_mms::MmsTypeSpecification::ObjectName(mms_object_name) => MmsServiceTypeSpecification::ObjectName(mms_object_name.clone()),
+                rusty_mms::MmsTypeSpecification::TypeDescription(mms_type_description) => MmsServiceTypeSpecification::TypeDescription(convert_low_level_data_types_to_high_level_data_types(mms_type_description)?),
+            }),
+        }),
+        MmsTypeDescription::Structure { packed, components } => todo!(),
+        MmsTypeDescription::Boolean => todo!(),
+        MmsTypeDescription::BitString(items) => todo!(),
+        MmsTypeDescription::Integer(items) => todo!(),
+        MmsTypeDescription::Unsigned(items) => todo!(),
+        MmsTypeDescription::FloatingPoint { format_width, exponent_width } => todo!(),
+        MmsTypeDescription::OctetString(items) => todo!(),
+        MmsTypeDescription::VisibleString(items) => todo!(),
+        MmsTypeDescription::GeneralizedTime => todo!(),
+        MmsTypeDescription::BinaryTime(_) => todo!(),
+        MmsTypeDescription::Bcd(items) => todo!(),
+        MmsTypeDescription::ObjId => todo!(),
+        MmsTypeDescription::MmsString(items) => todo!(),
     }
 }

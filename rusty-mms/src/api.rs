@@ -47,7 +47,7 @@ pub enum MmsError {
     InternalError(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MmsObjectName {
     VmdSpecific(String),
     DomainSpecific(String, String), // Domain, Item Id
