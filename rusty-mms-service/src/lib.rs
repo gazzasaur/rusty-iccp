@@ -28,19 +28,24 @@ use tokio::{
 use tracing::warn;
 
 use rusty_mms::{
-    MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsReader, MmsRecvResult, MmsRequestInformation, MmsResponder, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriter, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack, parameters::{ParameterSupportOption, ServiceSupportOption}
+    MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsReader, MmsRecvResult, MmsRequestInformation, MmsResponder, MmsUnconfirmedService,
+    MmsVariableAccessSpecification, MmsWriter, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
+    parameters::{ParameterSupportOption, ServiceSupportOption},
 };
 use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
-    api::{
-        DefineNamedVariableListMmsServiceMessage, DeleteNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetNamedVariableListAttributesMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage, IdentifyMmsServiceMessage, Identity, InformationReportMmsServiceMessage, MmsInitiatorService, MmsResponderService, MmsServiceData, MmsServiceError, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage
+    data::{Identity, InformationReportMmsServiceMessage, MmsInitiatorService, MmsResponderService, MmsServiceData},
+    error::{MmsServiceError, to_mms_error},
+    message::{
+        DefineNamedVariableListMmsServiceMessage, DeleteNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetNamedVariableListAttributesMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage,
+        IdentifyMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage,
     },
-    error::to_mms_error,
 };
 
-pub mod api;
+pub mod data;
 pub(crate) mod error;
+pub mod message;
 
 fn convert_high_level_data_to_low_level_data(service_data: &MmsServiceData) -> Result<MmsData, MmsError> {
     match service_data {
@@ -496,7 +501,7 @@ impl RustyMmsInitiatorService {
 
 #[async_trait]
 impl MmsInitiatorService for RustyMmsInitiatorService {
-    async fn identify(&mut self) -> Result<api::Identity, MmsServiceError> {
+    async fn identify(&mut self) -> Result<data::Identity, MmsServiceError> {
         let (packet_sender, mut packet_receiver) = mpsc::unbounded_channel();
         let dpt = MmsServiceDataPumpReaderType::Confirmed(MmsConfirmedRequest::Identify, packet_sender);
         self.sender_queue.send(dpt).map_err(to_mms_error("Failed to queue MMS request."))?;
@@ -509,11 +514,11 @@ impl MmsInitiatorService for RustyMmsInitiatorService {
         }
     }
 
-    async fn get_name_list(&mut self, object_class: rusty_mms::MmsObjectClass, object_scope: rusty_mms::MmsObjectScope, continue_after: Option<String>) -> Result<api::NameList, MmsServiceError> {
+    async fn get_name_list(&mut self, object_class: rusty_mms::MmsObjectClass, object_scope: rusty_mms::MmsObjectScope, continue_after: Option<String>) -> Result<data::NameList, MmsServiceError> {
         todo!()
     }
 
-    async fn get_variable_access_attributes(&mut self, object_name: rusty_mms::MmsObjectName) -> Result<api::VariableAccessAttributes, MmsServiceError> {
+    async fn get_variable_access_attributes(&mut self, object_name: rusty_mms::MmsObjectName) -> Result<data::VariableAccessAttributes, MmsServiceError> {
         todo!()
     }
 
@@ -588,7 +593,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         RustyMmsServiceFactory { data_pump, _tpkt_connection: PhantomData, _tpkt_reader: PhantomData, _tpkt_writer: PhantomData }
     }
 
-    async fn create_connection(&mut self, tpkt_connection_factory: &mut impl TpktClientConnectionFactory<T, R, W>, parameters: MmsServiceConnectionParameters) -> Result<RustyMmsInitiatorService, MmsServiceError> {
+    async fn create_client_connection(&mut self, tpkt_connection_factory: &mut impl TpktClientConnectionFactory<T, R, W>, parameters: MmsServiceConnectionParameters) -> Result<RustyMmsInitiatorService, MmsServiceError> {
         let tpkt_connection = tpkt_connection_factory.create_connection().await?;
 
         let cotp_connection_info = CotpConnectInformation { called_tsap_id: parameters.called_tsap_id, calling_tsap_id: parameters.calling_tsap_id, ..Default::default() };
@@ -631,11 +636,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         Ok(RustyMmsInitiatorService::new(sender, receiver))
     }
 
-    async fn create_server_connection(
-        &mut self,
-        tpkt_connection_factory: &mut impl TpktServerConnectionFactory<T, R, W>,
-        parameters: MmsServiceConnectionParameters,
-    ) -> Result<RustyMmsResponderService, MmsServiceError> {
+    async fn create_server_connection(&mut self, tpkt_connection_factory: &mut impl TpktServerConnectionFactory<T, R, W>, parameters: MmsServiceConnectionParameters) -> Result<RustyMmsResponderService, MmsServiceError> {
         let tpkt_connection = tpkt_connection_factory.create_connection().await?;
 
         let cotp_connection_info = CotpAcceptInformation { ..Default::default() };
@@ -677,18 +678,15 @@ mod tests {
         time::Duration,
     };
 
-    use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsMessage};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter};
-    use tokio::{
-        join,
-        sync::{Mutex, mpsc},
-    };
+    use tokio::{join, sync::Mutex};
     use tracing_test::traced_test;
 
     use crate::{
-        MmsServiceConnectionParameters, MmsServiceDataPump, MmsServiceDataPumpReaderType, RustyMmsServiceFactory, TA, TB,
-        api::{IdentifyMmsServiceMessage, Identity, MmsInitiatorService, MmsResponderService, MmsServiceError, MmsServiceMessage},
-        error::to_mms_error,
+        MmsServiceConnectionParameters, MmsServiceDataPump, RustyMmsServiceFactory, TA, TB,
+        data::{Identity, MmsInitiatorService, MmsResponderService},
+        error::MmsServiceError,
+        message::MmsServiceMessage,
         process_bindings,
     };
 
@@ -706,7 +704,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 let mut tpkt_client_factory = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
                 let mut client_factory = RustyMmsServiceFactory::new(data_pump.clone());
-                client_factory.create_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
+                client_factory.create_client_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
             },
             async {
                 let mut tpkt_server_factory = TB::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new().await?;
@@ -718,107 +716,30 @@ mod tests {
         let mut client = client_results?;
         let mut server = server_results?;
 
-        let m = client.clone();
-
-        let (t1, t2) = join!(
-            tokio::task::spawn(async move {
-                for _ in 1..1000000 {
-                    client.identify().await?;
-                }
-                Ok::<(), MmsServiceError>(())
-            }),
-            tokio::task::spawn(async move {
-                for _ in 1..1000000 {
-                    let value = match server.receive_message().await {
-                        Ok(x) => x,
-                        Err(_) => {
-                            break;
-                        }
-                    };
-                    if let MmsServiceMessage::Identify(message) = value {
-                        message
-                            .respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None })
-                            .await
-                            .expect("")
+        let client_task = tokio::task::spawn(async move {
+            for _ in 1..10000 {
+                client.identify().await?;
+            }
+            Ok::<(), MmsServiceError>(())
+        });
+        let server_task = tokio::task::spawn(async move {
+            for _ in 1..10000 {
+                let value = match server.receive_message().await {
+                    Ok(x) => x,
+                    Err(_) => {
+                        break;
                     }
+                };
+                if let MmsServiceMessage::Identify(message) = value {
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
                 }
-            })
-        );
-        t1?;
-        t2?;
+            }
+        });
+
+        let (client_task_result, server_task_result) = join!(client_task, server_task);
+        client_task_result??;
+        server_task_result?;
 
         Ok(())
     }
 }
-
-// async fn create_connection(running: Arc<AtomicBool>) -> Result<(), MmsServiceError> {
-//     let bindings = Arc::new(Mutex::new(Vec::new()));
-//     tokio::task::spawn(process_bindings(running.clone(), bindings.clone()));
-//     let data_pump = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
-
-//     let (client, server) = tokio::join!(
-//         async {
-//             tokio::time::sleep(Duration::from_millis(1)).await;
-//             let mut tpkt_client_factory = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
-//             let mut client_factory = RustyMmsInitiatorServiceFactory::new(data_pump.clone());
-//             client_factory.create_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
-//         },
-//         async {
-//             let mut tpkt_server_factory = TB::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new().await?;
-//             let mut server_factory = RustyMmsInitiatorServiceFactory::new(data_pump.clone());
-//             server_factory.create_server_connection(&mut tpkt_server_factory, MmsServiceConnectionParameters::default()).await
-//         }
-//     );
-//     let (client_send_queue, client_recv_queue) = client?;
-//     let (server_send_queue, server_recv_queue) = server?;
-
-//     Ok((client_send_queue, client_recv_queue, server_send_queue, server_recv_queue))
-// }
-
-// impl<R: TpktReader, W: TpktWriter> RustyMmsInitiatorService<R, W> {
-// }
-
-// impl<R: TpktReader, W: TpktWriter> MmsInitiatorService for RustyMmsInitiatorService<R, W> {
-//     async fn idemtify(&mut self) -> Result<api::Identity, api::MmsServiceError> {
-//         let lock = self.writer.lock().await;
-//         lock.rea
-
-//         todo!()
-//     }
-
-//     async fn get_name_list(&mut self, object_class: rusty_mms::MmsObjectClass, object_scope: rusty_mms::MmsObjectScope, continue_after: Option<String>) -> Result<api::NameList, api::MmsServiceError> {
-//         todo!()
-//     }
-
-//     async fn get_variable_access_attributes(&mut self, object_name: rusty_mms::MmsObjectName) -> Result<api::VariableAccessAttributes, api::MmsServiceError> {
-//         todo!()
-//     }
-
-//     async fn define_named_variable_list(
-//         &mut self,
-//         variable_list_name: rusty_mms::MmsObjectName,
-//         list_of_variables: Vec<rusty_mms::ListOfVariablesItem>,
-//     ) -> Result<(Option<rusty_mms::MmsVariableAccessSpecification>, Vec<rusty_mms::MmsAccessResult>), api::MmsServiceError> {
-//         todo!()
-//     }
-
-//     async fn get_named_variable_list_attributes(&mut self, variable_list_name: rusty_mms::MmsObjectName) -> Result<(Option<rusty_mms::MmsVariableAccessSpecification>, Vec<rusty_mms::MmsAccessResult>), api::MmsServiceError> {
-//         todo!()
-//     }
-
-//     async fn delete_named_variable_list(&mut self, variable_list_name: rusty_mms::MmsObjectName) -> Result<(Option<rusty_mms::MmsVariableAccessSpecification>, Vec<rusty_mms::MmsAccessResult>), api::MmsServiceError> {
-//         todo!()
-//     }
-
-//     async fn read(&mut self, specification: rusty_mms::MmsVariableAccessSpecification) -> Result<(Option<rusty_mms::MmsVariableAccessSpecification>, Vec<rusty_mms::MmsAccessResult>), api::MmsServiceError> {
-//         todo!()
-//     }
-
-//     async fn write(&mut self, specification: rusty_mms::MmsVariableAccessSpecification, values: Vec<api::MmsServiceData>) -> Result<rusty_mms::MmsWriteResult, api::MmsServiceError> {
-//         todo!()
-//     }
-
-//     async fn information_report(variable_access_specification: rusty_mms::MmsVariableAccessSpecification, access_results: Vec<rusty_mms::MmsAccessResult>) -> Result<(), api::MmsServiceError> {
-//         todo!()
-//     }
-// }

@@ -1,4 +1,5 @@
 max_width = 240
+chain_width = 240
 fn_call_width = 240
 struct_lit_width = 240
 struct_variant_width = 240
