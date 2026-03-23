@@ -127,6 +127,14 @@ pub struct VariableAccessAttributes {
     pub type_description: MmsServiceTypeDescription,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum MmsServiceObjectSelectScope {
+    Specific(),
+    AaSpecific,
+    Domain(String),
+    Vmd,
+}
+
 #[derive(Debug)]
 pub struct InformationReportMmsServiceMessage {
     pub variable_access_specification: MmsVariableAccessSpecification,

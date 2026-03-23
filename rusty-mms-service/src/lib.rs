@@ -238,7 +238,7 @@ pub trait MmsInitiatorService: Send + Sync {
 
     async fn define_named_variable_list(&mut self, variable_list_name: MmsObjectName, list_of_variables: Vec<ListOfVariablesItem>) -> Result<(), MmsServiceError>;
     async fn get_named_variable_list_attributes(&mut self, variable_list_name: MmsObjectName) -> Result<NamedVariableListAttributes, MmsServiceError>;
-    async fn delete_named_variable_list(&mut self, variable_list_name: MmsObjectName) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
+    async fn delete_named_variable_list(&mut self, scope_of_delete: Option<MmsScope>, variable_list_name: MmsObjectName, domain_name: Option<String>) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
 
     async fn read(&mut self, specification: MmsVariableAccessSpecification) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
     async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<MmsWriteResult, MmsServiceError>;
@@ -334,7 +334,7 @@ impl MmsInitiatorService for RustyMmsInitiatorService {
         }
     }
 
-    async fn delete_named_variable_list(&mut self, variable_list_name: MmsObjectName) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError> {
+    async fn delete_named_variable_list(&mut self, scope_of_delete: Option<MmsScope>, variable_list_name: MmsObjectName, domain_name: Option<String>) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError> {
         todo!()
     }
 
@@ -395,7 +395,7 @@ mod tests {
 
     use anyhow::anyhow;
     use der_parser::Oid;
-    use rusty_mms::{ListOfVariablesItem, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, VariableSpecification};
+    use rusty_mms::{ListOfVariablesItem, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsScope, VariableSpecification};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter};
     use tokio::{join, sync::Mutex};
     use tracing_test::traced_test;
@@ -785,4 +785,61 @@ mod tests {
 
         Ok(())
     }
+
+    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    // #[traced_test]
+    // async fn test_delete_named_variable_list_attributes_operation() -> Result<(), anyhow::Error> {
+    //     let running = Arc::new(AtomicBool::new(true));
+    //     let bindings = Arc::new(Mutex::new(Vec::new()));
+    //     tokio::task::spawn(process_bindings(running.clone(), bindings.clone()));
+
+    //     let data_pump = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
+
+    //     let (client_results, server_results) = join!(
+    //         async {
+    //             // Allow the server to start listening first.
+    //             tokio::time::sleep(Duration::from_millis(1)).await;
+    //             let mut tpkt_client_factory = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
+    //             let mut client_factory = RustyMmsServiceFactory::new(data_pump.clone());
+    //             client_factory.create_client_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
+    //         },
+    //         async {
+    //             let mut tpkt_server_factory = TB::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new().await?;
+    //             let mut server_factory = RustyMmsServiceFactory::new(data_pump.clone());
+    //             server_factory.create_server_connection(&mut tpkt_server_factory, MmsServiceConnectionParameters::default()).await
+    //         }
+    //     );
+
+    //     let client = client_results?;
+    //     let mut server = server_results?;
+
+    //     let client_task = tokio::task::spawn(async move { client.clone().delete_named_variable_list(Some(MmsScope::Domain)).await });
+    //     let request = match server.receive_message().await {
+    //         Ok(MmsServiceMessage::DeleteNamedVariableList(x)) => x,
+    //         x => return Err(anyhow!("Test Failed: {:?}", x)),
+    //     };
+    //     assert_eq!(request.domain_name(), &MmsObjectName::VmdSpecific("AList".into()));
+    //     request
+    //         .respond(
+    //             true,
+    //             vec![
+    //                 ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("World".into())) },
+    //                 ListOfVariablesItem { variable_specification: VariableSpecification::Invalidated },
+    //             ],
+    //         )
+    //         .await?;
+
+    //     assert_eq!(
+    //         client_task.await??,
+    //         NamedVariableListAttributes {
+    //             deletable: true,
+    //             list_of_variables: vec![
+    //                 ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("World".into())) },
+    //                 ListOfVariablesItem { variable_specification: VariableSpecification::Invalidated },
+    //             ]
+    //         }
+    //     );
+
+    //     Ok(())
+    // }
 }
