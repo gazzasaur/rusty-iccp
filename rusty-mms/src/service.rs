@@ -33,10 +33,7 @@ impl MmsObjectName {
             MmsObjectName::VmdSpecific(name) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::VisibleString(&name.as_str())),
             MmsObjectName::DomainSpecific(domain, name) => BerObject::from_header_and_content(
                 Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
-                BerObjectContent::Sequence(vec![
-                    BerObject::from_obj(BerObjectContent::VisibleString(&domain.as_str())),
-                    BerObject::from_obj(BerObjectContent::VisibleString(&name.as_str())),
-                ]),
+                BerObjectContent::Sequence(vec![BerObject::from_obj(BerObjectContent::VisibleString(&domain.as_str())), BerObject::from_obj(BerObjectContent::VisibleString(&name.as_str()))]),
             ),
             MmsObjectName::AaSpecific(name) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::VisibleString(&name.as_str())),
         }
@@ -63,10 +60,9 @@ impl MmsObjectName {
 impl MmsVariableAccessSpecification {
     pub(crate) fn to_ber(&self) -> BerObject<'_> {
         match &self {
-            MmsVariableAccessSpecification::ListOfVariables(list_of_variable_items) => BerObject::from_header_and_content(
-                Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
-                BerObjectContent::Sequence(list_of_variable_items.iter().map(|i| i.to_ber()).collect()),
-            ),
+            MmsVariableAccessSpecification::ListOfVariables(list_of_variable_items) => {
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)), BerObjectContent::Sequence(list_of_variable_items.iter().map(|i| i.to_ber()).collect()))
+            }
             MmsVariableAccessSpecification::VariableListName(mms_object_name) => {
                 BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(vec![mms_object_name.to_ber()]))
             }
@@ -193,10 +189,9 @@ impl MmsData {
             MmsData::Structure(_) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::Null),
 
             MmsData::Boolean(value) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Boolean(*value)),
-            MmsData::BitString(padding, bit_data) => BerObject::from_header_and_content(
-                Header::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)),
-                BerObjectContent::BitString(*padding, BitStringObject { data: &bit_data }),
-            ),
+            MmsData::BitString(padding, bit_data) => {
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)), BerObjectContent::BitString(*padding, BitStringObject { data: &bit_data }))
+            }
             MmsData::Integer(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(5), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
             MmsData::Unsigned(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(6), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
             MmsData::FloatingPoint(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(7), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
@@ -205,10 +200,9 @@ impl MmsData {
             MmsData::GeneralizedTime(_instant) => todo!(),
             MmsData::BinaryTime(_items) => todo!(),
             MmsData::Bcd(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(13), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
-            MmsData::BooleanArray(paddibg, object_data) => BerObject::from_header_and_content(
-                Header::new(Class::ContextSpecific, false, Tag::from(14), Length::Definite(0)),
-                BerObjectContent::BitString(*paddibg, BitStringObject { data: &object_data }),
-            ),
+            MmsData::BooleanArray(paddibg, object_data) => {
+                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(14), Length::Definite(0)), BerObjectContent::BitString(*paddibg, BitStringObject { data: &object_data }))
+            }
             MmsData::ObjectId(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(15), Length::Definite(0)), BerObjectContent::OID(object_data.to_owned())),
             MmsData::MmsString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(16), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
         };
@@ -270,16 +264,10 @@ impl MmsTypeDescriptionComponent {
         Ok(BerObject::from(BerObjectContent::Sequence(
             vec![
                 match &self.component_name {
-                    Some(component_name) => Some(BerObject::from_header_and_content(
-                        Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)),
-                        BerObjectContent::VisibleString(component_name.as_str()),
-                    )),
+                    Some(component_name) => Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::VisibleString(component_name.as_str()))),
                     None => None,
                 },
-                Some(BerObject::from_header_and_content(
-                    Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
-                    BerObjectContent::Sequence(vec![self.component_type.to_ber()?]),
-                )),
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(vec![self.component_type.to_ber()?]))),
             ]
             .into_iter()
             .filter_map(|x| x)
@@ -316,14 +304,8 @@ impl MmsTypeDescription {
                             Some(x) => Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*x))),
                             None => None,
                         },
-                        Some(BerObject::from_header_and_content(
-                            Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)),
-                            BerObjectContent::Integer(number_of_elements),
-                        )),
-                        Some(BerObject::from_header_and_content(
-                            Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)),
-                            BerObjectContent::Sequence(vec![element_type.to_ber()?]),
-                        )),
+                        Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Integer(number_of_elements))),
+                        Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)), BerObjectContent::Sequence(vec![element_type.to_ber()?]))),
                     ]
                     .into_iter()
                     .filter_map(|x| x)
@@ -393,11 +375,7 @@ impl MmsTypeDescription {
                 let number_of_elements = number_of_elements.ok_or_else(|| MmsError::ProtocolError("Failed to parse Mms Type Description Array - Number of Elements not found".into()))?;
                 let type_specification = type_specification.ok_or_else(|| MmsError::ProtocolError("Failed to parse Mms Type Description Array - Type Specification not found".into()))?;
 
-                MmsTypeDescription::Array {
-                    packed,
-                    number_of_elements,
-                    element_type: Box::new(type_specification),
-                }
+                MmsTypeDescription::Array { packed, number_of_elements, element_type: Box::new(type_specification) }
             }
             Some([162]) => {
                 let mut packed = None;
@@ -424,11 +402,20 @@ impl MmsTypeDescription {
                 MmsTypeDescription::Structure { packed, components: type_descriptions }
             }
             Some([131]) => MmsTypeDescription::Boolean,
-            Some([132]) => MmsTypeDescription::BitString(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
-            Some([133]) => MmsTypeDescription::Integer(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
-            Some([134]) => MmsTypeDescription::Unsigned(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
-            // Some([167]) => MmsTypeDescription::FloatingPoint(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?)
-            Some([137]) => MmsTypeDescription::OctetString(process_integer_content(&description, "Failed to parse Mms Type Description Octet String")?),
+            Some([132]) => MmsTypeDescription::BitString(process_integer_content(&description, "Failed to parse Mms Type Description BitString")?),
+            Some([133]) => MmsTypeDescription::Integer(process_integer_content(&description, "Failed to parse Mms Type Description Integer")?),
+            Some([134]) => MmsTypeDescription::Unsigned(process_integer_content(&description, "Failed to parse Mms Type Description Unsigned")?),
+            Some([167]) => {
+                let npm_object_items = process_constructed_data(description.data).map_err(to_mms_error("Failed to parse Mms Type Description FloatingPoint".into()))?;
+                let mut npm_object_items_iter = npm_object_items.iter();
+
+                let format_width = process_integer_content(npm_object_items_iter.next().ok_or(MmsError::ProtocolError("MMS Floating Pint must have a width".into()))?, "Failed to parse Mms Type Description FloatingPoint format width")?;
+                let exponent_width =
+                    process_integer_content(npm_object_items_iter.next().ok_or(MmsError::ProtocolError("MMS Floating Pint must have an exponent width".into()))?, "Failed to parse Mms Type Description FloatingPoint exponent width")?;
+
+                MmsTypeDescription::FloatingPoint { format_width, exponent_width }
+            }
+            Some([137]) => MmsTypeDescription::OctetString(process_integer_content(&description, "Failed to parse Mms Type Description OctetString")?),
             Some([139]) => MmsTypeDescription::GeneralizedTime,
             x => return Err(MmsError::ProtocolError(format!("Unsupported MmsTypeDescription {:?} on {}", x, pdu))),
         })
@@ -444,12 +431,7 @@ pub struct RustyMmsInitiator<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAc
 
 impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsInitiator<T, R, W> {
     pub fn new(acse_initiator: impl OsiSingleValueAcseInitiator, options: MmsRequestInformation) -> RustyMmsInitiator<impl OsiSingleValueAcseInitiator, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter> {
-        RustyMmsInitiator {
-            acse_initiator,
-            acse_reader: PhantomData::<R>,
-            acse_writer: PhantomData::<W>,
-            options,
-        }
+        RustyMmsInitiator { acse_initiator, acse_reader: PhantomData::<R>, acse_writer: PhantomData::<W>, options }
     }
 }
 
@@ -463,19 +445,14 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
             InitRequestResponseDetails {
                 proposed_version_number: self.options.proposed_version_number,
                 propsed_parameter_cbb: ParameterSupportOptions { options: self.options.propsed_parameter_cbb },
-                services_supported_calling: ServiceSupportOptions {
-                    options: self.options.services_supported_calling,
-                },
+                services_supported_calling: ServiceSupportOptions { options: self.options.services_supported_calling },
             },
         );
         let request_data = pdu.serialise()?;
 
         // TODO Figure out what to do with these.
-        let (acse_connection, _response, user_data) = self
-            .acse_initiator
-            .initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error("Failed to create MMS OID. This is a bug."))?.to_owned(), request_data)
-            .await
-            .map_err(to_mms_error("Failed yo initiate MMS connection"))?;
+        let (acse_connection, _response, user_data) =
+            self.acse_initiator.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error("Failed to create MMS OID. This is a bug."))?.to_owned(), request_data).await.map_err(to_mms_error("Failed yo initiate MMS connection"))?;
         let _response = InitiateResponsePdu::parse(user_data)?;
 
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
@@ -505,24 +482,13 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
             services_supported_calling: request.init_request_details().services_supported_calling.options.clone(),
         };
 
-        Ok((
-            RustyMmsListener {
-                acse_responder,
-                _r: PhantomData::<R>,
-                _w: PhantomData::<W>,
-            },
-            mms_request_information,
-        ))
+        Ok((RustyMmsListener { acse_responder, _r: PhantomData::<R>, _w: PhantomData::<W> }, mms_request_information))
     }
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsListener for RustyMmsListener<T, R, W> {
     async fn responder(self) -> Result<impl MmsResponder, MmsError> {
-        Ok(RustyMmsResponder {
-            acse_responder: self.acse_responder,
-            _r: PhantomData::<R>,
-            _w: PhantomData::<W>,
-        })
+        Ok(RustyMmsResponder { acse_responder: self.acse_responder, _r: PhantomData::<R>, _w: PhantomData::<W> })
     }
 }
 
@@ -565,11 +531,7 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
                 },
             },
         );
-        let acse_connection = self
-            .acse_responder
-            .accept(repsonse.serialise()?)
-            .await
-            .map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
+        let acse_connection = self.acse_responder.accept(repsonse.serialise()?).await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
         Ok(RustyMmsConnection::<R, W>::new(acse_reader, acse_writer))
     }

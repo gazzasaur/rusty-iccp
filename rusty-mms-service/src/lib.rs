@@ -23,7 +23,7 @@ use crate::{
     data::{Identity, InformationReportMmsServiceMessage, MmsServiceData, NameList, VariableAccessAttributes, convert_low_level_data_types_to_high_level_data_types},
     datapump::{MmsServiceDataPump, MmsServiceDataPumpReaderType},
     error::{MmsServiceError, to_mms_error},
-    message::{GetVariableAccessAttributesMmsServiceMessage, MmsServiceMessage},
+    message::MmsServiceMessage,
 };
 
 pub mod data;
@@ -366,7 +366,8 @@ impl MmsResponderService for RustyMmsResponderService {
 #[cfg(test)]
 mod tests {
     use crate::MmsResponderService;
-    use crate::data::NameList;
+    use crate::data::{MmsServiceTypeDescription, MmsServiceTypeDescriptionComponent, NameList, VariableAccessAttributes};
+    use crate::message::IdentifyMmsServiceMessage;
     use crate::{MmsInitiatorService, datapump::process_bindings};
     use std::fs::read;
     use std::{
@@ -375,7 +376,8 @@ mod tests {
     };
 
     use anyhow::anyhow;
-    use rusty_mms::{MmsBasicObjectClass, MmsObjectClass, MmsObjectScope};
+    use der_parser::Oid;
+    use rusty_mms::{MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter};
     use tokio::{join, sync::Mutex};
     use tracing_test::traced_test;
@@ -438,7 +440,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[traced_test]
-    async fn test_operations() -> Result<(), anyhow::Error> {
+    async fn test_identify_operation() -> Result<(), anyhow::Error> {
         let running = Arc::new(AtomicBool::new(true));
         let bindings = Arc::new(Mutex::new(Vec::new()));
         tokio::task::spawn(process_bindings(running.clone(), bindings.clone()));
@@ -460,7 +462,55 @@ mod tests {
             }
         );
 
-        let mut client = client_results?;
+        let client = client_results?;
+        let mut server = server_results?;
+
+        let mut task_client = client.clone();
+        let client_task = tokio::task::spawn(async move { task_client.identify().await });
+        let request = match server.receive_message().await {
+            Ok(MmsServiceMessage::Identify(x)) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
+        request.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("Test Failed");
+        assert_eq!(client_task.await??, Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None });
+
+        let mut task_client = client.clone();
+        let client_task = tokio::task::spawn(async move { task_client.identify().await });
+        let request = match server.receive_message().await {
+            Ok(MmsServiceMessage::Identify(x)) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
+        request.respond(Identity { vendor_name: "This".into(), model_name: "Is".into(), revision: "Another".into(), abstract_syntaxes: Some(vec![Oid::from(&[1, 2, 3, 4])?, Oid::from(&[4, 3, 2, 1])?]) }).await.expect("Test Failed");
+        assert_eq!(client_task.await??, Identity { vendor_name: "This".into(), model_name: "Is".into(), revision: "Another".into(), abstract_syntaxes: Some(vec![Oid::from(&[1, 2, 3, 4])?, Oid::from(&[4, 3, 2, 1])?]) });
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[traced_test]
+    async fn test_get_name_list_operation() -> Result<(), anyhow::Error> {
+        let running = Arc::new(AtomicBool::new(true));
+        let bindings = Arc::new(Mutex::new(Vec::new()));
+        tokio::task::spawn(process_bindings(running.clone(), bindings.clone()));
+
+        let data_pump = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
+
+        let (client_results, server_results) = join!(
+            async {
+                // Allow the server to start listening first.
+                tokio::time::sleep(Duration::from_millis(1)).await;
+                let mut tpkt_client_factory = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
+                let mut client_factory = RustyMmsServiceFactory::new(data_pump.clone());
+                client_factory.create_client_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
+            },
+            async {
+                let mut tpkt_server_factory = TB::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new().await?;
+                let mut server_factory = RustyMmsServiceFactory::new(data_pump.clone());
+                server_factory.create_server_connection(&mut tpkt_server_factory, MmsServiceConnectionParameters::default()).await
+            }
+        );
+
+        let client = client_results?;
         let mut server = server_results?;
 
         let client_task = tokio::task::spawn(async move { client.clone().get_name_list(MmsObjectClass::Basic(MmsBasicObjectClass::Domain), MmsObjectScope::Vmd, Some("Some Thing".into())).await });
@@ -474,6 +524,74 @@ mod tests {
         request.respond(vec!["Domain1".into(), "Domain2".into()], true).await?;
 
         assert_eq!(client_task.await??, NameList { identifiers: vec!["Domain1".into(), "Domain2".into()], more_follows: true });
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[traced_test]
+    async fn test_get_attribute_list_operation() -> Result<(), anyhow::Error> {
+        let running = Arc::new(AtomicBool::new(true));
+        let bindings = Arc::new(Mutex::new(Vec::new()));
+        tokio::task::spawn(process_bindings(running.clone(), bindings.clone()));
+
+        let data_pump = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
+
+        let (client_results, server_results) = join!(
+            async {
+                // Allow the server to start listening first.
+                tokio::time::sleep(Duration::from_millis(1)).await;
+                let mut tpkt_client_factory = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
+                let mut client_factory = RustyMmsServiceFactory::new(data_pump.clone());
+                client_factory.create_client_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
+            },
+            async {
+                let mut tpkt_server_factory = TB::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new().await?;
+                let mut server_factory = RustyMmsServiceFactory::new(data_pump.clone());
+                server_factory.create_server_connection(&mut tpkt_server_factory, MmsServiceConnectionParameters::default()).await
+            }
+        );
+
+        let client = client_results?;
+        let mut server = server_results?;
+
+        let mut task_client = client.clone();
+        let client_task = tokio::task::spawn(async move { task_client.get_variable_access_attributes(MmsObjectName::AaSpecific("Mine".into())).await });
+        let request = match server.receive_message().await {
+            Ok(MmsServiceMessage::GetVariableAccessAttributes(x)) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
+        assert_eq!(request.object_name(), &MmsObjectName::AaSpecific("Mine".into()));
+        request.respond(true, MmsServiceTypeDescription::Boolean).await?;
+        assert_eq!(client_task.await??, VariableAccessAttributes { deletable: true, type_description: MmsServiceTypeDescription::Boolean });
+
+        let mut task_client = client.clone();
+        let client_task = tokio::task::spawn(async move { task_client.get_variable_access_attributes(MmsObjectName::VmdSpecific("SomeVar".into())).await });
+        let request = match server.receive_message().await {
+            Ok(MmsServiceMessage::GetVariableAccessAttributes(x)) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
+        assert_eq!(request.object_name(), &MmsObjectName::VmdSpecific("SomeVar".into()));
+        request
+            .respond(
+                true,
+                MmsServiceTypeDescription::Structure {
+                    packed: false,
+                    components: vec![
+                        MmsServiceTypeDescriptionComponent { component_name: Some("This One".into()), component_type: crate::data::MmsServiceTypeSpecification::TypeDescription(MmsServiceTypeDescription::Boolean) },
+                        MmsServiceTypeDescriptionComponent { component_name: None, component_type: crate::data::MmsServiceTypeSpecification::TypeDescription(MmsServiceTypeDescription::Integer(10)) },
+                        MmsServiceTypeDescriptionComponent { component_name: None, component_type: crate::data::MmsServiceTypeSpecification::TypeDescription(MmsServiceTypeDescription::BitString(127)) },
+                        MmsServiceTypeDescriptionComponent { component_name: None, component_type: crate::data::MmsServiceTypeSpecification::TypeDescription(MmsServiceTypeDescription::Unsigned(128)) },
+                        MmsServiceTypeDescriptionComponent {
+                            component_name: None,
+                            component_type: crate::data::MmsServiceTypeSpecification::TypeDescription(MmsServiceTypeDescription::FloatingPoint { format_width: 32, exponent_width: 8 }),
+                        },
+                        MmsServiceTypeDescriptionComponent { component_name: None, component_type: crate::data::MmsServiceTypeSpecification::TypeDescription(MmsServiceTypeDescription::OctetString(255)) },
+                    ],
+                },
+            )
+            .await?;
+        assert_eq!(client_task.await??, VariableAccessAttributes { deletable: true, type_description: MmsServiceTypeDescription::Boolean });
 
         Ok(())
     }

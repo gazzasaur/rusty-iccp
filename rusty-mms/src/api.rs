@@ -186,7 +186,7 @@ pub enum MmsTypeDescription {
     OctetString(Vec<u8> /* i32 */),
     VisibleString(Vec<u8> /* i32 */),
     GeneralizedTime,
-    BinaryTime(bool),
+    BinaryTime(bool), /* If true include date otherwise just use time of day */
     Bcd(Vec<u8> /* u8 */),
     ObjId,
     MmsString(Vec<u8> /* i32 */),

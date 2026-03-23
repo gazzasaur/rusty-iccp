@@ -45,23 +45,22 @@ pub(crate) fn parse_identify_response(payload: &Any<'_>) -> Result<MmsConfirmedR
 pub(crate) fn identify_response_to_ber<'a>(vendor_name: &'a str, model_name: &'a str, revision: &'a str, application_syntaxes: &Option<Vec<Oid<'_>>>) -> BerObject<'a> {
     BerObject::from_header_and_content(
         Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)),
-        BerObjectContent::Sequence(vec![
-            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::OctetString(vendor_name.as_bytes())),
-            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::OctetString(model_name.as_bytes())),
-            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::OctetString(revision.as_bytes())),
-            if let Some(syntaxes) = application_syntaxes {
-                BerObject::from_header_and_content(
-                    Header::new(Class::ContextSpecific, true, Tag::from(3), Length::Definite(0)),
-                    BerObjectContent::Sequence(
-                        syntaxes
-                            .into_iter()
-                            .map(|oid| BerObject::from_header_and_content(Header::new(Class::Universal, false, Tag::Oid, Length::Definite(0)), BerObjectContent::OID(oid.to_owned())))
-                            .collect(),
-                    ),
-                )
-            } else {
-                BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(3), Length::Definite(0)), BerObjectContent::Sequence(vec![]))
-            },
-        ]),
+        BerObjectContent::Sequence(
+            vec![
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::OctetString(vendor_name.as_bytes()))),
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::OctetString(model_name.as_bytes()))),
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::OctetString(revision.as_bytes()))),
+                match application_syntaxes {
+                    Some(syntaxes) => Some(BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, true, Tag::from(3), Length::Definite(0)),
+                        BerObjectContent::Sequence(syntaxes.into_iter().map(|oid| BerObject::from_header_and_content(Header::new(Class::Universal, false, Tag::Oid, Length::Definite(0)), BerObjectContent::OID(oid.to_owned()))).collect()),
+                    )),
+                    None => None,
+                },
+            ]
+            .into_iter()
+            .filter_map(|x| x)
+            .collect(),
+        ),
     )
 }

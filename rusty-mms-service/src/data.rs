@@ -1,10 +1,9 @@
-use std::clone;
 use std::ops::Deref;
 
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
 use num_bigint::ToBigInt;
 use num_bigint::{BigInt, BigUint};
-use rusty_mms::{MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsVariableAccessSpecification};
+use rusty_mms::{MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
 
 use crate::error::{MmsServiceError, to_mms_error};
 
@@ -72,6 +71,7 @@ pub enum MmsServiceData {
     MmsString(String),
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Identity {
     pub vendor_name: String,
     pub model_name: String,
@@ -112,9 +112,10 @@ pub enum MmsServiceTypeSpecification {
 #[derive(Debug, PartialEq, Eq)]
 pub struct MmsServiceTypeDescriptionComponent {
     pub component_name: Option<String>,
-    pub component_type: MmsServiceTypeDescription,
+    pub component_type: MmsServiceTypeSpecification,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct VariableAccessAttributes {
     pub deletable: bool,
     pub type_description: MmsServiceTypeDescription,
@@ -180,13 +181,31 @@ pub(crate) fn convert_high_level_data_types_to_low_level_data_types(service_data
                 MmsServiceTypeSpecification::TypeDescription(mms_service_type_description) => rusty_mms::MmsTypeSpecification::TypeDescription(convert_high_level_data_types_to_low_level_data_types(&mms_service_type_description)?),
             }),
         }),
-        MmsServiceTypeDescription::Structure { packed, components } => todo!(),
-        MmsServiceTypeDescription::Boolean => todo!(),
-        MmsServiceTypeDescription::BitString(_) => todo!(),
-        MmsServiceTypeDescription::Integer(_) => todo!(),
-        MmsServiceTypeDescription::Unsigned(_) => todo!(),
-        MmsServiceTypeDescription::FloatingPoint { format_width, exponent_width } => todo!(),
-        MmsServiceTypeDescription::OctetString(_) => todo!(),
+        MmsServiceTypeDescription::Structure { packed, components } => Ok(MmsTypeDescription::Structure {
+            packed: if *packed { Some(true) } else { None },
+            components: components
+                .iter()
+                .map(|component| {
+                    Ok(MmsTypeDescriptionComponent {
+                        component_name: component.component_name.clone(),
+                        component_type: match &component.component_type {
+                            MmsServiceTypeSpecification::ObjectName(mms_object_name) => rusty_mms::MmsTypeSpecification::ObjectName(mms_object_name.clone()),
+                            MmsServiceTypeSpecification::TypeDescription(mms_service_type_description) => {
+                                rusty_mms::MmsTypeSpecification::TypeDescription(convert_high_level_data_types_to_low_level_data_types(&mms_service_type_description)?)
+                            }
+                        },
+                    })
+                })
+                .collect::<Result<Vec<_>, MmsError>>()?,
+        }),
+        MmsServiceTypeDescription::Boolean => Ok(MmsTypeDescription::Boolean),
+        MmsServiceTypeDescription::BitString(length) => Ok(MmsTypeDescription::BitString(BigInt::from(*length).to_signed_bytes_be())),
+        MmsServiceTypeDescription::Integer(length) => Ok(MmsTypeDescription::Integer(BigInt::from(*length).to_signed_bytes_be())),
+        MmsServiceTypeDescription::Unsigned(length) => Ok(MmsTypeDescription::Unsigned(BigInt::from(*length).to_signed_bytes_be())),
+        MmsServiceTypeDescription::FloatingPoint { format_width, exponent_width } => {
+            Ok(MmsTypeDescription::FloatingPoint { format_width: BigInt::from(*format_width).to_signed_bytes_be(), exponent_width: BigInt::from(*exponent_width).to_signed_bytes_be() })
+        }
+        MmsServiceTypeDescription::OctetString(length) => Ok(MmsTypeDescription::OctetString(BigInt::from(*length).to_signed_bytes_be())),
         MmsServiceTypeDescription::VisibleString(_) => todo!(),
         MmsServiceTypeDescription::GeneralizedTime => todo!(),
         MmsServiceTypeDescription::BinaryTime(_) => todo!(),
@@ -257,18 +276,35 @@ pub(crate) fn convert_low_level_data_types_to_high_level_data_types(service_data
                 rusty_mms::MmsTypeSpecification::TypeDescription(mms_type_description) => MmsServiceTypeSpecification::TypeDescription(convert_low_level_data_types_to_high_level_data_types(mms_type_description)?),
             }),
         }),
-        MmsTypeDescription::Structure { packed, components } => todo!(),
-        MmsTypeDescription::Boolean => todo!(),
-        MmsTypeDescription::BitString(items) => todo!(),
-        MmsTypeDescription::Integer(items) => todo!(),
-        MmsTypeDescription::Unsigned(items) => todo!(),
-        MmsTypeDescription::FloatingPoint { format_width, exponent_width } => todo!(),
-        MmsTypeDescription::OctetString(items) => todo!(),
-        MmsTypeDescription::VisibleString(items) => todo!(),
-        MmsTypeDescription::GeneralizedTime => todo!(),
-        MmsTypeDescription::BinaryTime(_) => todo!(),
-        MmsTypeDescription::Bcd(items) => todo!(),
-        MmsTypeDescription::ObjId => todo!(),
-        MmsTypeDescription::MmsString(items) => todo!(),
+        MmsTypeDescription::Structure { packed, components } => Ok(MmsServiceTypeDescription::Structure {
+            packed: packed.unwrap_or(false),
+            components: components
+                .iter()
+                .map(|x| {
+                    Ok(MmsServiceTypeDescriptionComponent {
+                        component_name: x.component_name.clone(),
+                        component_type: match &x.component_type {
+                            rusty_mms::MmsTypeSpecification::ObjectName(mms_object_name) => MmsServiceTypeSpecification::ObjectName(mms_object_name.clone()),
+                            rusty_mms::MmsTypeSpecification::TypeDescription(mms_type_description) => MmsServiceTypeSpecification::TypeDescription(convert_low_level_data_types_to_high_level_data_types(mms_type_description)?),
+                        },
+                    })
+                })
+                .collect::<Result<Vec<MmsServiceTypeDescriptionComponent>, MmsServiceError>>()?,
+        }),
+        MmsTypeDescription::Boolean => Ok(MmsServiceTypeDescription::Boolean),
+        MmsTypeDescription::BitString(length) => Ok(MmsServiceTypeDescription::BitString(BigInt::from_signed_bytes_be(length).try_into().map_err(to_mms_error("Failed to decode bitstring length"))?)),
+        MmsTypeDescription::Integer(length) => Ok(MmsServiceTypeDescription::Integer(BigInt::from_signed_bytes_be(length).try_into().map_err(to_mms_error("Failed to decode integer length"))?)),
+        MmsTypeDescription::Unsigned(length) => Ok(MmsServiceTypeDescription::Unsigned(BigInt::from_signed_bytes_be(length).try_into().map_err(to_mms_error("Failed to decode unsigned integer length"))?)),
+        MmsTypeDescription::FloatingPoint { format_width, exponent_width } => Ok(MmsServiceTypeDescription::FloatingPoint {
+            format_width: BigInt::from_signed_bytes_be(format_width).try_into().map_err(to_mms_error("Failed to decode unsigned integer length"))?,
+            exponent_width: BigInt::from_signed_bytes_be(exponent_width).try_into().map_err(to_mms_error("Failed to decode unsigned integer length"))?,
+        }),
+        MmsTypeDescription::OctetString(length) => Ok(MmsServiceTypeDescription::OctetString(BigInt::from_signed_bytes_be(length).try_into().map_err(to_mms_error("Failed to decode octet string length"))?)),
+        MmsTypeDescription::VisibleString(length) => Ok(MmsServiceTypeDescription::VisibleString(BigInt::from_signed_bytes_be(length).try_into().map_err(to_mms_error("Failed to decode visible string length"))?)),
+        MmsTypeDescription::GeneralizedTime => Ok(MmsServiceTypeDescription::GeneralizedTime),
+        MmsTypeDescription::BinaryTime(include_date) => Ok(MmsServiceTypeDescription::BinaryTime(*include_date)),
+        MmsTypeDescription::Bcd(length) => Ok(MmsServiceTypeDescription::Bcd(BigInt::from_signed_bytes_be(length).try_into().map_err(to_mms_error("Failed to decode BCD length"))?)),
+        MmsTypeDescription::ObjId => Ok(MmsServiceTypeDescription::ObjId),
+        MmsTypeDescription::MmsString(length) => Ok(MmsServiceTypeDescription::MmsString(BigInt::from_signed_bytes_be(length).try_into().map_err(to_mms_error("Failed to decode MMS String length"))?)),
     }
 }

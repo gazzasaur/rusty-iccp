@@ -2,7 +2,7 @@ use num_bigint::BigInt;
 use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::data::{InformationReportMmsServiceMessage, MmsServiceData, convert_low_level_data_to_high_level_data};
+use crate::data::{InformationReportMmsServiceMessage, MmsServiceData, MmsServiceTypeDescription, convert_high_level_data_types_to_low_level_data_types, convert_low_level_data_to_high_level_data};
 use crate::error::to_mms_error;
 use crate::{data::Identity, error::MmsServiceError};
 
@@ -21,12 +21,7 @@ impl IdentifyMmsServiceMessage {
         sender
             .send(MmsMessage::ConfirmedResponse {
                 invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::Identify {
-                    vendor_name: identity.vendor_name,
-                    model_name: identity.model_name,
-                    revision: identity.revision,
-                    abstract_syntaxes: identity.abstract_syntaxes,
-                },
+                response: rusty_mms::MmsConfirmedResponse::Identify { vendor_name: identity.vendor_name, model_name: identity.model_name, revision: identity.revision, abstract_syntaxes: identity.abstract_syntaxes },
             })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
@@ -42,13 +37,7 @@ pub struct GetNameListMmsServiceMessage {
 }
 impl GetNameListMmsServiceMessage {
     pub(crate) fn new(invocation_id: u32, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>, sender: UnboundedSender<MmsMessage>) -> Self {
-        Self {
-            invocation_id,
-            object_class,
-            object_scope,
-            continue_after,
-            sender,
-        }
+        Self { invocation_id, object_class, object_scope, continue_after, sender }
     }
 
     pub fn object_class(&self) -> &MmsObjectClass {
@@ -67,10 +56,7 @@ impl GetNameListMmsServiceMessage {
         let more_follows = if more_follows { None } else { Some(false) };
         let sender = self.sender;
         sender
-            .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::GetNameList { list_of_identifiers, more_follows },
-            })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::GetNameList { list_of_identifiers, more_follows } })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -90,12 +76,12 @@ impl GetVariableAccessAttributesMmsServiceMessage {
         &self.object_name
     }
 
-    pub async fn respond(self, deletable: bool, type_description: MmsTypeDescription) -> Result<(), MmsServiceError> {
+    pub async fn respond(self, deletable: bool, type_description: MmsServiceTypeDescription) -> Result<(), MmsServiceError> {
         let sender = self.sender;
         sender
             .send(MmsMessage::ConfirmedResponse {
                 invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::GetVariableAccessAttributes { deletable, type_description },
+                response: rusty_mms::MmsConfirmedResponse::GetVariableAccessAttributes { deletable, type_description: convert_high_level_data_types_to_low_level_data_types(&type_description)? },
             })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
@@ -111,12 +97,7 @@ pub struct DefineNamedVariableListMmsServiceMessage {
 }
 impl DefineNamedVariableListMmsServiceMessage {
     pub(crate) fn new(invocation_id: u32, variable_list_name: MmsObjectName, list_of_variables: Vec<ListOfVariablesItem>, sender: UnboundedSender<MmsMessage>) -> Self {
-        Self {
-            invocation_id,
-            variable_list_name,
-            list_of_variables,
-            sender,
-        }
+        Self { invocation_id, variable_list_name, list_of_variables, sender }
     }
 
     pub fn variable_list_name(&self) -> &MmsObjectName {
@@ -130,10 +111,7 @@ impl DefineNamedVariableListMmsServiceMessage {
     pub async fn respond(self) -> Result<(), MmsServiceError> {
         let sender = self.sender;
         sender
-            .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::DefineNamedVariableList {},
-            })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::DefineNamedVariableList {} })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -157,10 +135,7 @@ impl GetNamedVariableListAttributesMmsServiceMessage {
     pub async fn respond(self, deletable: bool, list_of_variables: Vec<ListOfVariablesItem>) -> Result<(), MmsServiceError> {
         let sender = self.sender;
         sender
-            .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::GetNamedVariableListAttributes { deletable, list_of_variables },
-            })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::GetNamedVariableListAttributes { deletable, list_of_variables } })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -177,13 +152,7 @@ pub struct DeleteNamedVariableListMmsServiceMessage {
 }
 impl DeleteNamedVariableListMmsServiceMessage {
     pub(crate) fn new(invocation_id: u32, scope_of_delete: Option<MmsScope>, list_of_variable_list_names: Option<Vec<MmsObjectName>>, domain_name: Option<String>, sender: UnboundedSender<MmsMessage>) -> Self {
-        Self {
-            invocation_id,
-            scope_of_delete,
-            list_of_variable_list_names,
-            domain_name,
-            sender,
-        }
+        Self { invocation_id, scope_of_delete, list_of_variable_list_names, domain_name, sender }
     }
 
     pub fn scope_of_delete(&self) -> &Option<MmsScope> {
@@ -203,10 +172,7 @@ impl DeleteNamedVariableListMmsServiceMessage {
         let number_matched = BigInt::from(number_matched).to_signed_bytes_be();
         let number_deleted = BigInt::from(number_deleted).to_signed_bytes_be();
         sender
-            .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::DeleteNamedVariableList { number_matched, number_deleted },
-            })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::DeleteNamedVariableList { number_matched, number_deleted } })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -240,13 +206,7 @@ impl ReadMmsServiceMessage {
         let variable_access_specification = if self.specification_with_result { Some(self.specification) } else { None };
 
         sender
-            .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::Read {
-                    variable_access_specification,
-                    access_results,
-                },
-            })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::Read { variable_access_specification, access_results } })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -266,12 +226,7 @@ impl WriteMmsServiceMessage {
             high_level_values.push(convert_low_level_data_to_high_level_data(&value)?);
         }
 
-        Ok(Self {
-            invocation_id,
-            specification,
-            values: high_level_values,
-            sender,
-        })
+        Ok(Self { invocation_id, specification, values: high_level_values, sender })
     }
 
     pub fn specification(&self) -> &MmsVariableAccessSpecification {
@@ -285,12 +240,7 @@ impl WriteMmsServiceMessage {
     pub async fn respond(self, write_results: Vec<MmsWriteResult>) -> Result<(), MmsServiceError> {
         let sender = self.sender;
 
-        sender
-            .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::Write { write_results },
-            })
-            .map_err(to_mms_error("The receive channel has been closed"))
+        sender.send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::Write { write_results } }).map_err(to_mms_error("The receive channel has been closed"))
     }
 }
 
