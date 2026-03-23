@@ -3,7 +3,7 @@ use std::ops::Deref;
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
 use num_bigint::ToBigInt;
 use num_bigint::{BigInt, BigUint};
-use rusty_mms::{MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
+use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
 
 use crate::error::{MmsServiceError, to_mms_error};
 
@@ -83,6 +83,12 @@ pub struct Identity {
 pub struct NameList {
     pub identifiers: Vec<String>,
     pub more_follows: bool,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct NamedVariableListAttributes {
+    pub deletable: bool,
+    pub list_of_variables: Vec<ListOfVariablesItem>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -206,12 +212,12 @@ pub(crate) fn convert_high_level_data_types_to_low_level_data_types(service_data
             Ok(MmsTypeDescription::FloatingPoint { format_width: BigInt::from(*format_width).to_signed_bytes_be(), exponent_width: BigInt::from(*exponent_width).to_signed_bytes_be() })
         }
         MmsServiceTypeDescription::OctetString(length) => Ok(MmsTypeDescription::OctetString(BigInt::from(*length).to_signed_bytes_be())),
-        MmsServiceTypeDescription::VisibleString(_) => todo!(),
-        MmsServiceTypeDescription::GeneralizedTime => todo!(),
-        MmsServiceTypeDescription::BinaryTime(_) => todo!(),
-        MmsServiceTypeDescription::Bcd(_) => todo!(),
-        MmsServiceTypeDescription::ObjId => todo!(),
-        MmsServiceTypeDescription::MmsString(_) => todo!(),
+        MmsServiceTypeDescription::VisibleString(length) => Ok(MmsTypeDescription::VisibleString(BigInt::from(*length).to_signed_bytes_be())),
+        MmsServiceTypeDescription::GeneralizedTime => Ok(MmsTypeDescription::GeneralizedTime),
+        MmsServiceTypeDescription::BinaryTime(include_date) => Ok(MmsTypeDescription::BinaryTime(*include_date)),
+        MmsServiceTypeDescription::Bcd(number_of_digits) => Ok(MmsTypeDescription::Bcd(BigInt::from(*number_of_digits).to_signed_bytes_be())),
+        MmsServiceTypeDescription::ObjId => Ok(MmsTypeDescription::ObjId),
+        MmsServiceTypeDescription::MmsString(length) => Ok(MmsTypeDescription::MmsString(BigInt::from(*length).to_signed_bytes_be())),
     }
 }
 

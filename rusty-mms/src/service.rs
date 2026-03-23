@@ -416,7 +416,13 @@ impl MmsTypeDescription {
                 MmsTypeDescription::FloatingPoint { format_width, exponent_width }
             }
             Some([137]) => MmsTypeDescription::OctetString(process_integer_content(&description, "Failed to parse Mms Type Description OctetString")?),
+            Some([138]) => MmsTypeDescription::VisibleString(process_integer_content(&description, "Failed to parse Mms Type Description VisibleString")?),
             Some([139]) => MmsTypeDescription::GeneralizedTime,
+            Some([140]) => MmsTypeDescription::BinaryTime(process_mms_boolean_content(&description, "Failed to parse Mms Type Description BinaryTime")?),
+            Some([141]) => MmsTypeDescription::Bcd(process_integer_content(&description, "Failed to parse Mms Type Description BCD")?),
+            // There is no 142
+            Some([143]) => MmsTypeDescription::ObjId,
+            Some([144]) => MmsTypeDescription::MmsString(process_integer_content(&description, "Failed to parse Mms Type Description MMS String")?),
             x => return Err(MmsError::ProtocolError(format!("Unsupported MmsTypeDescription {:?} on {}", x, pdu))),
         })
     }
