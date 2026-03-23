@@ -68,8 +68,18 @@ pub(crate) fn process_mms_access_error<'a>(npm_object: &Any<'a>, error_message: 
 
     match inner_object {
         BerObjectContent::Integer(&[0x00]) => Ok(MmsAccessError::ObjectInvalidated),
+        BerObjectContent::Integer(&[0x01]) => Ok(MmsAccessError::HardwareFault),
+        BerObjectContent::Integer(&[0x02]) => Ok(MmsAccessError::TemporarilyUnavailable),
+        BerObjectContent::Integer(&[0x03]) => Ok(MmsAccessError::ObjectAccessDenied),
+        BerObjectContent::Integer(&[0x04]) => Ok(MmsAccessError::ObjectUndefined),
+        BerObjectContent::Integer(&[0x05]) => Ok(MmsAccessError::InvalidAddress),
+        BerObjectContent::Integer(&[0x06]) => Ok(MmsAccessError::TypeUnsupported),
+        BerObjectContent::Integer(&[0x07]) => Ok(MmsAccessError::TypeInconsistent),
+        BerObjectContent::Integer(&[0x08]) => Ok(MmsAccessError::ObjectAttributeInconsistent),
+        BerObjectContent::Integer(&[0x09]) => Ok(MmsAccessError::ObjectAccessUnsupported),
+        BerObjectContent::Integer(&[0x0a]) => Ok(MmsAccessError::ObjectNonExistent),
+        BerObjectContent::Integer(&[0x0b]) => Ok(MmsAccessError::ObjectValueInvalid),
         BerObjectContent::Integer(x) => Ok(MmsAccessError::Unknown(x.to_vec())),
-        // TODO: More error codes
         _ => Err(MmsError::ProtocolError(error_message.into())),
     }
 }

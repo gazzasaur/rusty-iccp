@@ -3,7 +3,7 @@ use std::ops::Deref;
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
 use num_bigint::ToBigInt;
 use num_bigint::{BigInt, BigUint};
-use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
+use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
 
 use crate::error::{MmsServiceError, to_mms_error};
 
@@ -31,20 +31,42 @@ impl MmsServiceDataFloat {
         Self { data }
     }
 
+    pub fn data(&self) -> Vec<u8> {
+        self.data.clone()
+    }
+
+    pub fn exponent_width(&self) -> u8 {
+        *self.data.get(0).unwrap_or_else(|| &0)
+    }
+
     pub fn from_f32(value: f32) -> Self {
-        Self { data: value.to_be_bytes().to_vec() }
+        let mut data = vec![8];
+        data.append(&mut value.to_be_bytes().to_vec());
+        Self { data }
     }
 
     pub fn to_f32(&self) -> Result<f32, MmsServiceError> {
-        Ok(f32::from_be_bytes(self.data[..].try_into().map_err(to_mms_error("Failed to convert to f32"))?))
+        if let Some(8) = self.data.get(0)
+            && self.data.len() == 5
+        {
+            return Ok(f32::from_be_bytes(self.data[1..5].try_into().map_err(to_mms_error(&format!("Failed to convert to f32. Data: {:?}", self.data)))?));
+        }
+        return Err(MmsServiceError::ProtocolError(format!("Cannot cast float data to f32. Data: {:?}", self.data)));
     }
 
     pub fn from_f64(value: f64) -> Self {
-        Self { data: value.to_be_bytes().to_vec() }
+        let mut data = vec![11];
+        data.append(&mut value.to_be_bytes().to_vec());
+        Self { data }
     }
 
     pub fn to_f64(&self) -> Result<f64, MmsServiceError> {
-        Ok(f64::from_be_bytes(self.data[..].try_into().map_err(to_mms_error("Failed to convert to f64"))?))
+        if let Some(11) = self.data.get(0)
+            && self.data.len() == 9
+        {
+            return Ok(f64::from_be_bytes(self.data[1..5].try_into().map_err(to_mms_error(&format!("Failed to convert to f64. Data: {:?}", self.data)))?));
+        }
+        return Err(MmsServiceError::ProtocolError(format!("Cannot cast float data to f64. Data: {:?}", self.data)));
     }
 
     pub fn get_raw_data(&self) -> &Vec<u8> {
@@ -133,6 +155,12 @@ pub enum MmsServiceDeleteObjectScope {
     AaSpecific,
     Domain(String),
     Vmd,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum MmsServiceAccessResult {
+    Success(MmsServiceData),
+    Failure(MmsAccessError),
 }
 
 #[derive(Debug)]
@@ -246,24 +274,22 @@ pub(crate) fn convert_low_level_data_to_high_level_data(service_data: &MmsData) 
             Ok(MmsServiceData::Structure(high_level_data))
         }
         MmsData::Boolean(x) => Ok(MmsServiceData::Boolean(*x)),
-        // MmsServiceData::BitString(items) => {
-        //     let buffer_length = items.len() / 8 + 1 - (if items.len() % 8 == 0 { 1 } else { 0 });
-        //     let padding_length = (buffer_length * 8 - items.len()) as u8;
-        //     let mut bit_string_data = vec![0; buffer_length];
-        //     for i in 0..items.len() {
-        //         let byte_index = i / 8;
-        //         let bit_index = 7 - (i % 8) as u8;
-        //         if items[i] {
-        //             bit_string_data[byte_index] |= 1 << bit_index // This is lsb and LSB first.
-        //         }
-        //     }
-        //     Ok(MmsData::BitString(padding_length, bit_string_data))
-        // }
-        // MmsServiceData::Integer(big_int) => Ok(MmsData::Integer(big_int.to_signed_bytes_be())),
-        // MmsServiceData::Unsigned(big_uint) => Ok(MmsData::Unsigned(
-        //     big_uint.to_bigint().ok_or_else(|| MmsError::InternalError("This is a bug. Please contact the project team.".into()))?.to_signed_bytes_be(),
-        // )),
-        // MmsServiceData::FloatingPoint(value) => Ok(MmsData::FloatingPoint(value.get_raw_data().clone())),
+        MmsData::BitString(padding, values) => {
+            let padded_length = values.len() * 8;
+            if *padding > 7 || padded_length == 0 {
+                return Err(MmsError::ProtocolError(format!("Received Invalid BitString. Padded Length: {}, Padding: {}", padded_length, padding)));
+            }
+
+            let mut items = vec![];
+            for i in 0..(padded_length - (*padding as usize)) {
+                let a = values[i / 8];
+                items.push(if let Some(true) = values.get(i / 8).map(|x| (x & (0x80 >> (i % 8))) != 0) { true } else { false });
+            }
+            Ok(MmsServiceData::BitString(items))
+        }
+        MmsData::Integer(value) => Ok(MmsServiceData::Integer(BigInt::from_signed_bytes_be(value))),
+        MmsData::Unsigned(value) => Ok(MmsServiceData::Unsigned(BigInt::from_signed_bytes_be(value).to_biguint().ok_or_else(|| MmsError::InternalError("This is a bug. Please contact the project team.".into()))?)),
+        MmsData::FloatingPoint(value) => Ok(MmsServiceData::FloatingPoint(MmsServiceDataFloat::new(value.clone()))),
         // MmsServiceData::OctetString(items) => todo!(),
         // MmsServiceData::VisibleString(_) => todo!(),
         // MmsServiceData::GeneralizedTime(asn1_date_time) => todo!(),

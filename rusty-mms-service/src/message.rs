@@ -2,7 +2,10 @@ use num_bigint::BigInt;
 use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::data::{InformationReportMmsServiceMessage, MmsServiceData, MmsServiceDeleteObjectScope, MmsServiceTypeDescription, convert_high_level_data_types_to_low_level_data_types, convert_low_level_data_to_high_level_data};
+use crate::data::{
+    InformationReportMmsServiceMessage, MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope, MmsServiceTypeDescription, convert_high_level_data_to_low_level_data, convert_high_level_data_types_to_low_level_data_types,
+    convert_low_level_data_to_high_level_data,
+};
 use crate::error::to_mms_error;
 use crate::{data::Identity, error::MmsServiceError};
 
@@ -190,13 +193,25 @@ impl ReadMmsServiceMessage {
         &self.specification
     }
 
-    pub async fn respond(self, access_results: Vec<MmsAccessResult>) -> Result<(), MmsServiceError> {
+    pub async fn respond(self, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError> {
         let sender = self.sender;
 
         let variable_access_specification = if self.specification_with_result { Some(self.specification) } else { None };
 
         sender
-            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::Read { variable_access_specification, access_results } })
+            .send(MmsMessage::ConfirmedResponse {
+                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
+                response: rusty_mms::MmsConfirmedResponse::Read {
+                    variable_access_specification,
+                    access_results: access_results
+                        .into_iter()
+                        .map(|x| match x {
+                            MmsServiceAccessResult::Success(mms_service_data) => Ok(MmsAccessResult::Success(convert_high_level_data_to_low_level_data(&mms_service_data)?)),
+                            MmsServiceAccessResult::Failure(mms_access_error) => Ok(MmsAccessResult::Failure(mms_access_error)),
+                        })
+                        .collect::<Result<Vec<MmsAccessResult>, MmsServiceError>>()?,
+                },
+            })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
