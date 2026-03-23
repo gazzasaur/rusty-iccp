@@ -19,7 +19,7 @@ pub(crate) fn parse_delete_named_variable_list_response(payload: &Any<'_>) -> Re
     for item in process_constructed_data(payload.data).map_err(to_mms_error("Failed to parse DeleteNamedVariableList"))? {
         match item.header.raw_tag() {
             Some([128]) => number_matched = Some(process_integer_content(&item, "Failed to parse Number Matched on DeleteNamedVariableList PDU")?),
-            Some([129]) => number_deleted = Some(process_integer_content(&item, "Failed to parse Number Matched on DeleteNamedVariableList PDU")?),
+            Some([129]) => number_deleted = Some(process_integer_content(&item, "Failed to parse Number Deleted on DeleteNamedVariableList PDU")?),
             x => warn!("Unknown item on DeleteNamedVariableList: {:?}", x),
         }
     }

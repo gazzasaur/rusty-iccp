@@ -1,8 +1,8 @@
 use num_bigint::BigInt;
-use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsScope, MmsTypeDescription, MmsVariableAccessSpecification, MmsWriteResult};
+use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::data::{InformationReportMmsServiceMessage, MmsServiceData, MmsServiceTypeDescription, convert_high_level_data_types_to_low_level_data_types, convert_low_level_data_to_high_level_data};
+use crate::data::{InformationReportMmsServiceMessage, MmsServiceData, MmsServiceDeleteObjectScope, MmsServiceTypeDescription, convert_high_level_data_types_to_low_level_data_types, convert_low_level_data_to_high_level_data};
 use crate::error::to_mms_error;
 use crate::{data::Identity, error::MmsServiceError};
 
@@ -144,27 +144,17 @@ impl GetNamedVariableListAttributesMmsServiceMessage {
 pub struct DeleteNamedVariableListMmsServiceMessage {
     invocation_id: u32,
 
-    scope_of_delete: Option<MmsScope>,
-    list_of_variable_list_names: Option<Vec<MmsObjectName>>,
-    domain_name: Option<String>,
+    scope_of_delete: MmsServiceDeleteObjectScope,
 
     sender: UnboundedSender<MmsMessage>,
 }
 impl DeleteNamedVariableListMmsServiceMessage {
-    pub(crate) fn new(invocation_id: u32, scope_of_delete: Option<MmsScope>, list_of_variable_list_names: Option<Vec<MmsObjectName>>, domain_name: Option<String>, sender: UnboundedSender<MmsMessage>) -> Self {
-        Self { invocation_id, scope_of_delete, list_of_variable_list_names, domain_name, sender }
+    pub(crate) fn new(invocation_id: u32, scope_of_delete: MmsServiceDeleteObjectScope, sender: UnboundedSender<MmsMessage>) -> Self {
+        Self { invocation_id, scope_of_delete, sender }
     }
 
-    pub fn scope_of_delete(&self) -> &Option<MmsScope> {
+    pub fn scope_of_delete(&self) -> &MmsServiceDeleteObjectScope {
         &self.scope_of_delete
-    }
-
-    pub fn list_of_variable_list_names(&self) -> &Option<Vec<MmsObjectName>> {
-        &self.list_of_variable_list_names
-    }
-
-    pub fn domain_name(&self) -> &Option<String> {
-        &self.domain_name
     }
 
     pub async fn respond(self, number_matched: u32, number_deleted: u32) -> Result<(), MmsServiceError> {

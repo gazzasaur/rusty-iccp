@@ -1,12 +1,33 @@
-use std::{collections::{HashMap, VecDeque}, pin::Pin, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::{Duration, Instant}};
+use std::{
+    collections::{HashMap, VecDeque},
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
-use futures::stream::FuturesUnordered;
-use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsError, MmsMessage, MmsReader, MmsRecvResult, MmsUnconfirmedService, MmsWriter};
-use tokio::{sync::{Mutex, mpsc::{self, UnboundedSender}}, time::timeout};
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
+use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsError, MmsMessage, MmsReader, MmsRecvResult, MmsScope, MmsUnconfirmedService, MmsWriter};
+use tokio::{
+    sync::{
+        Mutex,
+        mpsc::{self, UnboundedSender},
+    },
+    time::timeout,
+};
 use tracing::warn;
 
-use crate::{data::InformationReportMmsServiceMessage, error::{MmsServiceError, to_mms_error}, message::{DefineNamedVariableListMmsServiceMessage, DeleteNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetNamedVariableListAttributesMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage, IdentifyMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage}};
+use crate::{
+    data::{InformationReportMmsServiceMessage, MmsServiceDeleteObjectScope},
+    error::{MmsServiceError, to_mms_error},
+    message::{
+        DefineNamedVariableListMmsServiceMessage, DeleteNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetNamedVariableListAttributesMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage,
+        IdentifyMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage,
+    },
+};
 
 // TODO Send queue should also hold for max outstanding requests
 pub enum MmsServiceDataPumpReaderType {
@@ -139,9 +160,18 @@ async fn process_request(request: MmsConfirmedRequest, invocation_id: u32, mut e
         MmsConfirmedRequest::GetNamedVariableListAttributes { object_name } => {
             Ok(MmsServiceMessage::GetNamedVariableListAttributes(GetNamedVariableListAttributesMmsServiceMessage::new(invocation_id, object_name, external_outbound_queue.clone())))
         }
-        MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name } => {
-            Ok(MmsServiceMessage::DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage::new(invocation_id, scope_of_delete, list_of_variable_list_names, domain_name, external_outbound_queue.clone())))
-        }
+        MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name } => match (scope_of_delete, list_of_variable_list_names, domain_name) {
+            (None, Some(variables), None) => Ok(MmsServiceMessage::DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage::new(invocation_id, MmsServiceDeleteObjectScope::Specific(variables), external_outbound_queue.clone()))),
+            (Some(MmsScope::Specific), Some(variables), None) => {
+                Ok(MmsServiceMessage::DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage::new(invocation_id, MmsServiceDeleteObjectScope::Specific(variables), external_outbound_queue.clone())))
+            }
+            (Some(MmsScope::AaSpecific), None, None) => Ok(MmsServiceMessage::DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage::new(invocation_id, MmsServiceDeleteObjectScope::AaSpecific, external_outbound_queue.clone()))),
+            (Some(MmsScope::Vmd), None, None) => Ok(MmsServiceMessage::DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage::new(invocation_id, MmsServiceDeleteObjectScope::Vmd, external_outbound_queue.clone()))),
+            (Some(MmsScope::Domain), None, Some(domain_name)) => {
+                Ok(MmsServiceMessage::DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage::new(invocation_id, MmsServiceDeleteObjectScope::Domain(domain_name), external_outbound_queue.clone())))
+            }
+            (x, y, z) => Err(MmsServiceError::ProtocolError(format!("Non-standard scope {:?}, {:?}, {:?}", x, y, z))),
+        },
     }
 }
 
