@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use der_parser::Oid;
+use num_bigint::BigInt;
 use rusty_acse::{
     AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
 };
@@ -14,13 +15,13 @@ use tokio::sync::{
 
 use rusty_mms::{
     ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsRequestInformation, MmsResponder,
-    MmsVariableAccessSpecification, MmsWriteResult, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
+    MmsScope, MmsVariableAccessSpecification, MmsWriteResult, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
     parameters::{ParameterSupportOption, ServiceSupportOption},
 };
 use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
-    data::{Identity, InformationReportMmsServiceMessage, MmsServiceData, NameList, NamedVariableListAttributes, VariableAccessAttributes, convert_low_level_data_types_to_high_level_data_types},
+    data::{Identity, InformationReportMmsServiceMessage, MmsServiceData, MmsServiceDeleteObjectScope, NameList, NamedVariableListAttributes, VariableAccessAttributes, convert_low_level_data_types_to_high_level_data_types},
     datapump::{MmsServiceDataPump, MmsServiceDataPumpReaderType},
     error::{MmsServiceError, to_mms_error},
     message::MmsServiceMessage,
@@ -238,7 +239,7 @@ pub trait MmsInitiatorService: Send + Sync {
 
     async fn define_named_variable_list(&mut self, variable_list_name: MmsObjectName, list_of_variables: Vec<ListOfVariablesItem>) -> Result<(), MmsServiceError>;
     async fn get_named_variable_list_attributes(&mut self, variable_list_name: MmsObjectName) -> Result<NamedVariableListAttributes, MmsServiceError>;
-    async fn delete_named_variable_list(&mut self, scope_of_delete: Option<MmsScope>, variable_list_name: MmsObjectName, domain_name: Option<String>) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
+    async fn delete_named_variable_list(&mut self, scope_of_delete: MmsServiceDeleteObjectScope) -> Result<(i32 /* Number Matched */, i32 /* Number Deleted */), MmsServiceError>;
 
     async fn read(&mut self, specification: MmsVariableAccessSpecification) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError>;
     async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<MmsWriteResult, MmsServiceError>;
@@ -334,8 +335,27 @@ impl MmsInitiatorService for RustyMmsInitiatorService {
         }
     }
 
-    async fn delete_named_variable_list(&mut self, scope_of_delete: Option<MmsScope>, variable_list_name: MmsObjectName, domain_name: Option<String>) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError> {
-        todo!()
+    async fn delete_named_variable_list(&mut self, scope_of_delete: MmsServiceDeleteObjectScope) -> Result<(i32, i32), MmsServiceError> {
+        let (packet_sender, mut packet_receiver) = mpsc::unbounded_channel();
+        let dpt = MmsServiceDataPumpReaderType::Confirmed(
+            match scope_of_delete {
+                MmsServiceDeleteObjectScope::Specific(mms_object_names) => MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete: Some(MmsScope::Specific), list_of_variable_list_names: Some(mms_object_names), domain_name: None },
+                MmsServiceDeleteObjectScope::AaSpecific => MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete: Some(MmsScope::AaSpecific), list_of_variable_list_names: None, domain_name: None },
+                MmsServiceDeleteObjectScope::Domain(domain_name) => MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete: Some(MmsScope::Domain), list_of_variable_list_names: None, domain_name: Some(domain_name) },
+                MmsServiceDeleteObjectScope::Vmd => MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete: Some(MmsScope::Vmd), list_of_variable_list_names: None, domain_name: None },
+            },
+            packet_sender,
+        );
+        self.sender_queue.send(dpt).map_err(to_mms_error("Failed to queue MMS request."))?;
+        let response = packet_receiver.recv().await;
+        match response {
+            Some(Ok(MmsConfirmedResponse::DeleteNamedVariableList { number_matched, number_deleted })) => {
+                Ok((BigInt::from_signed_bytes_be(&number_matched).try_into().map_err(to_mms_error(""))?, BigInt::from_signed_bytes_be(&number_matched).try_into().map_err(to_mms_error(""))?))
+            }
+            Some(Ok(_)) => Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
+            None => Err(MmsServiceError::ProtocolError("Connection Closed".into())),
+            Some(Err(e)) => Err(e),
+        }
     }
 
     async fn read(&mut self, specification: MmsVariableAccessSpecification) -> Result<(Option<MmsVariableAccessSpecification>, Vec<MmsAccessResult>), MmsServiceError> {
@@ -725,6 +745,63 @@ mod tests {
         request.respond().await?;
 
         assert_eq!(client_task.await??, ());
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[traced_test]
+    async fn test_get_named_variable_list_attributes_operation() -> Result<(), anyhow::Error> {
+        let running = Arc::new(AtomicBool::new(true));
+        let bindings = Arc::new(Mutex::new(Vec::new()));
+        tokio::task::spawn(process_bindings(running.clone(), bindings.clone()));
+
+        let data_pump = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
+
+        let (client_results, server_results) = join!(
+            async {
+                // Allow the server to start listening first.
+                tokio::time::sleep(Duration::from_millis(1)).await;
+                let mut tpkt_client_factory = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
+                let mut client_factory = RustyMmsServiceFactory::new(data_pump.clone());
+                client_factory.create_client_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
+            },
+            async {
+                let mut tpkt_server_factory = TB::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new().await?;
+                let mut server_factory = RustyMmsServiceFactory::new(data_pump.clone());
+                server_factory.create_server_connection(&mut tpkt_server_factory, MmsServiceConnectionParameters::default()).await
+            }
+        );
+
+        let client = client_results?;
+        let mut server = server_results?;
+
+        let client_task = tokio::task::spawn(async move { client.clone().get_named_variable_list_attributes(MmsObjectName::VmdSpecific("AList".into())).await });
+        let request = match server.receive_message().await {
+            Ok(MmsServiceMessage::GetNamedVariableListAttributes(x)) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
+        assert_eq!(request.variable_list_name(), &MmsObjectName::VmdSpecific("AList".into()));
+        request
+            .respond(
+                true,
+                vec![
+                    ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("World".into())) },
+                    ListOfVariablesItem { variable_specification: VariableSpecification::Invalidated },
+                ],
+            )
+            .await?;
+
+        assert_eq!(
+            client_task.await??,
+            NamedVariableListAttributes {
+                deletable: true,
+                list_of_variables: vec![
+                    ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("World".into())) },
+                    ListOfVariablesItem { variable_specification: VariableSpecification::Invalidated },
+                ]
+            }
+        );
 
         Ok(())
     }

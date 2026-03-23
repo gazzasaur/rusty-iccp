@@ -128,8 +128,8 @@ pub struct VariableAccessAttributes {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum MmsServiceObjectSelectScope {
-    Specific(),
+pub enum MmsServiceDeleteObjectScope {
+    Specific(Vec<MmsObjectName>),
     AaSpecific,
     Domain(String),
     Vmd,
