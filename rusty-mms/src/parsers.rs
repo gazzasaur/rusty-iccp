@@ -1,5 +1,5 @@
 use der_parser::{
-    asn1_rs::Any,
+    asn1_rs::{ASN1DateTime, Any, GeneralizedTime},
     ber::{BerObject, BerObjectContent, parse_ber_any, parse_ber_content},
     der::{Header, Tag},
     error::BerError,
@@ -50,6 +50,15 @@ pub(crate) fn process_mms_boolean_content<'a>(npm_object: &Any<'a>, error_messag
 
     match inner_object {
         BerObjectContent::Boolean(value) => Ok(value),
+        _ => Err(MmsError::ProtocolError(error_message.into())),
+    }
+}
+
+pub(crate) fn process_generalised_time_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<ASN1DateTime, MmsError> {
+    let (_, inner_object) = parse_ber_content(Tag::GeneralizedTime)(npm_object.data, &npm_object.header, npm_object.data.len()).map_err(to_mms_error(error_message))?;
+
+    match inner_object {
+        BerObjectContent::GeneralizedTime(value) => Ok(value),
         _ => Err(MmsError::ProtocolError(error_message.into())),
     }
 }

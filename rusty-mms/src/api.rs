@@ -139,6 +139,7 @@ pub enum MmsWriteResult {
     Failure(MmsAccessError),
 }
 
+/* TODO Warning Generalised Time appears to only support the UTC timezone. */
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsData {
     Array(Vec<MmsData>),
@@ -150,7 +151,7 @@ pub enum MmsData {
     FloatingPoint(Vec<u8>),
     OctetString(Vec<u8>),
     VisibleString(String),
-    GeneralizedTime(ASN1DateTime),
+    GeneralizedTime(String),
     BinaryTime(Vec<u8>),
     Bcd(Vec<u8>),
     BooleanArray(u8, Vec<u8>),

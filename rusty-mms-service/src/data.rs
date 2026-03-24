@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use chrono::{DateTime, FixedOffset, Local, Utc};
 use der_parser::{Oid, asn1_rs::ASN1DateTime};
 use num_bigint::ToBigInt;
 use num_bigint::{BigInt, BigUint};
@@ -75,6 +76,13 @@ impl MmsServiceDataFloat {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum MmsServiceGeneralizedTime {
+    Utc(DateTime<Utc>),
+    Local(DateTime<Local>),
+    FixedOffset(DateTime<FixedOffset>),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum MmsServiceData {
     Array(Vec<MmsServiceData>), // Arrays are meant to contain a consistent type across all elements. This is not enforced as it means traversing trees.
     Structure(Vec<MmsServiceData>),
@@ -85,7 +93,7 @@ pub enum MmsServiceData {
     FloatingPoint(MmsServiceDataFloat),
     OctetString(Vec<u8>),
     VisibleString(String),
-    GeneralizedTime(ASN1DateTime),
+    GeneralizedTime(MmsServiceGeneralizedTime),
     BinaryTime(Vec<u8>),
     Bcd(Vec<MmsServiceBcd>),
     BooleanArray(Vec<bool>),
@@ -202,9 +210,13 @@ pub(crate) fn convert_high_level_data_to_low_level_data(service_data: &MmsServic
         MmsServiceData::Integer(big_int) => Ok(MmsData::Integer(big_int.to_signed_bytes_be())),
         MmsServiceData::Unsigned(big_uint) => Ok(MmsData::Unsigned(big_uint.to_bigint().ok_or_else(|| MmsError::InternalError("This is a bug. Please contact the project team.".into()))?.to_signed_bytes_be())),
         MmsServiceData::FloatingPoint(value) => Ok(MmsData::FloatingPoint(value.get_raw_data().clone())),
-        MmsServiceData::OctetString(items) => todo!(),
-        MmsServiceData::VisibleString(_) => todo!(),
-        MmsServiceData::GeneralizedTime(asn1_date_time) => todo!(),
+        MmsServiceData::OctetString(value) => Ok(MmsData::OctetString(value.clone())),
+        MmsServiceData::VisibleString(value) => Ok(MmsData::VisibleString(value.clone())),
+        MmsServiceData::GeneralizedTime(value) => Ok(MmsData::GeneralizedTime(match value {
+            MmsServiceGeneralizedTime::Utc(date_time) => todo!(),
+            MmsServiceGeneralizedTime::Local(date_time) => todo!(),
+            MmsServiceGeneralizedTime::FixedOffset(date_time) => todo!(),
+        })),
         MmsServiceData::BinaryTime(items) => todo!(),
         MmsServiceData::Bcd(mms_service_bcds) => todo!(),
         MmsServiceData::BooleanArray(items) => todo!(),
@@ -290,9 +302,9 @@ pub(crate) fn convert_low_level_data_to_high_level_data(service_data: &MmsData) 
         MmsData::Integer(value) => Ok(MmsServiceData::Integer(BigInt::from_signed_bytes_be(value))),
         MmsData::Unsigned(value) => Ok(MmsServiceData::Unsigned(BigInt::from_signed_bytes_be(value).to_biguint().ok_or_else(|| MmsError::InternalError("This is a bug. Please contact the project team.".into()))?)),
         MmsData::FloatingPoint(value) => Ok(MmsServiceData::FloatingPoint(MmsServiceDataFloat::new(value.clone()))),
-        // MmsServiceData::OctetString(items) => todo!(),
-        // MmsServiceData::VisibleString(_) => todo!(),
-        // MmsServiceData::GeneralizedTime(asn1_date_time) => todo!(),
+        MmsData::OctetString(value) => Ok(MmsServiceData::OctetString(value.clone())),
+        MmsData::VisibleString(value) =>  Ok(MmsServiceData::VisibleString(value.clone())),
+        MmsData::GeneralizedTime(asn1_date_time) => Ok(MmsServiceData::GeneralizedTime(asn1_date_time.clone())),
         // MmsServiceData::BinaryTime(items) => todo!(),
         // MmsServiceData::Bcd(mms_service_bcds) => todo!(),
         // MmsServiceData::BooleanArray(items) => todo!(),

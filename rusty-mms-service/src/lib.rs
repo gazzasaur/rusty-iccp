@@ -423,7 +423,8 @@ impl MmsResponderService for RustyMmsResponderService {
 mod tests {
     use crate::MmsResponderService;
     use crate::data::{
-        MmsServiceAccessResult, MmsServiceData, MmsServiceDataFloat, MmsServiceDeleteObjectScope, MmsServiceTypeDescription, MmsServiceTypeDescriptionComponent, MmsServiceTypeSpecification, NameList, NamedVariableListAttributes, VariableAccessAttributes
+        MmsServiceAccessResult, MmsServiceData, MmsServiceDataFloat, MmsServiceDeleteObjectScope, MmsServiceTypeDescription, MmsServiceTypeDescriptionComponent, MmsServiceTypeSpecification, NameList, NamedVariableListAttributes,
+        VariableAccessAttributes,
     };
     use crate::{MmsInitiatorService, datapump::process_bindings};
     use std::{
@@ -940,7 +941,18 @@ mod tests {
                 MmsServiceAccessResult::Success(MmsServiceData::Integer(BigInt::from(-42))),
                 MmsServiceAccessResult::Success(MmsServiceData::Unsigned(BigUint::from(42u128))),
                 MmsServiceAccessResult::Success(MmsServiceData::FloatingPoint(MmsServiceDataFloat::from_f32(123.0))),
-                MmsServiceAccessResult::Success(MmsServiceData::OctetString()),
+                MmsServiceAccessResult::Success(MmsServiceData::OctetString(vec![1, 2, 3, 4, 5])),
+                MmsServiceAccessResult::Success(MmsServiceData::GeneralizedTime(der_parser::asn1_rs::ASN1DateTime {
+                    year: 2026,
+                    month: 03,
+                    day: 24,
+                    hour: 13,
+                    minute: 14,
+                    second: 15,
+                    millisecond: Some(100),
+                    tz: der_parser::asn1_rs::ASN1TimeZone::Z,
+                })),
+                MmsServiceAccessResult::Success(MmsServiceData::VisibleString("Hello".into())),
                 // MmsServiceAccessResult::Failure(MmsAccessError::ObjectAccessDenied),
             ])
             .await?;
