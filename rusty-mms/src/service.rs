@@ -10,7 +10,7 @@ use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
 use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 use tracing::warn;
 
-use crate::parsers::{process_constructed_data, process_generalised_time_content, process_integer_content, process_mms_bitstring_content, process_mms_boolean_content, process_mms_string};
+use crate::parsers::{process_constructed_data, process_integer_content, process_mms_bitstring_content, process_mms_boolean_content, process_mms_string};
 use crate::pdu::common::expect_value;
 use crate::pdu::confirmedrequest::{confirmed_request_to_ber, parse_confirmed_request};
 use crate::pdu::confirmedresponse::{confirmed_response_to_ber, parse_confirmed_response};
@@ -232,7 +232,7 @@ impl MmsData {
             Some([135]) => Ok(MmsData::FloatingPoint(data.data.to_owned())),
             Some([137]) => Ok(MmsData::OctetString(data.data.to_owned())),
             Some([138]) => Ok(MmsData::VisibleString(String::from_utf8(data.data.to_vec()).map_err(to_mms_error("Illegal characters found in MMS Data Visible String"))?)),
-            Some([139]) => Ok(MmsData::GeneralizedTime(process_generalised_time_content(data, format!("Failed to parse GenerlizedTime on {}", pdu).as_str())?)),
+            // Some([139]) => Ok(MmsData::GeneralizedTime(process_generalised_time_content(data, format!("Failed to parse GenerlizedTime on {}", pdu).as_str())?)),
             Some([144]) => Ok(MmsData::MmsString(String::from_utf8(data.data.to_owned()).map_err(to_mms_error("Failed to parse MMS String"))?)),
             x => Err(MmsError::ProtocolError(format!("Unsupported MMS Data type {:?} on {}", x, pdu))),
         }

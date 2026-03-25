@@ -151,7 +151,7 @@ pub enum MmsData {
     FloatingPoint(Vec<u8>),
     OctetString(Vec<u8>),
     VisibleString(String),
-    GeneralizedTime(String),
+    GeneralizedTime(ASN1DateTime),
     BinaryTime(Vec<u8>),
     Bcd(Vec<u8>),
     BooleanArray(u8, Vec<u8>),

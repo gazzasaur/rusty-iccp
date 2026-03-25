@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use chrono::{DateTime, FixedOffset, Local, Utc};
-use der_parser::{Oid, asn1_rs::ASN1DateTime};
+use der_parser::Oid;
 use num_bigint::ToBigInt;
 use num_bigint::{BigInt, BigUint};
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
@@ -212,16 +212,12 @@ pub(crate) fn convert_high_level_data_to_low_level_data(service_data: &MmsServic
         MmsServiceData::FloatingPoint(value) => Ok(MmsData::FloatingPoint(value.get_raw_data().clone())),
         MmsServiceData::OctetString(value) => Ok(MmsData::OctetString(value.clone())),
         MmsServiceData::VisibleString(value) => Ok(MmsData::VisibleString(value.clone())),
-        MmsServiceData::GeneralizedTime(value) => Ok(MmsData::GeneralizedTime(match value {
-            MmsServiceGeneralizedTime::Utc(date_time) => todo!(),
-            MmsServiceGeneralizedTime::Local(date_time) => todo!(),
-            MmsServiceGeneralizedTime::FixedOffset(date_time) => todo!(),
-        })),
+        MmsServiceData::GeneralizedTime(value) => todo!(),
         MmsServiceData::BinaryTime(items) => todo!(),
         MmsServiceData::Bcd(mms_service_bcds) => todo!(),
         MmsServiceData::BooleanArray(items) => todo!(),
         MmsServiceData::ObjectId(oid) => todo!(),
-        MmsServiceData::MmsString(_) => todo!(),
+        MmsServiceData::MmsString(value) => Ok(MmsData::MmsString(value.into())),
     }
 }
 
@@ -304,12 +300,12 @@ pub(crate) fn convert_low_level_data_to_high_level_data(service_data: &MmsData) 
         MmsData::FloatingPoint(value) => Ok(MmsServiceData::FloatingPoint(MmsServiceDataFloat::new(value.clone()))),
         MmsData::OctetString(value) => Ok(MmsServiceData::OctetString(value.clone())),
         MmsData::VisibleString(value) =>  Ok(MmsServiceData::VisibleString(value.clone())),
-        MmsData::GeneralizedTime(asn1_date_time) => Ok(MmsServiceData::GeneralizedTime(asn1_date_time.clone())),
+        // MmsData::GeneralizedTime(asn1_date_time) => Ok(MmsServiceData::GeneralizedTime(asn1_date_time.clone())),
         // MmsServiceData::BinaryTime(items) => todo!(),
         // MmsServiceData::Bcd(mms_service_bcds) => todo!(),
         // MmsServiceData::BooleanArray(items) => todo!(),
         // MmsServiceData::ObjectId(oid) => todo!(),
-        // MmsServiceData::MmsString(_) => todo!(),
+        MmsData::MmsString(value) => Ok(MmsServiceData::MmsString(value.into())),
         _ => todo!(),
     }
 }

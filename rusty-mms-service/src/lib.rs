@@ -435,7 +435,7 @@ mod tests {
     use anyhow::anyhow;
     use der_parser::Oid;
     use num_bigint::{BigInt, BigUint};
-    use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
+    use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, VariableSpecification};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter};
     use tokio::{join, sync::Mutex};
     use tracing_test::traced_test;
@@ -941,19 +941,10 @@ mod tests {
                 MmsServiceAccessResult::Success(MmsServiceData::Integer(BigInt::from(-42))),
                 MmsServiceAccessResult::Success(MmsServiceData::Unsigned(BigUint::from(42u128))),
                 MmsServiceAccessResult::Success(MmsServiceData::FloatingPoint(MmsServiceDataFloat::from_f32(123.0))),
+                MmsServiceAccessResult::Failure(MmsAccessError::ObjectAccessDenied),
                 MmsServiceAccessResult::Success(MmsServiceData::OctetString(vec![1, 2, 3, 4, 5])),
-                MmsServiceAccessResult::Success(MmsServiceData::GeneralizedTime(der_parser::asn1_rs::ASN1DateTime {
-                    year: 2026,
-                    month: 03,
-                    day: 24,
-                    hour: 13,
-                    minute: 14,
-                    second: 15,
-                    millisecond: Some(100),
-                    tz: der_parser::asn1_rs::ASN1TimeZone::Z,
-                })),
+                MmsServiceAccessResult::Success(MmsServiceData::MmsString("AnMmsString".into())),
                 MmsServiceAccessResult::Success(MmsServiceData::VisibleString("Hello".into())),
-                // MmsServiceAccessResult::Failure(MmsAccessError::ObjectAccessDenied),
             ])
             .await?;
         assert_eq!(
@@ -963,9 +954,54 @@ mod tests {
                 MmsServiceAccessResult::Success(MmsServiceData::Boolean(false)),
                 MmsServiceAccessResult::Success(MmsServiceData::BitString(vec![true, false, true, true, false, false, true, true, true])),
                 MmsServiceAccessResult::Success(MmsServiceData::Integer(BigInt::from(-42))),
+                MmsServiceAccessResult::Success(MmsServiceData::Unsigned(BigUint::from(42u128))),
+                MmsServiceAccessResult::Success(MmsServiceData::FloatingPoint(MmsServiceDataFloat::from_f32(123.0))),
                 MmsServiceAccessResult::Failure(MmsAccessError::ObjectAccessDenied),
+                MmsServiceAccessResult::Success(MmsServiceData::OctetString(vec![1, 2, 3, 4, 5])),
+                MmsServiceAccessResult::Success(MmsServiceData::MmsString("AnMmsString".into())),
+                MmsServiceAccessResult::Success(MmsServiceData::VisibleString("Hello".into())),
             ]
         );
+
+        Ok(())
+    }
+
+    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    // #[traced_test]
+    async fn test_write_operation() -> Result<(), anyhow::Error> {
+        let running = Arc::new(AtomicBool::new(true));
+        let bindings = Arc::new(Mutex::new(Vec::new()));
+        tokio::task::spawn(process_bindings(running.clone(), bindings.clone()));
+
+        let data_pump = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
+
+        let (client_results, server_results) = join!(
+            async {
+                // Allow the server to start listening first.
+                tokio::time::sleep(Duration::from_millis(1)).await;
+                let mut tpkt_client_factory = TA::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new();
+                let mut client_factory = RustyMmsServiceFactory::new(data_pump.clone());
+                client_factory.create_client_connection(&mut tpkt_client_factory, MmsServiceConnectionParameters::default()).await
+            },
+            async {
+                let mut tpkt_server_factory = TB::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::new().await?;
+                let mut server_factory = RustyMmsServiceFactory::new(data_pump.clone());
+                server_factory.create_server_connection(&mut tpkt_server_factory, MmsServiceConnectionParameters::default()).await
+            }
+        );
+
+        let client = client_results?;
+        let mut server = server_results?;
+
+        let mut task_client = client.clone();
+        let client_task = tokio::task::spawn(async move { task_client.write(MmsVariableAccessSpecification::VariableListName(MmsObjectName::AaSpecific("MyVariable".into())), vec![MmsServiceData::Boolean(true)]).await });
+        let request = match server.receive_message().await {
+            Ok(MmsServiceMessage::Write(x)) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
+        assert_eq!(request.specification(), &MmsVariableAccessSpecification::VariableListName(MmsObjectName::AaSpecific("A list of variables to read".into())));
+        request.respond(vec![]).await?;
+        assert_eq!(client_task.await??, MmsWriteResult::Success);
 
         Ok(())
     }

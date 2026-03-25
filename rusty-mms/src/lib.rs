@@ -222,7 +222,7 @@ mod tests {
                         MmsAccessResult::Success(MmsData::Boolean(true)),
                         MmsAccessResult::Success(MmsData::Integer(vec![0x12, 0x34])),
                         MmsAccessResult::Success(MmsData::Array(vec![MmsData::MmsString("Test".into()), MmsData::Unsigned(vec![0x02]), MmsData::Unsigned(vec![0x03])])),
-                        MmsAccessResult::Failure(MmsAccessError::Unknown(vec![0x04])),
+                        MmsAccessResult::Failure(MmsAccessError::ObjectUndefined),
                     ],
                 },
             })
