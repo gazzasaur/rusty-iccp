@@ -23,7 +23,7 @@ impl IdentifyMmsServiceMessage {
         let sender = self.sender;
         sender
             .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
+                invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(),
                 response: rusty_mms::MmsConfirmedResponse::Identify { vendor_name: identity.vendor_name, model_name: identity.model_name, revision: identity.revision, abstract_syntaxes: identity.abstract_syntaxes },
             })
             .map_err(to_mms_error("The receive channel has been closed"))
@@ -59,7 +59,7 @@ impl GetNameListMmsServiceMessage {
         let more_follows = if more_follows { None } else { Some(false) };
         let sender = self.sender;
         sender
-            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::GetNameList { list_of_identifiers, more_follows } })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(), response: rusty_mms::MmsConfirmedResponse::GetNameList { list_of_identifiers, more_follows } })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -83,7 +83,7 @@ impl GetVariableAccessAttributesMmsServiceMessage {
         let sender = self.sender;
         sender
             .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
+                invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(),
                 response: rusty_mms::MmsConfirmedResponse::GetVariableAccessAttributes { deletable, type_description: convert_high_level_data_types_to_low_level_data_types(&type_description)? },
             })
             .map_err(to_mms_error("The receive channel has been closed"))
@@ -114,7 +114,7 @@ impl DefineNamedVariableListMmsServiceMessage {
     pub async fn respond(self) -> Result<(), MmsServiceError> {
         let sender = self.sender;
         sender
-            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::DefineNamedVariableList {} })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(), response: rusty_mms::MmsConfirmedResponse::DefineNamedVariableList {} })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -138,7 +138,7 @@ impl GetNamedVariableListAttributesMmsServiceMessage {
     pub async fn respond(self, deletable: bool, list_of_variables: Vec<ListOfVariablesItem>) -> Result<(), MmsServiceError> {
         let sender = self.sender;
         sender
-            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::GetNamedVariableListAttributes { deletable, list_of_variables } })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(), response: rusty_mms::MmsConfirmedResponse::GetNamedVariableListAttributes { deletable, list_of_variables } })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -165,7 +165,7 @@ impl DeleteNamedVariableListMmsServiceMessage {
         let number_matched = BigInt::from(number_matched).to_signed_bytes_be();
         let number_deleted = BigInt::from(number_deleted).to_signed_bytes_be();
         sender
-            .send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::DeleteNamedVariableList { number_matched, number_deleted } })
+            .send(MmsMessage::ConfirmedResponse { invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(), response: rusty_mms::MmsConfirmedResponse::DeleteNamedVariableList { number_matched, number_deleted } })
             .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
@@ -200,7 +200,7 @@ impl ReadMmsServiceMessage {
 
         sender
             .send(MmsMessage::ConfirmedResponse {
-                invocation_id: self.invocation_id.to_be_bytes().to_vec(),
+                invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(),
                 response: rusty_mms::MmsConfirmedResponse::Read {
                     variable_access_specification,
                     access_results: access_results
@@ -245,7 +245,9 @@ impl WriteMmsServiceMessage {
     pub async fn respond(self, write_results: Vec<MmsWriteResult>) -> Result<(), MmsServiceError> {
         let sender = self.sender;
 
-        sender.send(MmsMessage::ConfirmedResponse { invocation_id: self.invocation_id.to_be_bytes().to_vec(), response: rusty_mms::MmsConfirmedResponse::Write { write_results } }).map_err(to_mms_error("The receive channel has been closed"))
+        sender
+            .send(MmsMessage::ConfirmedResponse { invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(), response: rusty_mms::MmsConfirmedResponse::Write { write_results } })
+            .map_err(to_mms_error("The receive channel has been closed"))
     }
 }
 

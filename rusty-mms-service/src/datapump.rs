@@ -23,7 +23,7 @@ use tracing::warn;
 
 use crate::{
     data::{InformationReportMmsServiceMessage, MmsServiceAccessResult, MmsServiceDeleteObjectScope, convert_low_level_data_to_high_level_data},
-    error::{MmsServiceError, to_mms_error},
+    error::MmsServiceError,
     message::{
         DefineNamedVariableListMmsServiceMessage, DeleteNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetNamedVariableListAttributesMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage,
         IdentifyMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage,
@@ -93,7 +93,7 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
                             break;
                         };
 
-                        buffer.push_back(MmsMessage::ConfirmedRequest { invocation_id: reqeust_id.to_be_bytes().to_vec(), request: message_data });
+                        buffer.push_back(MmsMessage::ConfirmedRequest { invocation_id: BigInt::from(reqeust_id).to_signed_bytes_be().to_vec(), request: message_data });
                     },
                     None => {
                         break;
@@ -103,14 +103,13 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
             x = &mut reader_messages => {
                 match x {
                     Ok(MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id, response })) => {
-                        let b = match invocation_id.as_slice().try_into().map_err(to_mms_error("")) {
+                        let request_id: u32 = match BigInt::from_signed_bytes_be(&invocation_id).try_into() {
                             Ok(x) => x,
                             Err(e) => {
                                 warn!("Failed to convert invocation id: {:?}", e);
                                 break;
                             },
                         };
-                        let request_id = u32::from_be_bytes(b);
                         match confirmed_requests.remove(&request_id) {
                             Some(v) => {
                                 match v.send(Ok(response)) {
