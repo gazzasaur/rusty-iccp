@@ -197,8 +197,8 @@ impl MmsData {
             MmsData::FloatingPoint(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(7), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
             MmsData::OctetString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(9), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
             MmsData::VisibleString(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(10), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
-            MmsData::GeneralizedTime(instant) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(11), Length::Definite(0)), BerObjectContent::GeneralizedTime(instant.clone())),
-            MmsData::BinaryTime(_items) => todo!(),
+            MmsData::GeneralizedTime(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(11), Length::Definite(0)), BerObjectContent::VisibleString(&object_data)),
+            MmsData::BinaryTime(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(12), Length::Definite(0)), BerObjectContent::OctetString(&object_data)),
             MmsData::Bcd(object_data) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(13), Length::Definite(0)), BerObjectContent::Integer(&object_data)),
             MmsData::BooleanArray(paddibg, object_data) => {
                 BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(14), Length::Definite(0)), BerObjectContent::BitString(*paddibg, BitStringObject { data: &object_data }))

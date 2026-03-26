@@ -31,8 +31,8 @@ use crate::{
 };
 
 pub mod data;
-pub(crate) mod datapump;
-pub(crate) mod error;
+pub mod datapump;
+pub mod error;
 pub mod message;
 
 pub trait TpktClientConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
@@ -207,7 +207,8 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
 
         let (cosp_listener, _) = RustyCospListenerIsoStack::<R, W>::new(cotp_connection).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
 
-        let copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called_presentation_selector, calling_presentation_selector: parameters.calling_presentation_selector };
+        // TODO: Need to expose this.
+        let _copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called_presentation_selector, calling_presentation_selector: parameters.calling_presentation_selector };
         let (copp_responder, _) = RustyCoppListenerIsoStack::<R, W>::new(cosp_listener).await.map_err(to_mms_error(""))?;
 
         let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseListenerIsoStack::<R, W>::new(copp_responder).await.map_err(to_mms_error(""))?;
@@ -966,8 +967,8 @@ mod tests {
         Ok(())
     }
 
-    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    // #[traced_test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[traced_test]
     async fn test_write_operation() -> Result<(), anyhow::Error> {
         let running = Arc::new(AtomicBool::new(true));
         let bindings = Arc::new(Mutex::new(Vec::new()));

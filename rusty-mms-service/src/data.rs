@@ -1,26 +1,11 @@
 use std::ops::Deref;
 
-use chrono::{DateTime, FixedOffset, Local, Utc};
 use der_parser::Oid;
 use num_bigint::ToBigInt;
 use num_bigint::{BigInt, BigUint};
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
 
 use crate::error::{MmsServiceError, to_mms_error};
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum MmsServiceBcd {
-    Bcd0,
-    Bcd1,
-    Bcd2,
-    Bcd3,
-    Bcd4,
-    Bcd5,
-    Bcd6,
-    Bcd7,
-    Bcd8,
-    Bcd9,
-}
 
 #[derive(Debug, PartialEq)]
 pub struct MmsServiceDataFloat {
@@ -76,13 +61,6 @@ impl MmsServiceDataFloat {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum MmsServiceGeneralizedTime {
-    Utc(DateTime<Utc>),
-    Local(DateTime<Local>),
-    FixedOffset(DateTime<FixedOffset>),
-}
-
-#[derive(Debug, PartialEq)]
 pub enum MmsServiceData {
     Array(Vec<MmsServiceData>), // Arrays are meant to contain a consistent type across all elements. This is not enforced as it means traversing trees.
     Structure(Vec<MmsServiceData>),
@@ -93,9 +71,9 @@ pub enum MmsServiceData {
     FloatingPoint(MmsServiceDataFloat),
     OctetString(Vec<u8>),
     VisibleString(String),
-    GeneralizedTime(MmsServiceGeneralizedTime),
+    GeneralizedTime(String),
     BinaryTime(Vec<u8>),
-    Bcd(Vec<MmsServiceBcd>),
+    Bcd(Vec<u8>),
     BooleanArray(Vec<bool>),
     ObjectId(Oid<'static>),
     MmsString(String),
@@ -212,11 +190,23 @@ pub(crate) fn convert_high_level_data_to_low_level_data(service_data: &MmsServic
         MmsServiceData::FloatingPoint(value) => Ok(MmsData::FloatingPoint(value.get_raw_data().clone())),
         MmsServiceData::OctetString(value) => Ok(MmsData::OctetString(value.clone())),
         MmsServiceData::VisibleString(value) => Ok(MmsData::VisibleString(value.clone())),
-        MmsServiceData::GeneralizedTime(value) => todo!(),
-        MmsServiceData::BinaryTime(items) => todo!(),
-        MmsServiceData::Bcd(mms_service_bcds) => todo!(),
-        MmsServiceData::BooleanArray(items) => todo!(),
-        MmsServiceData::ObjectId(oid) => todo!(),
+        MmsServiceData::GeneralizedTime(value) => Ok(MmsData::GeneralizedTime(value.clone())),
+        MmsServiceData::BinaryTime(value) => Ok(MmsData::BinaryTime(value.clone())),
+        MmsServiceData::Bcd(value) => Ok(MmsData::Bcd(value.clone())),
+        MmsServiceData::BooleanArray(items) => {
+            let buffer_length = items.len() / 8 + 1 - (if items.len() % 8 == 0 { 1 } else { 0 });
+            let padding_length = (buffer_length * 8 - items.len()) as u8;
+            let mut bit_string_data = vec![0; buffer_length];
+            for i in 0..items.len() {
+                let byte_index = i / 8;
+                let bit_index = 7 - (i % 8) as u8;
+                if items[i] {
+                    bit_string_data[byte_index] |= 1 << bit_index // This is lsb and LSB first.
+                }
+            }
+            Ok(MmsData::BitString(padding_length, bit_string_data))
+        }
+        MmsServiceData::ObjectId(oid) => Ok(MmsData::ObjectId(oid.to_owned())),
         MmsServiceData::MmsString(value) => Ok(MmsData::MmsString(value.into())),
     }
 }
@@ -290,7 +280,6 @@ pub(crate) fn convert_low_level_data_to_high_level_data(service_data: &MmsData) 
 
             let mut items = vec![];
             for i in 0..(padded_length - (*padding as usize)) {
-                let a = values[i / 8];
                 items.push(if let Some(true) = values.get(i / 8).map(|x| (x & (0x80 >> (i % 8))) != 0) { true } else { false });
             }
             Ok(MmsServiceData::BitString(items))
@@ -299,14 +288,24 @@ pub(crate) fn convert_low_level_data_to_high_level_data(service_data: &MmsData) 
         MmsData::Unsigned(value) => Ok(MmsServiceData::Unsigned(BigInt::from_signed_bytes_be(value).to_biguint().ok_or_else(|| MmsError::InternalError("This is a bug. Please contact the project team.".into()))?)),
         MmsData::FloatingPoint(value) => Ok(MmsServiceData::FloatingPoint(MmsServiceDataFloat::new(value.clone()))),
         MmsData::OctetString(value) => Ok(MmsServiceData::OctetString(value.clone())),
-        MmsData::VisibleString(value) =>  Ok(MmsServiceData::VisibleString(value.clone())),
-        // MmsData::GeneralizedTime(asn1_date_time) => Ok(MmsServiceData::GeneralizedTime(asn1_date_time.clone())),
-        // MmsServiceData::BinaryTime(items) => todo!(),
-        // MmsServiceData::Bcd(mms_service_bcds) => todo!(),
-        // MmsServiceData::BooleanArray(items) => todo!(),
-        // MmsServiceData::ObjectId(oid) => todo!(),
+        MmsData::VisibleString(value) => Ok(MmsServiceData::VisibleString(value.clone())),
+        MmsData::GeneralizedTime(value) => Ok(MmsServiceData::GeneralizedTime(value.clone())),
+        MmsData::BinaryTime(value) => Ok(MmsServiceData::BinaryTime(value.clone())),
+        MmsData::Bcd(value) => Ok(MmsServiceData::Bcd(value.clone())),
+        MmsData::BooleanArray(padding, values) => {
+            let padded_length = values.len() * 8;
+            if *padding > 7 || padded_length == 0 {
+                return Err(MmsError::ProtocolError(format!("Received Invalid BitString. Padded Length: {}, Padding: {}", padded_length, padding)));
+            }
+
+            let mut items = vec![];
+            for i in 0..(padded_length - (*padding as usize)) {
+                items.push(if let Some(true) = values.get(i / 8).map(|x| (x & (0x80 >> (i % 8))) != 0) { true } else { false });
+            }
+            Ok(MmsServiceData::BitString(items))
+        }
+        MmsData::ObjectId(value) => Ok(MmsServiceData::ObjectId(value.to_owned())),
         MmsData::MmsString(value) => Ok(MmsServiceData::MmsString(value.into())),
-        _ => todo!(),
     }
 }
 

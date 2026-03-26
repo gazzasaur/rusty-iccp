@@ -5,11 +5,12 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
+use num_bigint::BigInt;
 use rusty_mms::{MmsConfirmedRequest, MmsConfirmedResponse, MmsError, MmsMessage, MmsReader, MmsRecvResult, MmsScope, MmsUnconfirmedService, MmsWriter};
 use tokio::{
     sync::{
@@ -41,7 +42,7 @@ pub struct MmsServiceDataPump {
 }
 
 impl MmsServiceDataPump {
-    pub(crate) fn new(running: Arc<AtomicBool>, bindings: Arc<Mutex<Vec<Pin<Box<dyn Future<Output = ()> + Send>>>>>) -> MmsServiceDataPump {
+    pub fn new(running: Arc<AtomicBool>, bindings: Arc<Mutex<Vec<Pin<Box<dyn Future<Output = ()> + Send>>>>>) -> MmsServiceDataPump {
         MmsServiceDataPump { running, bindings }
     }
 
@@ -143,7 +144,7 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
     }
 }
 
-async fn process_request(request: MmsConfirmedRequest, invocation_id: u32, mut external_outbound_queue: mpsc::UnboundedSender<MmsMessage>) -> Result<MmsServiceMessage, MmsServiceError> {
+async fn process_request(request: MmsConfirmedRequest, invocation_id: u32, external_outbound_queue: mpsc::UnboundedSender<MmsMessage>) -> Result<MmsServiceMessage, MmsServiceError> {
     match request {
         MmsConfirmedRequest::GetNameList { object_class, object_scope, continue_after } => {
             Ok(MmsServiceMessage::GetNameList(GetNameListMmsServiceMessage::new(invocation_id, object_class, object_scope, continue_after, external_outbound_queue.clone())))
@@ -178,13 +179,11 @@ async fn process_request(request: MmsConfirmedRequest, invocation_id: u32, mut e
 async fn process_responder_binding(
     mut reader: impl MmsReader,
     mut writer: impl MmsWriter,
-    mut external_outbound_queue: mpsc::UnboundedSender<MmsMessage>,
+    external_outbound_queue: mpsc::UnboundedSender<MmsMessage>,
     mut inbound_queue: mpsc::UnboundedReceiver<MmsMessage>,
     outbound_queue: mpsc::UnboundedSender<MmsServiceMessage>,
 ) {
-    let mut confirmed_request_counter = 0u32;
     let mut buffer = VecDeque::new();
-    let mut inactive_timeout = Instant::now() + Duration::from_mins(15);
 
     let mut write_buffer = false;
     loop {
@@ -207,14 +206,13 @@ async fn process_responder_binding(
             x = &mut reader_messages => {
                 match x {
                     Ok(MmsRecvResult::Message(MmsMessage::ConfirmedRequest { invocation_id, request })) => {
-                        let b = match invocation_id.as_slice().try_into().map_err(to_mms_error("")) {
+                        let invocation_id: u32 = match BigInt::from_signed_bytes_be(&invocation_id).try_into() {
                             Ok(x) => x,
                             Err(e) => {
                                 warn!("Failed to convert invocation id: {:?}", e);
                                 break;
                             },
                         };
-                        let invocation_id = u32::from_be_bytes(b);
                         let value = match process_request(request, invocation_id, external_outbound_queue.clone()).await {
                             Ok(x) => outbound_queue.send(x),
                             Err(_) => todo!(),

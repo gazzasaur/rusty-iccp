@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use der_parser::{Oid, asn1_rs::ASN1DateTime};
+use der_parser::Oid;
 use rusty_acse::AcseError;
 use thiserror::Error;
 
@@ -151,7 +151,7 @@ pub enum MmsData {
     FloatingPoint(Vec<u8>),
     OctetString(Vec<u8>),
     VisibleString(String),
-    GeneralizedTime(ASN1DateTime),
+    GeneralizedTime(String),
     BinaryTime(Vec<u8>),
     Bcd(Vec<u8>),
     BooleanArray(u8, Vec<u8>),
