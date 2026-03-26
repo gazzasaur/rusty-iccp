@@ -24,6 +24,12 @@ pub(crate) fn parse_write_request(payload: &Any<'_>) -> Result<MmsConfirmedReque
                 items[0].to_der_vec().map_err(to_mms_error("Failed to parse WriteRequest"))?.as_slice(),
             )?)
         }
+        Some([161]) => {
+            variable_access_specification = Some(MmsVariableAccessSpecification::parse(
+                "Read Response PDU",
+                items[0].to_der_vec().map_err(to_mms_error("Failed to parse WriteRequest"))?.as_slice(),
+            )?)
+        }
         x => warn!("Unsupported tag in MMS Write Request PDU: {:?}", x),
     }
     for data in process_constructed_data(items[1].data).map_err(to_mms_error("Failed to parse list of data in Write Request PDU"))? {

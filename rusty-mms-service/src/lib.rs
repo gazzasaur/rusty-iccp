@@ -14,16 +14,16 @@ use tokio::sync::{
 };
 
 use rusty_mms::{
-    ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsRequestInformation, MmsResponder,
-    MmsScope, MmsVariableAccessSpecification, MmsWriteResult, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
+    ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsRequestInformation,
+    MmsResponder, MmsScope, MmsVariableAccessSpecification, MmsWriteResult, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
     parameters::{ParameterSupportOption, ServiceSupportOption},
 };
 use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
     data::{
-        Identity, InformationReportMmsServiceMessage, MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope, NameList, NamedVariableListAttributes, VariableAccessAttributes, convert_low_level_data_to_high_level_data,
-        convert_low_level_data_types_to_high_level_data_types,
+        Identity, InformationReportMmsServiceMessage, MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope, NameList, NamedVariableListAttributes, VariableAccessAttributes, convert_high_level_data_to_low_level_data,
+        convert_low_level_data_to_high_level_data, convert_low_level_data_types_to_high_level_data_types,
     },
     datapump::{MmsServiceDataPump, MmsServiceDataPumpReaderType},
     error::{MmsServiceError, to_mms_error},
@@ -246,7 +246,7 @@ pub trait MmsInitiatorService: Send + Sync {
     async fn delete_named_variable_list(&mut self, scope_of_delete: MmsServiceDeleteObjectScope) -> Result<(i32 /* Number Matched */, i32 /* Number Deleted */), MmsServiceError>;
 
     async fn read(&mut self, specification: MmsVariableAccessSpecification) -> Result<Vec<MmsServiceAccessResult>, MmsServiceError>;
-    async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<MmsWriteResult, MmsServiceError>;
+    async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<Vec<MmsWriteResult>, MmsServiceError>;
 
     async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> Result<(), MmsServiceError>;
     async fn receive_information_report(&mut self) -> Result<InformationReportMmsServiceMessage, MmsServiceError>;
@@ -381,8 +381,20 @@ impl MmsInitiatorService for RustyMmsInitiatorService {
         }
     }
 
-    async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<MmsWriteResult, MmsServiceError> {
-        todo!()
+    async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<Vec<MmsWriteResult>, MmsServiceError> {
+        let (packet_sender, mut packet_receiver) = mpsc::unbounded_channel();
+        let dpt = MmsServiceDataPumpReaderType::Confirmed(
+            MmsConfirmedRequest::Write { variable_access_specification: specification, list_of_data: values.iter().map(|x| convert_high_level_data_to_low_level_data(x)).collect::<Result<Vec<MmsData>, MmsError>>()? },
+            packet_sender,
+        );
+        self.sender_queue.send(dpt).map_err(to_mms_error("Failed to queue MMS request."))?;
+        let response = packet_receiver.recv().await;
+        match response {
+            Some(Ok(MmsConfirmedResponse::Write { write_results })) => Ok(write_results),
+            Some(Ok(_)) => Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
+            None => Err(MmsServiceError::ProtocolError("Connection Closed".into())),
+            Some(Err(e)) => Err(e),
+        }
     }
 
     async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult>) -> Result<(), MmsServiceError> {
@@ -964,6 +976,31 @@ mod tests {
             ]
         );
 
+        let mut task_client = client.clone();
+        let client_task = tokio::task::spawn(async move {
+            task_client
+                .read(MmsVariableAccessSpecification::ListOfVariables(vec![
+                    ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One1".into())) },
+                    ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One2".into())) },
+                    ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One3".into())) },
+                ]))
+                .await
+        });
+        let request = match server.receive_message().await {
+            Ok(MmsServiceMessage::Read(x)) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
+        assert_eq!(
+            request.specification(),
+            &MmsVariableAccessSpecification::ListOfVariables(vec![
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One1".into())) },
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One2".into())) },
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One3".into())) },
+            ])
+        );
+        request.respond(vec![MmsServiceAccessResult::Success(MmsServiceData::Boolean(true))]).await?;
+        assert_eq!(client_task.await??, vec![MmsServiceAccessResult::Success(MmsServiceData::Boolean(true)),]);
+
         Ok(())
     }
 
@@ -1000,9 +1037,50 @@ mod tests {
             Ok(MmsServiceMessage::Write(x)) => x,
             x => return Err(anyhow!("Test Failed: {:?}", x)),
         };
-        assert_eq!(request.specification(), &MmsVariableAccessSpecification::VariableListName(MmsObjectName::AaSpecific("A list of variables to read".into())));
-        request.respond(vec![]).await?;
-        assert_eq!(client_task.await??, MmsWriteResult::Success);
+        assert_eq!(request.specification(), &MmsVariableAccessSpecification::VariableListName(MmsObjectName::AaSpecific("MyVariable".into())));
+        request.respond(vec![MmsWriteResult::Success]).await?;
+        assert_eq!(client_task.await??, vec![MmsWriteResult::Success]);
+
+        let mut task_client = client.clone();
+        let client_task = tokio::task::spawn(async move {
+            task_client
+                .write(
+                    MmsVariableAccessSpecification::ListOfVariables(vec![
+                        ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One1".into())) },
+                        ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One2".into())) },
+                        ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One3".into())) },
+                    ]),
+                    vec![MmsServiceData::Boolean(true), MmsServiceData::Boolean(false), MmsServiceData::Boolean(true)],
+                )
+                .await
+        });
+        let request = match server.receive_message().await {
+            Ok(MmsServiceMessage::Write(x)) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
+        assert_eq!(
+            request.specification(),
+            &MmsVariableAccessSpecification::ListOfVariables(vec![
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One1".into())) },
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One2".into())) },
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::AaSpecific("One3".into())) },
+            ])
+        );
+        request
+            .respond(vec![
+                MmsWriteResult::Success,
+                MmsWriteResult::Failure(MmsAccessError::HardwareFault),
+                MmsWriteResult::Failure(MmsAccessError::ObjectAccessUnsupported),
+            ])
+            .await?;
+        assert_eq!(
+            client_task.await??,
+            vec![
+                MmsWriteResult::Success,
+                MmsWriteResult::Failure(MmsAccessError::HardwareFault),
+                MmsWriteResult::Failure(MmsAccessError::ObjectAccessUnsupported)
+            ]
+        );
 
         Ok(())
     }
