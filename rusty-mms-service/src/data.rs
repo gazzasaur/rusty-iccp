@@ -3,7 +3,7 @@ use std::ops::Deref;
 use der_parser::Oid;
 use num_bigint::ToBigInt;
 use num_bigint::{BigInt, BigUint};
-use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsAccessResult, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
+use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsData, MmsError, MmsObjectName, MmsTypeDescription, MmsTypeDescriptionComponent, MmsVariableAccessSpecification};
 
 use crate::error::{MmsServiceError, to_mms_error};
 
@@ -152,7 +152,7 @@ pub enum MmsServiceAccessResult {
 #[derive(Debug)]
 pub struct InformationReportMmsServiceMessage {
     pub variable_access_specification: MmsVariableAccessSpecification,
-    pub access_results: Vec<MmsAccessResult>,
+    pub access_results: Vec<MmsServiceAccessResult>,
 }
 
 pub(crate) fn convert_high_level_data_to_low_level_data(service_data: &MmsServiceData) -> Result<MmsData, MmsError> {

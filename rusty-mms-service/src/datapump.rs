@@ -22,7 +22,7 @@ use tokio::{
 use tracing::warn;
 
 use crate::{
-    data::{InformationReportMmsServiceMessage, MmsServiceDeleteObjectScope},
+    data::{InformationReportMmsServiceMessage, MmsServiceAccessResult, MmsServiceDeleteObjectScope, convert_low_level_data_to_high_level_data},
     error::{MmsServiceError, to_mms_error},
     message::{
         DefineNamedVariableListMmsServiceMessage, DeleteNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetNamedVariableListAttributesMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage,
@@ -37,13 +37,13 @@ pub enum MmsServiceDataPumpReaderType {
 }
 
 pub struct MmsServiceDataPump {
-    running: Arc<AtomicBool>,
+    _running: Arc<AtomicBool>,
     bindings: Arc<Mutex<Vec<Pin<Box<dyn Future<Output = ()> + Send>>>>>,
 }
 
 impl MmsServiceDataPump {
     pub fn new(running: Arc<AtomicBool>, bindings: Arc<Mutex<Vec<Pin<Box<dyn Future<Output = ()> + Send>>>>>) -> MmsServiceDataPump {
-        MmsServiceDataPump { running, bindings }
+        MmsServiceDataPump { _running: running, bindings }
     }
 
     pub async fn register_initiator(&self, reader: impl MmsReader + 'static, writer: impl MmsWriter + 'static) -> (mpsc::UnboundedSender<MmsServiceDataPumpReaderType>, mpsc::UnboundedReceiver<Result<MmsMessage, MmsError>>) {
@@ -113,7 +113,13 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
                         let request_id = u32::from_be_bytes(b);
                         match confirmed_requests.remove(&request_id) {
                             Some(v) => {
-                                v.send(Ok(response));
+                                match v.send(Ok(response)) {
+                                    Ok(()) => (),
+                                    Err(e) => {
+                                        warn!("Failed to send message: {:?}", e);
+                                        break;
+                                    },
+                                }
                             },
                             None => {
                                 warn!("Got a reqeust id for a value that was not pending: {:?}", request_id)
@@ -121,7 +127,13 @@ async fn process_initiator_binding(mut reader: impl MmsReader, mut writer: impl 
                         }
                     },
                     Ok(MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service })) => {
-                        outbound_queue.send(Ok(MmsMessage::Unconfirmed { unconfirmed_service }));
+                        match outbound_queue.send(Ok(MmsMessage::Unconfirmed { unconfirmed_service })) {
+                            Ok(()) => (),
+                            Err(e) => {
+                                warn!("Failed to send message: {:?}", e);
+                                break;
+                            },
+                        }
                     },
                     Ok(MmsRecvResult::Message(m)) => {
                         warn!("Initiator got an unsupported message: {:?}", m);
@@ -213,13 +225,42 @@ async fn process_responder_binding(
                                 break;
                             },
                         };
-                        let value = match process_request(request, invocation_id, external_outbound_queue.clone()).await {
+                        let send_result = match process_request(request, invocation_id, external_outbound_queue.clone()).await {
                             Ok(x) => outbound_queue.send(x),
-                            Err(_) => todo!(),
+                            Err(e) => {
+                                warn!("Failed to process message: {:?}", e);
+                                break;
+                            },
                         };
+                        match send_result {
+                            Ok(()) => (),
+                            Err(e) => {
+                                warn!("Failed to send message: {:?}", e);
+                                break;
+                            },
+                        }
                     },
                     Ok(MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service: MmsUnconfirmedService::InformationReport { variable_access_specification, access_results } })) => {
-                        outbound_queue.send(MmsServiceMessage::InformationReport(InformationReportMmsServiceMessage { variable_access_specification, access_results } ));
+                        let access_results = access_results.into_iter().map(|x| match x {
+                            rusty_mms::MmsAccessResult::Success(mms_data) => Ok(MmsServiceAccessResult::Success(convert_low_level_data_to_high_level_data(&mms_data)?)),
+                            rusty_mms::MmsAccessResult::Failure(mms_access_error) => Ok(MmsServiceAccessResult::Failure(mms_access_error)),
+                        }).collect::<Result<Vec<MmsServiceAccessResult>, MmsServiceError>>();
+
+                        let access_results = match access_results {
+                            Ok(x) => x,
+                            Err(e) => {
+                                warn!("Failed to convert message: {:?}", e);
+                                break;
+                            },
+                        };
+
+                        match outbound_queue.send(MmsServiceMessage::InformationReport(InformationReportMmsServiceMessage { variable_access_specification, access_results })) {
+                            Ok(()) => (),
+                            Err(e) => {
+                                warn!("Failed to send message: {:?}", e);
+                                break;
+                            },
+                        };
                     },
                     Ok(MmsRecvResult::Message(m)) => {
                         warn!("Responder got an unsupported message: {:?}", m);
