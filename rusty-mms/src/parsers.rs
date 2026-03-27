@@ -110,9 +110,7 @@ pub(crate) fn process_mms_integer_8_content<'a>(npm_object: &Any<'a>, error_mess
     if int_value.len() > 1 {
         return Err(MmsError::ProtocolError(format!("{}: {} - {:?}", error_message, "Exceeded Integer8 range", int_value)));
     }
-    BigInt::from_signed_bytes_be(&int_value)
-        .to_i8()
-        .ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int8 from {:?}", error_message, int_value)))
+    BigInt::from_signed_bytes_be(&int_value).to_i8().ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int8 from {:?}", error_message, int_value)))
 }
 
 pub(crate) fn process_mms_integer_16_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<i16, MmsError> {
@@ -120,9 +118,7 @@ pub(crate) fn process_mms_integer_16_content<'a>(npm_object: &Any<'a>, error_mes
     if int_value.len() > 2 {
         return Err(MmsError::ProtocolError(format!("{}: {} - {:?}", error_message, "Exceeded Integer16 range", int_value)));
     }
-    BigInt::from_signed_bytes_be(&int_value)
-        .to_i16()
-        .ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int16 from {:?}", error_message, int_value)))
+    BigInt::from_signed_bytes_be(&int_value).to_i16().ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int16 from {:?}", error_message, int_value)))
 }
 
 pub(crate) fn process_mms_integer_32_content<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<i32, MmsError> {
@@ -130,9 +126,7 @@ pub(crate) fn process_mms_integer_32_content<'a>(npm_object: &Any<'a>, error_mes
     if int_value.len() > 4 {
         return Err(MmsError::ProtocolError(format!("{}: {} - {:?}", error_message, "Exceeded Integer32 range", int_value)));
     }
-    BigInt::from_signed_bytes_be(&int_value)
-        .to_i32()
-        .ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int32 from {:?}", error_message, int_value)))
+    BigInt::from_signed_bytes_be(&int_value).to_i32().ok_or_else(|| MmsError::ProtocolError(format!("{}: Failed to parse MMS int32 from {:?}", error_message, int_value)))
 }
 
 pub(crate) fn process_mms_parameter_support_options<'a>(npm_object: &Any<'a>, error_message: &str) -> Result<ParameterSupportOptions, MmsError> {

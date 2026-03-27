@@ -476,8 +476,8 @@ impl MmsResponderService for RustyMmsResponderService {
 mod tests {
     use crate::MmsResponderService;
     use crate::data::{
-        MmsServiceAccessResult, MmsServiceData, MmsServiceDataFloat, MmsServiceDeleteObjectScope, MmsServiceTypeDescription, MmsServiceTypeDescriptionComponent, MmsServiceTypeSpecification, NameList,
-        NamedVariableListAttributes, VariableAccessAttributes,
+        MmsServiceAccessResult, MmsServiceData, MmsServiceDataFloat, MmsServiceDeleteObjectScope, MmsServiceTypeDescription, MmsServiceTypeDescriptionComponent, MmsServiceTypeSpecification, NameList, NamedVariableListAttributes,
+        VariableAccessAttributes,
     };
     use crate::error::to_mms_error;
     use crate::{MmsInitiatorService, datapump::process_bindings};

@@ -86,12 +86,6 @@ impl ConnectMessage {
             (Some(_), Some(_)) => return Err(CospError::ProtocolError(format!("User Data and Overflow data was detected. Cannot continue to connect."))),
         };
 
-        Ok(ConnectMessage {
-            user_data,
-            data_overflow,
-            called_session_selector,
-            calling_session_selector,
-            maximum_size_to_initiator,
-        })
+        Ok(ConnectMessage { user_data, data_overflow, called_session_selector, calling_session_selector, maximum_size_to_initiator })
     }
 }

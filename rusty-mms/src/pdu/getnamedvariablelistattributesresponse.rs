@@ -25,10 +25,7 @@ pub(crate) fn parse_get_named_variable_list_attributes_response(payload: &Any<'_
                     let items = process_constructed_data(item.data).map_err(to_mms_error("Failed to parse MMS DefineNamedVariableList PDU"))?;
                     let mut variable_specifications = vec![];
                     for variable_specifications_item in items {
-                        variable_specifications.push(ListOfVariablesItem::parse(
-                            &variable_specifications_item,
-                            "Failed to parse MMS DefineNamedVariableList PDU - Failed to parse List Of Variables Item",
-                        )?);
+                        variable_specifications.push(ListOfVariablesItem::parse(&variable_specifications_item, "Failed to parse MMS DefineNamedVariableList PDU - Failed to parse List Of Variables Item")?);
                     }
                     Some(variable_specifications)
                 }

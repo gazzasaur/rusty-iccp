@@ -13,13 +13,7 @@ pub struct DisconnectRequest {
 
 impl DisconnectRequest {
     pub fn new(source_reference: u16, destination_reference: u16, reason: DisconnectReason, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
-        Self {
-            source_reference,
-            destination_reference,
-            reason,
-            parameters,
-            user_data: user_data.into(),
-        }
+        Self { source_reference, destination_reference, reason, parameters, user_data: user_data.into() }
     }
 }
 

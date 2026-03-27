@@ -27,11 +27,7 @@ pub struct CospConnectionInformation {
 
 impl Default for CospConnectionInformation {
     fn default() -> Self {
-        Self {
-            tsdu_maximum_size: None,
-            calling_session_selector: None,
-            called_session_selector: None,
-        }
+        Self { tsdu_maximum_size: None, calling_session_selector: None, called_session_selector: None }
     }
 }
 

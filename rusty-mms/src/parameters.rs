@@ -35,11 +35,7 @@ pub(crate) struct ParameterSupportOptionsBerObject<'a> {
 
 impl<'a> ParameterSupportOptionsBerObject<'a> {
     pub(crate) fn new(parameter_support_options: ParameterSupportOptions) -> ParameterSupportOptionsBerObject<'a> {
-        let mut obj = ParameterSupportOptionsBerObject {
-            ignored_bits: 8,
-            data: [0],
-            _lifetime: PhantomData::<&'a ()>,
-        };
+        let mut obj = ParameterSupportOptionsBerObject { ignored_bits: 8, data: [0], _lifetime: PhantomData::<&'a ()> };
 
         for option in parameter_support_options.options {
             match option {
@@ -73,12 +69,7 @@ impl<'a> ParameterSupportOptionsBerObject<'a> {
     pub(crate) fn to_ber_object(&'a self, tag: Tag) -> BerObject<'a> {
         BerObject::from_header_and_content(
             Header::new(Class::ContextSpecific, false, tag, Length::Definite(0)),
-            BerObjectContent::BitString(
-                (self.ignored_bits % 8) as u8,
-                BitStringObject {
-                    data: &self.data[0..(1 - self.ignored_bits / 8)],
-                },
-            ),
+            BerObjectContent::BitString((self.ignored_bits % 8) as u8, BitStringObject { data: &self.data[0..(1 - self.ignored_bits / 8)] }),
         )
     }
 }
@@ -110,11 +101,7 @@ pub(crate) struct ServiceSupportOptionsBerObject<'a> {
 
 impl<'a> ServiceSupportOptionsBerObject<'a> {
     pub(crate) fn new(service_support_options: ServiceSupportOptions) -> ServiceSupportOptionsBerObject<'a> {
-        let mut obj = ServiceSupportOptionsBerObject {
-            ignored_bits: 88,
-            data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            _lifetime: PhantomData::<&'a ()>,
-        };
+        let mut obj = ServiceSupportOptionsBerObject { ignored_bits: 88, data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], _lifetime: PhantomData::<&'a ()> };
 
         for option in service_support_options.options {
             match option {
@@ -168,12 +155,7 @@ impl<'a> ServiceSupportOptionsBerObject<'a> {
     pub(crate) fn to_ber_object(&'a self, tag: Tag) -> BerObject<'a> {
         BerObject::from_header_and_content(
             Header::new(Class::ContextSpecific, false, tag, Length::Definite(0)),
-            BerObjectContent::BitString(
-                (self.ignored_bits % 8) as u8,
-                BitStringObject {
-                    data: &self.data[0..(self.data.len() - self.ignored_bits / 8)],
-                },
-            ),
+            BerObjectContent::BitString((self.ignored_bits % 8) as u8, BitStringObject { data: &self.data[0..(self.data.len() - self.ignored_bits / 8)] }),
         )
     }
 }
@@ -345,14 +327,7 @@ mod tests {
 
     #[test]
     fn it_serialises_parameter_support_option_multiple() -> Result<(), anyhow::Error> {
-        assert_eq!(
-            vec![131, 2, 0, 129],
-            ParameterSupportOptionsBerObject::new(ParameterSupportOptions {
-                options: vec![ParameterSupportOption::Str1, ParameterSupportOption::Vlis]
-            })
-            .to_ber_object(Tag::from(3))
-            .to_vec()?
-        );
+        assert_eq!(vec![131, 2, 0, 129], ParameterSupportOptionsBerObject::new(ParameterSupportOptions { options: vec![ParameterSupportOption::Str1, ParameterSupportOption::Vlis] }).to_ber_object(Tag::from(3)).to_vec()?);
 
         Ok(())
     }
@@ -410,20 +385,9 @@ mod tests {
     fn it_serialises_service_support_option_multiple() -> Result<(), anyhow::Error> {
         assert_eq!(
             vec![131, 12, 4, 8, 0, 0, 0, 0, 0, 0, 0, 0, 1, 16],
-            ServiceSupportOptionsBerObject::new(ServiceSupportOptions {
-                options: vec![ServiceSupportOption::InformationReport, ServiceSupportOption::Read, ServiceSupportOption::Conclude]
-            })
-            .to_ber_object(Tag::from(3))
-            .to_vec()?
+            ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![ServiceSupportOption::InformationReport, ServiceSupportOption::Read, ServiceSupportOption::Conclude] }).to_ber_object(Tag::from(3)).to_vec()?
         );
-        assert_eq!(
-            vec![131, 2, 2, 12],
-            ServiceSupportOptionsBerObject::new(ServiceSupportOptions {
-                options: vec![ServiceSupportOption::Write, ServiceSupportOption::Read]
-            })
-            .to_ber_object(Tag::from(3))
-            .to_vec()?
-        );
+        assert_eq!(vec![131, 2, 2, 12], ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![ServiceSupportOption::Write, ServiceSupportOption::Read] }).to_ber_object(Tag::from(3)).to_vec()?);
 
         Ok(())
     }

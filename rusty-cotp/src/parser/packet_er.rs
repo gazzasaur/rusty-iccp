@@ -44,10 +44,7 @@ mod tests {
     async fn parse_payloads_with_parameters_happy() -> Result<(), anyhow::Error> {
         let subject = TransportProtocolDataUnitParser::new();
 
-        assert_eq!(
-            subject.parse(hex::decode("0B700000C8AB0548656C6C6F")?.as_slice())?,
-            TransportProtocolDataUnit::ER(TpduError::new(0, 200.into(), vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])]))
-        );
+        assert_eq!(subject.parse(hex::decode("0B700000C8AB0548656C6C6F")?.as_slice())?, TransportProtocolDataUnit::ER(TpduError::new(0, 200.into(), vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])])));
 
         Ok(())
     }

@@ -18,12 +18,7 @@ pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
 
 impl<T: CospInitiator, R: CospReader, W: CospWriter> RustyCoppInitiator<T, R, W> {
     pub fn new(cosp_initiator: impl CospInitiator, options: CoppConnectionInformation) -> RustyCoppInitiator<impl CospInitiator, impl CospReader, impl CospWriter> {
-        RustyCoppInitiator {
-            cosp_initiator,
-            cosp_reader: PhantomData::<R>,
-            cosp_writer: PhantomData::<W>,
-            options,
-        }
+        RustyCoppInitiator { cosp_initiator, cosp_reader: PhantomData::<R>, cosp_writer: PhantomData::<W>, options }
     }
 }
 
@@ -63,10 +58,7 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
         };
 
         let presentation_user_data = connect_message.user_data_mut().take();
-        let copp_information = CoppConnectionInformation {
-            calling_presentation_selector: connect_message.calling_presentation_selector().cloned(),
-            called_presentation_selector: connect_message.called_presentation_selector().cloned(),
-        };
+        let copp_information = CoppConnectionInformation { calling_presentation_selector: connect_message.calling_presentation_selector().cloned(), called_presentation_selector: connect_message.called_presentation_selector().cloned() };
 
         Ok((
             RustyCoppListener {
@@ -101,28 +93,15 @@ pub struct RustyCoppResponder<T: CospResponder, R: CospReader, W: CospWriter> {
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppResponder<T, R, W> {
     fn new(cosp_responder: T, connection_information: CoppConnectionInformation) -> RustyCoppResponder<impl CospResponder, impl CospReader, impl CospWriter> {
-        RustyCoppResponder {
-            cosp_responder,
-            cosp_reader: PhantomData::<R>,
-            cosp_writer: PhantomData::<W>,
-            connection_information,
-        }
+        RustyCoppResponder { cosp_responder, cosp_reader: PhantomData::<R>, cosp_writer: PhantomData::<W>, connection_information }
     }
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppResponder for RustyCoppResponder<T, R, W> {
     async fn accept(self, accept_data: Option<UserData>) -> Result<impl CoppConnection, CoppError> {
         let contexts = PresentationContextResultType::ContextDefinitionList(vec![
-            PresentationContextResult {
-                result: PresentationContextResultCause::Acceptance,
-                transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
-                provider_reason: None,
-            },
-            PresentationContextResult {
-                result: PresentationContextResultCause::Acceptance,
-                transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
-                provider_reason: None,
-            },
+            PresentationContextResult { result: PresentationContextResultCause::Acceptance, transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?), provider_reason: None },
+            PresentationContextResult { result: PresentationContextResultCause::Acceptance, transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?), provider_reason: None },
         ]);
 
         let responder = self.cosp_responder;

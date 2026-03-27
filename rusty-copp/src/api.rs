@@ -95,10 +95,7 @@ pub struct CoppConnectionInformation {
 
 impl Default for CoppConnectionInformation {
     fn default() -> Self {
-        Self {
-            calling_presentation_selector: None,
-            called_presentation_selector: None,
-        }
+        Self { calling_presentation_selector: None, called_presentation_selector: None }
     }
 }
 

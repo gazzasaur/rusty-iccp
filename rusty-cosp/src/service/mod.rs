@@ -52,10 +52,7 @@ impl<R: CotpReader, W: CotpWriter> CospInitiator for TcpCospInitiator<R, W> {
             (SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
         };
 
-        Ok((
-            TcpCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder()),
-            accept_message.user_data().map(|data| data.clone()),
-        ))
+        Ok((TcpCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder()), accept_message.user_data().map(|data| data.clone())))
     }
 }
 
@@ -101,15 +98,7 @@ impl<R: CotpReader, W: CotpWriter> TcpCospListener<R, W> {
             called_session_selector: connect_request.called_session_selector().map(|x| x.clone()),
             calling_session_selector: connect_request.calling_session_selector().map(|x| x.clone()),
         };
-        Ok((
-            TcpCospListener {
-                cotp_reader,
-                cotp_writer,
-                user_data,
-                cosp_connection_information: cosp_connection_information.clone(),
-            },
-            cosp_connection_information,
-        ))
+        Ok((TcpCospListener { cotp_reader, cotp_writer, user_data, cosp_connection_information: cosp_connection_information.clone() }, cosp_connection_information))
     }
 }
 
@@ -135,11 +124,7 @@ pub struct TcpCospResponder<R: CotpReader, W: CotpWriter> {
 
 impl<R: CotpReader, W: CotpWriter> TcpCospResponder<R, W> {
     fn new(cotp_reader: impl CotpReader, cotp_writer: impl CotpWriter, maximum_size_to_initiator: TsduMaximumSize) -> TcpCospResponder<impl CotpReader, impl CotpWriter> {
-        TcpCospResponder {
-            cotp_reader,
-            cotp_writer,
-            maximum_size_to_initiator,
-        }
+        TcpCospResponder { cotp_reader, cotp_writer, maximum_size_to_initiator }
     }
 }
 
@@ -167,17 +152,7 @@ impl<R: CotpReader, W: CotpWriter> TcpCospConnection<R, W> {
 
 impl<R: CotpReader, W: CotpWriter> CospConnection for TcpCospConnection<R, W> {
     async fn split(self) -> Result<(impl CospReader, impl CospWriter), CospError> {
-        Ok((
-            TcpCospReader {
-                cotp_reader: self.cotp_reader,
-                buffer: VecDeque::new(),
-            },
-            TcpCospWriter {
-                buffer: VecDeque::new(),
-                cotp_writer: self.cotp_writer,
-                remote_max_size: self.remote_max_size,
-            },
-        ))
+        Ok((TcpCospReader { cotp_reader: self.cotp_reader, buffer: VecDeque::new() }, TcpCospWriter { buffer: VecDeque::new(), cotp_writer: self.cotp_writer, remote_max_size: self.remote_max_size }))
     }
 }
 
@@ -243,11 +218,8 @@ impl<W: CotpWriter> CospWriter for TcpCospWriter<W> {
                             cursor => cursor,
                         };
                         let enclosure = EnclosureField(if start == 0 { 1 } else { 0 } + if cursor == data_item.len() { 2 } else { 0 });
-                        let payload = SessionPduList::new(
-                            vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![SessionPduParameter::EnclosureParameter(enclosure)])],
-                            data_item[start..cursor].to_vec(),
-                        )
-                        .serialise()?;
+                        let payload =
+                            SessionPduList::new(vec![SessionPduParameter::GiveTokens(), SessionPduParameter::DataTransfer(vec![SessionPduParameter::EnclosureParameter(enclosure)])], data_item[start..cursor].to_vec()).serialise()?;
                         self.buffer.push_back(payload);
                     }
                 }

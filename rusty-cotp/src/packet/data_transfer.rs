@@ -8,10 +8,7 @@ pub struct DataTransfer {
 
 impl DataTransfer {
     pub fn new(end_of_transmission: bool, user_data: &[u8]) -> Self {
-        Self {
-            end_of_transmission,
-            user_data: user_data.into(),
-        }
+        Self { end_of_transmission, user_data: user_data.into() }
     }
 
     pub fn end_of_transmission(&self) -> bool {

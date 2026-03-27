@@ -20,13 +20,7 @@ pub(crate) struct AcceptMessage {
 
 impl AcceptMessage {
     pub(crate) fn new(protocol: Option<Protocol>, responding_presentation_selector: Option<Vec<u8>>, context_definition_result_list: PresentationContextResultType, user_data: Option<UserData>) -> Self {
-        Self {
-            protocol,
-            presentation_mode: Some(PresentationMode::Normal),
-            responding_presentation_selector,
-            context_definition_result_list,
-            user_data,
-        }
+        Self { protocol, presentation_mode: Some(PresentationMode::Normal), responding_presentation_selector, context_definition_result_list, user_data }
     }
 
     pub(crate) fn user_data(self) -> Option<UserData> {
@@ -35,13 +29,8 @@ impl AcceptMessage {
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<AcceptMessage, CoppError> {
         let mut context_definition_list = None;
-        let mut accept_message = AcceptMessage {
-            protocol: None,
-            presentation_mode: None,
-            responding_presentation_selector: None,
-            context_definition_result_list: PresentationContextResultType::ContextDefinitionList(vec![]),
-            user_data: None,
-        };
+        let mut accept_message =
+            AcceptMessage { protocol: None, presentation_mode: None, responding_presentation_selector: None, context_definition_result_list: PresentationContextResultType::ContextDefinitionList(vec![]), user_data: None };
 
         // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
         der_parser::ber::parse_ber_set_of_v(|data| {
@@ -196,11 +185,7 @@ mod tests {
         let subject = AcceptMessage::new(
             Some(Protocol::Version1),
             Some(vec![0x04]),
-            PresentationContextResultType::ContextDefinitionList(vec![PresentationContextResult {
-                result: PresentationContextResultCause::Acceptance,
-                transfer_syntax_name: None,
-                provider_reason: None,
-            }]),
+            PresentationContextResultType::ContextDefinitionList(vec![PresentationContextResult { result: PresentationContextResultCause::Acceptance, transfer_syntax_name: None, provider_reason: None }]),
             None,
         );
         let data = subject.serialise()?;

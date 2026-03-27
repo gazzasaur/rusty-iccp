@@ -17,15 +17,7 @@ pub(crate) fn parse_create_confirm(credit: u8, header_data: &[u8], user_data: &[
 
     let parameters = parse_parameters(variable_part)?;
 
-    Ok(TransportProtocolDataUnit::CC(ConnectionConfirm::new(
-        credit,
-        source_reference,
-        destination_reference,
-        preferred_class.into(),
-        ConnectionOption::from(request_options),
-        parameters,
-        &user_data,
-    )))
+    Ok(TransportProtocolDataUnit::CC(ConnectionConfirm::new(credit, source_reference, destination_reference, preferred_class.into(), ConnectionOption::from(request_options), parameters, &user_data)))
 }
 
 #[cfg(test)]
@@ -47,10 +39,7 @@ mod tests {
     async fn parse_payloads_happy() -> Result<(), anyhow::Error> {
         let subject = TransportProtocolDataUnitParser::new();
 
-        assert_eq!(
-            subject.parse(hex::decode("06D00000000000")?.as_slice())?,
-            TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[]))
-        );
+        assert_eq!(subject.parse(hex::decode("06D00000000000")?.as_slice())?, TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[])));
 
         Ok(())
     }
@@ -75,15 +64,7 @@ mod tests {
 
         assert_eq!(
             subject.parse(hex::decode("0DD50000000000AB0548656C6C6F")?.as_slice())?,
-            TransportProtocolDataUnit::CC(ConnectionConfirm::new(
-                5,
-                0,
-                0,
-                ConnectionClass::Class0,
-                vec![],
-                vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])],
-                &[]
-            ))
+            TransportProtocolDataUnit::CC(ConnectionConfirm::new(5, 0, 0, ConnectionClass::Class0, vec![], vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])], &[]))
         );
 
         Ok(())

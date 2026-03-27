@@ -18,18 +18,8 @@ pub(crate) fn parse_information_report(payload: &Any<'_>) -> Result<MmsUnconfirm
     }
 
     match items[0].header.raw_tag() {
-        Some([160]) => {
-            variable_access_specification = Some(MmsVariableAccessSpecification::parse(
-                "Information Report PDU",
-                items[0].to_der_vec().map_err(to_mms_error("Failed to parse Information Report"))?.as_slice(),
-            )?)
-        }
-        Some([161]) => {
-            variable_access_specification = Some(MmsVariableAccessSpecification::parse(
-                "Information Report PDU",
-                items[0].to_der_vec().map_err(to_mms_error("Failed to parse Information Report"))?.as_slice(),
-            )?)
-        }
+        Some([160]) => variable_access_specification = Some(MmsVariableAccessSpecification::parse("Information Report PDU", items[0].to_der_vec().map_err(to_mms_error("Failed to parse Information Report"))?.as_slice())?),
+        Some([161]) => variable_access_specification = Some(MmsVariableAccessSpecification::parse("Information Report PDU", items[0].to_der_vec().map_err(to_mms_error("Failed to parse Information Report"))?.as_slice())?),
         x => warn!("Unsupported tag in MMS Information Report PDU: {:?}", x),
     }
     for data in process_constructed_data(items[1].data).map_err(to_mms_error("Failed to parse list of data in Information Report PDU"))? {
@@ -37,10 +27,7 @@ pub(crate) fn parse_information_report(payload: &Any<'_>) -> Result<MmsUnconfirm
     }
 
     let variable_access_specification = variable_access_specification.ok_or_else(|| MmsError::ProtocolError("No Variable Access Specification on Request PDU".into()))?;
-    Ok(MmsUnconfirmedService::InformationReport {
-        variable_access_specification,
-        access_results: list_of_access_result,
-    })
+    Ok(MmsUnconfirmedService::InformationReport { variable_access_specification, access_results: list_of_access_result })
 }
 
 pub(crate) fn information_report_to_ber<'a>(variable_access_specification: &'a MmsVariableAccessSpecification, access_results: &'a Vec<MmsAccessResult>) -> Result<BerObject<'a>, MmsError> {

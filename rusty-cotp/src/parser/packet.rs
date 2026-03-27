@@ -26,10 +26,7 @@ impl TransportProtocolDataUnitParser {
         }
 
         if buffer_length < header_length + 1 {
-            return Err(CotpError::ProtocolError(format!(
-                "The buffer length {} cannot fit the required payload with a header length of {}",
-                buffer_length, header_length
-            )));
+            return Err(CotpError::ProtocolError(format!("The buffer length {} cannot fit the required payload with a header length of {}", buffer_length, header_length)));
         }
 
         let class_code = data[1] & 0xF0u8;

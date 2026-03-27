@@ -167,23 +167,13 @@ pub enum MmsTypeSpecification {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsTypeDescription {
-    Array {
-        packed: Option<bool>,
-        number_of_elements: Vec<u8>, /* u32 */
-        element_type: Box<MmsTypeSpecification>,
-    },
-    Structure {
-        packed: Option<bool>,
-        components: Vec<MmsTypeDescriptionComponent>,
-    },
+    Array { packed: Option<bool>, number_of_elements: Vec<u8> /* u32 */, element_type: Box<MmsTypeSpecification> },
+    Structure { packed: Option<bool>, components: Vec<MmsTypeDescriptionComponent> },
     Boolean,
     BitString(Vec<u8> /* i32 */),
     Integer(Vec<u8> /* u8 */),
     Unsigned(Vec<u8> /* u8 */),
-    FloatingPoint {
-        format_width: Vec<u8>,   /* u8 */
-        exponent_width: Vec<u8>, /* u8 */
-    },
+    FloatingPoint { format_width: Vec<u8> /* u8 */, exponent_width: Vec<u8> /* u8 */ },
     OctetString(Vec<u8> /* i32 */),
     VisibleString(Vec<u8> /* i32 */),
     GeneralizedTime,
@@ -283,10 +273,7 @@ pub enum MmsConfirmedResponse {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum MmsUnconfirmedService {
-    InformationReport {
-        variable_access_specification: MmsVariableAccessSpecification,
-        access_results: Vec<MmsAccessResult>,
-    },
+    InformationReport { variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsAccessResult> },
 }
 
 pub trait MmsInitiator: Send {

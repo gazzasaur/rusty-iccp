@@ -23,10 +23,7 @@ pub(crate) fn parse_read_response(payload: &Any<'_>) -> Result<MmsConfirmedRespo
         }
     }
 
-    Ok(MmsConfirmedResponse::Read {
-        variable_access_specification,
-        access_results,
-    })
+    Ok(MmsConfirmedResponse::Read { variable_access_specification, access_results })
 }
 
 pub(crate) fn read_response_to_ber<'a>(variable_access_specification: &'a Option<MmsVariableAccessSpecification>, access_results: &'a Vec<MmsAccessResult>) -> Result<BerObject<'a>, MmsError> {
@@ -37,10 +34,7 @@ pub(crate) fn read_response_to_ber<'a>(variable_access_specification: &'a Option
 
     let mut variable_access_specification_ber = None;
     if let Some(variable_access_specification) = variable_access_specification {
-        variable_access_specification_ber = Some(BerObject::from_header_and_content(
-            Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
-            BerObjectContent::Sequence(vec![variable_access_specification.to_ber()]),
-        ));
+        variable_access_specification_ber = Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)), BerObjectContent::Sequence(vec![variable_access_specification.to_ber()])));
     }
 
     Ok(BerObject::from_header_and_content(
@@ -48,10 +42,7 @@ pub(crate) fn read_response_to_ber<'a>(variable_access_specification: &'a Option
         BerObjectContent::Sequence(
             vec![
                 variable_access_specification_ber,
-                Some(BerObject::from_header_and_content(
-                    Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
-                    BerObjectContent::Sequence(access_results_ber),
-                )),
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(access_results_ber))),
             ]
             .into_iter()
             .filter_map(|i| i)

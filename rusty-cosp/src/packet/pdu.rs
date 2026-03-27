@@ -166,9 +166,7 @@ fn parse_tsdu_maximum_size(data: &[u8]) -> Result<TsduMaximumSizeField, CospErro
 
 fn parse_session_user_requirements(data: &[u8]) -> Result<SessionUserRequirementsField, CospError> {
     verify_length("Session User Requirements", 2, data)?;
-    Ok(SessionUserRequirementsField(u16::from_be_bytes(
-        data.try_into().map_err(|e: std::array::TryFromSliceError| CospError::ProtocolError(e.to_string()))?,
-    )))
+    Ok(SessionUserRequirementsField(u16::from_be_bytes(data.try_into().map_err(|e: std::array::TryFromSliceError| CospError::ProtocolError(e.to_string()))?)))
 }
 
 fn parse_version_number(data: &[u8]) -> Result<VersionNumberField, CospError> {
@@ -230,21 +228,13 @@ pub fn slice_tlv_data(data: &[u8]) -> Result<(u8, &[u8], usize), CospError> {
     } else if data[1] == 0xFF && data.len() < 4 {
         return Err(CospError::ProtocolError(format!("Not enough data to form an SPDU. Needed at least 4 bytes but {} found", data.len())));
     } else if data[1] == 0xFF {
-        (
-            data[0],
-            4,
-            u16::from_be_bytes(data[2..4].try_into().map_err(|e: std::array::TryFromSliceError| CospError::InternalError(e.to_string()))?) as usize,
-        )
+        (data[0], 4, u16::from_be_bytes(data[2..4].try_into().map_err(|e: std::array::TryFromSliceError| CospError::InternalError(e.to_string()))?) as usize)
     } else {
         (data[0], 2, data[1] as usize)
     };
 
     if data.len() < data_offset + data_length {
-        return Err(CospError::ProtocolError(format!(
-            "Not enough data to form an SPDU. Needed at least {} bytes but {} found",
-            data_offset + data_length,
-            data.len()
-        )));
+        return Err(CospError::ProtocolError(format!("Not enough data to form an SPDU. Needed at least {} bytes but {} found", data_offset + data_length, data.len())));
     }
 
     return Ok((tag, &data[data_offset..(data_offset + data_length)], data_offset + data_length));

@@ -15,15 +15,7 @@ pub struct ConnectionConfirm {
 
 impl ConnectionConfirm {
     pub fn new(credit: u8, source_reference: u16, destination_reference: u16, preferred_class: ConnectionClass, options: Vec<ConnectionOption>, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
-        Self {
-            credit,
-            source_reference,
-            destination_reference,
-            preferred_class,
-            options,
-            parameters,
-            user_data: user_data.into(),
-        }
+        Self { credit, source_reference, destination_reference, preferred_class, options, parameters, user_data: user_data.into() }
     }
 
     pub fn credit(&self) -> u8 {

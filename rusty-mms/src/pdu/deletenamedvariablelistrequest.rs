@@ -23,10 +23,7 @@ pub(crate) fn parse_delete_named_variable_list_reqeust(payload: &Any<'_>) -> Res
                 list_of_variable_list_names = Some({
                     let mut list = vec![];
                     for variable_name in process_constructed_data(item.data).map_err(to_mms_error("Failed to parse List of Variable List Names on DeleteNamedVariableList"))? {
-                        list.push(MmsObjectName::parse(
-                            "DeleteNamedVariableList",
-                            &variable_name.to_der_vec().map_err(to_mms_error("Failed to process ObjectName on DeleteNamedVariableList"))?,
-                        )?);
+                        list.push(MmsObjectName::parse("DeleteNamedVariableList", &variable_name.to_der_vec().map_err(to_mms_error("Failed to process ObjectName on DeleteNamedVariableList"))?)?);
                     }
                     list
                 })
@@ -36,11 +33,7 @@ pub(crate) fn parse_delete_named_variable_list_reqeust(payload: &Any<'_>) -> Res
         };
     }
 
-    Ok(MmsConfirmedRequest::DeleteNamedVariableList {
-        scope_of_delete,
-        list_of_variable_list_names,
-        domain_name,
-    })
+    Ok(MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name })
 }
 
 pub(crate) fn delete_named_variable_list_reqeust_to_ber<'a>(scope_of_delete: &Option<MmsScope>, list_of_variable_list_names: &'a Option<Vec<MmsObjectName>>, domain: &'a Option<String>) -> Result<BerObject<'a>, MmsError> {
@@ -66,10 +59,7 @@ pub(crate) fn delete_named_variable_list_reqeust_to_ber<'a>(scope_of_delete: &Op
                     None => None,
                 },
                 match domain {
-                    Some(domain) => Some(BerObject::from_header_and_content(
-                        Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)),
-                        BerObjectContent::VisibleString(domain),
-                    )),
+                    Some(domain) => Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::VisibleString(domain))),
                     None => None,
                 },
             ]

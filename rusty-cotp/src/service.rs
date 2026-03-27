@@ -39,12 +39,7 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpConnection<R, W> {
     }
 
     async fn new(reader: R, writer: W, max_payload_size: usize) -> TcpCotpConnection<R, W> {
-        TcpCotpConnection {
-            reader,
-            writer,
-            max_payload_size,
-            parser: TransportProtocolDataUnitParser::new(),
-        }
+        TcpCotpConnection { reader, writer, max_payload_size, parser: TransportProtocolDataUnitParser::new() }
     }
 }
 
@@ -86,20 +81,8 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
         }
 
         Ok((
-            TcpCotpAcceptor {
-                reader,
-                writer,
-                max_payload_size,
-                max_payload_indicator,
-                called_tsap_id: called_tsap_id.clone(),
-                calling_tsap_id: calling_tsap_id.clone(),
-                initiator_reference: connection_request.source_reference(),
-            },
-            CotpConnectInformation {
-                calling_tsap_id,
-                called_tsap_id,
-                initiator_reference: connection_request.source_reference(),
-            },
+            TcpCotpAcceptor { reader, writer, max_payload_size, max_payload_indicator, called_tsap_id: called_tsap_id.clone(), calling_tsap_id: calling_tsap_id.clone(), initiator_reference: connection_request.source_reference() },
+            CotpConnectInformation { calling_tsap_id, called_tsap_id, initiator_reference: connection_request.source_reference() },
         ))
     }
 }
@@ -121,11 +104,7 @@ pub struct TcpCotpReader<R: TpktReader> {
 
 impl<R: TpktReader> TcpCotpReader<R> {
     pub fn new(reader: R, parser: TransportProtocolDataUnitParser) -> Self {
-        Self {
-            reader,
-            parser,
-            data_buffer: BytesMut::new(),
-        }
+        Self { reader, parser, data_buffer: BytesMut::new() }
     }
 }
 
@@ -165,11 +144,7 @@ pub struct TcpCotpWriter<W: TpktWriter> {
 
 impl<W: TpktWriter> TcpCotpWriter<W> {
     pub fn new(writer: W, max_payload_size: usize) -> Self {
-        Self {
-            writer,
-            max_payload_size,
-            chunks: VecDeque::new(),
-        }
+        Self { writer, max_payload_size, chunks: VecDeque::new() }
     }
 }
 
@@ -220,11 +195,7 @@ async fn verify_class_compatibility(connection_request: &ConnectionRequest) -> R
         ConnectionClass::Class4 if class_parameters.contains(&&ConnectionClass::Class0) => (),
         ConnectionClass::Class4 if class_parameters.contains(&&ConnectionClass::Class1) => (),
         _ => {
-            return Err(CotpError::ProtocolError(format!(
-                "Cannot downgrade connection request to Class 0 {:?} - {:?}",
-                connection_request.preferred_class(),
-                class_parameters
-            )));
+            return Err(CotpError::ProtocolError(format!("Cannot downgrade connection request to Class 0 {:?} - {:?}", connection_request.preferred_class(), class_parameters)));
         }
     };
     Ok(())
@@ -276,15 +247,7 @@ async fn send_connection_confirm<W: TpktWriter>(writer: &mut W, source_reference
         parameters.push(CotpParameter::CalledTsap(tsap_id));
     }
 
-    let payload = serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
-        0,
-        source_reference,
-        destination_reference,
-        ConnectionClass::Class0,
-        vec![],
-        parameters,
-        &[],
-    )))?;
+    let payload = serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, source_reference, destination_reference, ConnectionClass::Class0, vec![], parameters, &[])))?;
     Ok(writer.send(&mut VecDeque::from_iter(vec![payload].into_iter())).await?)
 }
 

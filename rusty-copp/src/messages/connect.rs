@@ -20,14 +20,7 @@ pub(crate) struct ConnectMessage {
 
 impl ConnectMessage {
     pub(crate) fn new(protocol: Option<Protocol>, calling_presentation_selector: Option<Vec<u8>>, called_presentation_selector: Option<Vec<u8>>, context_definition_list: PresentationContextType, user_data: Option<UserData>) -> Self {
-        Self {
-            protocol,
-            presentation_mode: Some(PresentationMode::Normal),
-            calling_presentation_selector,
-            called_presentation_selector,
-            context_definition_list,
-            user_data,
-        }
+        Self { protocol, presentation_mode: Some(PresentationMode::Normal), calling_presentation_selector, called_presentation_selector, context_definition_list, user_data }
     }
 
     pub(crate) fn calling_presentation_selector(&self) -> Option<&Vec<u8>> {
@@ -152,11 +145,7 @@ impl ConnectMessage {
                                                 der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::Integer(context.indentifier.as_slice())),
                                                 der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(context.abstract_syntax_name.clone())),
                                                 der_parser::ber::BerObject::from_seq(
-                                                    context
-                                                        .transfer_syntax_name_list
-                                                        .iter()
-                                                        .map(|transfer| der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(transfer.clone())))
-                                                        .collect(),
+                                                    context.transfer_syntax_name_list.iter().map(|transfer| der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(transfer.clone()))).collect(),
                                                 ),
                                             ])
                                         })

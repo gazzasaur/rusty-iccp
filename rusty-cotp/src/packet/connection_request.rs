@@ -15,14 +15,7 @@ pub(crate) struct ConnectionRequest {
 
 impl ConnectionRequest {
     pub(crate) fn new(source_reference: u16, destination_reference: u16, preferred_class: ConnectionClass, options: Vec<ConnectionOption>, parameters: Vec<CotpParameter>, user_data: &[u8]) -> Self {
-        Self {
-            source_reference,
-            destination_reference,
-            preferred_class,
-            options,
-            parameters,
-            user_data: user_data.into(),
-        }
+        Self { source_reference, destination_reference, preferred_class, options, parameters, user_data: user_data.into() }
     }
 
     pub(crate) fn source_reference(&self) -> u16 {

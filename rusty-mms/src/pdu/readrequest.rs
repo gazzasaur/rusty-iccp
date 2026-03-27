@@ -24,10 +24,7 @@ pub(crate) fn parse_read_request(payload: &Any<'_>) -> Result<MmsConfirmedReques
     }
 
     let variable_access_specification = variable_access_specification.ok_or_else(|| MmsError::ProtocolError("No Variable Access Specification on Request PDU".into()))?;
-    Ok(MmsConfirmedRequest::Read {
-        specification_with_result,
-        variable_access_specification,
-    })
+    Ok(MmsConfirmedRequest::Read { specification_with_result, variable_access_specification })
 }
 
 pub(crate) fn read_request_to_ber<'a>(specification_with_result: &Option<bool>, variable_access_specification: &'a MmsVariableAccessSpecification) -> BerObject<'a> {
@@ -36,16 +33,10 @@ pub(crate) fn read_request_to_ber<'a>(specification_with_result: &Option<bool>, 
         BerObjectContent::Sequence(
             vec![
                 match specification_with_result {
-                    Some(specification_with_result) => Some(BerObject::from_header_and_content(
-                        Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)),
-                        BerObjectContent::Boolean(*specification_with_result),
-                    )),
+                    Some(specification_with_result) => Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Boolean(*specification_with_result))),
                     None => None,
                 },
-                Some(BerObject::from_header_and_content(
-                    Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
-                    BerObjectContent::Sequence(vec![variable_access_specification.to_ber()]),
-                )),
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(vec![variable_access_specification.to_ber()]))),
             ]
             .into_iter()
             .filter_map(|i| i)

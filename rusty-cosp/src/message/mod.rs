@@ -51,19 +51,13 @@ impl CospMessage {
         match header_parameter {
             SessionPduParameter::GiveTokens() => (),
             _ => {
-                return Err(CospError::ProtocolError(format!(
-                    "Unsupported SPDU as concatenated token header: {}",
-                    <&SessionPduParameter as Into<&'static str>>::into(header_parameter)
-                )));
+                return Err(CospError::ProtocolError(format!("Unsupported SPDU as concatenated token header: {}", <&SessionPduParameter as Into<&'static str>>::into(header_parameter))));
             }
         };
         Ok(match message_parameter {
             SessionPduParameter::DataTransfer(parameters) => CospMessage::DT(DataTransferMessage::from_parameters(parameters.as_slice(), user_information.to_vec())?),
             _ => {
-                return Err(CospError::ProtocolError(format!(
-                    "Unsupported SPDU as concatenated body: {}",
-                    <&SessionPduParameter as Into<&'static str>>::into(message_parameter)
-                )));
+                return Err(CospError::ProtocolError(format!("Unsupported SPDU as concatenated body: {}", <&SessionPduParameter as Into<&'static str>>::into(message_parameter))));
             }
         })
     }

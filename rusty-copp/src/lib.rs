@@ -30,11 +30,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_should_create_connection() -> Result<(), anyhow::Error> {
-        let options = CoppConnectionInformation {
-            calling_presentation_selector: Some(vec![0x00, 0x00, 0x00, 0x23]),
-            called_presentation_selector: Some(vec![0x65, 0x00, 0x00, 0x00]),
-            ..Default::default()
-        };
+        let options = CoppConnectionInformation { calling_presentation_selector: Some(vec![0x00, 0x00, 0x00, 0x23]), called_presentation_selector: Some(vec![0x65, 0x00, 0x00, 0x00]), ..Default::default() };
         let presentation_contexts = vec![
             // ACSE
             PresentationContext {

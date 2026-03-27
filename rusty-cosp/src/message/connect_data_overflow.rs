@@ -30,9 +30,6 @@ impl ConnectDataOverflowMessage {
             };
         }
 
-        Ok(ConnectDataOverflowMessage {
-            user_data,
-            has_more_data: !enclosure.unwrap_or_else(|| EnclosureField(2)).end(),
-        })
+        Ok(ConnectDataOverflowMessage { user_data, has_more_data: !enclosure.unwrap_or_else(|| EnclosureField(2)).end() })
     }
 }

@@ -15,25 +15,15 @@ pub(crate) fn parse_define_named_variable_list_reqeust(payload: &Any<'_>) -> Res
     let object_name_data = object_name_payload.to_der_vec().map_err(to_mms_error("Failed to parse MMS DefineNamedVariableList PDU - Failed to parse Object Name"))?;
     let object_name = MmsObjectName::parse("MMS DefineNamedVariableList", &object_name_data)?;
 
-    let variable_specifications_payload = items_iter
-        .next()
-        .ok_or_else(|| MmsError::ProtocolError("Failed to parse MMS DefineNamedVariableList PDU - No Variable Specifications found".into()))?;
+    let variable_specifications_payload = items_iter.next().ok_or_else(|| MmsError::ProtocolError("Failed to parse MMS DefineNamedVariableList PDU - No Variable Specifications found".into()))?;
     let mut variable_specifications = vec![];
     for variable_specifications_item in process_constructed_data(variable_specifications_payload.data).map_err(to_mms_error("Failed to parse MMS DefineNamedVariableList PDU - Failed to parse Variable Specifications"))? {
-        let variable_specifications_item_data = variable_specifications_item
-            .to_der_vec()
-            .map_err(to_mms_error("Failed to parse MMS DefineNamedVariableList PDU - Failed to parse Variable Specification"))?;
+        let variable_specifications_item_data = variable_specifications_item.to_der_vec().map_err(to_mms_error("Failed to parse MMS DefineNamedVariableList PDU - Failed to parse Variable Specification"))?;
         let (_, unwrapped_variable_specifications_item) = parse_ber_any(&variable_specifications_item_data).map_err(to_mms_error("Failed to parse MMS DefineNamedVariableList PDU - Failed to parse List Of Variables Item Sequence"))?;
-        variable_specifications.push(ListOfVariablesItem::parse(
-            &unwrapped_variable_specifications_item,
-            "Failed to parse MMS DefineNamedVariableList PDU - Failed to parse List Of Variables Item",
-        )?);
+        variable_specifications.push(ListOfVariablesItem::parse(&unwrapped_variable_specifications_item, "Failed to parse MMS DefineNamedVariableList PDU - Failed to parse List Of Variables Item")?);
     }
 
-    Ok(MmsConfirmedRequest::DefineNamedVariableList {
-        variable_list_name: object_name,
-        list_of_variables: variable_specifications,
-    })
+    Ok(MmsConfirmedRequest::DefineNamedVariableList { variable_list_name: object_name, list_of_variables: variable_specifications })
 }
 
 pub(crate) fn define_named_variable_list_reqeust_to_ber<'a>(object_name: &'a MmsObjectName, variable_specifications: &'a [ListOfVariablesItem]) -> Result<BerObject<'a>, MmsError> {

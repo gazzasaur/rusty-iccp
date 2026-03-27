@@ -141,11 +141,7 @@ mod tests {
 
         let (client_connection, server_connection) = create_cosp_connection_pair_with_options(
             Some(initial_connect_data.as_slice()),
-            CospConnectionInformation {
-                tsdu_maximum_size: Some(512),
-                calling_session_selector: Some(vec![0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc]),
-                called_session_selector: Some(vec![0xcb, 0xa9, 0x87, 0x65, 0x43, 0x21]),
-            },
+            CospConnectionInformation { tsdu_maximum_size: Some(512), calling_session_selector: Some(vec![0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc]), called_session_selector: Some(vec![0xcb, 0xa9, 0x87, 0x65, 0x43, 0x21]) },
             Some(init_accept_data),
         )
         .await?;

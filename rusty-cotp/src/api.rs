@@ -27,11 +27,7 @@ pub struct CotpConnectInformation {
 
 impl Default for CotpConnectInformation {
     fn default() -> Self {
-        Self {
-            initiator_reference: rand::random(),
-            calling_tsap_id: None,
-            called_tsap_id: None,
-        }
+        Self { initiator_reference: rand::random(), calling_tsap_id: None, called_tsap_id: None }
     }
 }
 

@@ -12,8 +12,5 @@ pub(crate) fn parse_get_named_variable_list_attributes_reqeust(payload: &Any<'_>
 }
 
 pub(crate) fn get_named_variable_list_attributes_reqeust_to_ber<'a>(object_name: &'a MmsObjectName) -> Result<BerObject<'a>, MmsError> {
-    Ok(BerObject::from_header_and_content(
-        Header::new(Class::ContextSpecific, true, Tag::from(12), Length::Definite(0)),
-        BerObjectContent::Sequence(vec![object_name.to_ber()]),
-    ))
+    Ok(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(12), Length::Definite(0)), BerObjectContent::Sequence(vec![object_name.to_ber()])))
 }

@@ -23,12 +23,7 @@ pub struct RustyOsiSingleValueAcseInitiator<T: CoppInitiator, R: CoppReader, W: 
 
 impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseInitiator<T, R, W> {
     pub fn new(copp_initiator: impl CoppInitiator, options: AcseRequestInformation) -> RustyOsiSingleValueAcseInitiator<impl CoppInitiator, impl CoppReader, impl CoppWriter> {
-        RustyOsiSingleValueAcseInitiator {
-            copp_initiator,
-            copp_reader: PhantomData::<R>,
-            copp_writer: PhantomData::<W>,
-            options,
-        }
+        RustyOsiSingleValueAcseInitiator { copp_initiator, copp_reader: PhantomData::<R>, copp_writer: PhantomData::<W>, options }
     }
 }
 
@@ -45,11 +40,7 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
                         transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
                     },
                     // Requested BER Encoded Protocol
-                    PresentationContext {
-                        indentifier: vec![3],
-                        abstract_syntax_name: abstract_syntax_name,
-                        transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
-                    },
+                    PresentationContext { indentifier: vec![3], abstract_syntax_name: abstract_syntax_name, transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?] },
                 ]),
                 Some(UserData::FullyEncoded(vec![PresentationDataValueList {
                     transfer_syntax_name: None,
@@ -110,24 +101,12 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseList
             None => (),
         }
         if copp_presentation_data.presentation_context_identifier != &[1] {
-            return Err(AcseError::ProtocolError(format!(
-                "Unexpected presentation contact id on COPP ACES Payload: Expecting &[1] but found {:?}",
-                copp_presentation_data.presentation_context_identifier
-            )));
+            return Err(AcseError::ProtocolError(format!("Unexpected presentation contact id on COPP ACES Payload: Expecting &[1] but found {:?}", copp_presentation_data.presentation_context_identifier)));
         }
         let (request, acse_user_data) = match &copp_presentation_data.presentation_data_values {
             PresentationDataValues::SingleAsn1Type(data) => process_request(data)?,
         };
-        Ok((
-            RustyOsiSingleValueAcseListener {
-                copp_responder,
-                copp_reader: PhantomData::<R>,
-                copp_writer: PhantomData::<W>,
-                response: None,
-                acse_user_data,
-            },
-            request,
-        ))
+        Ok((RustyOsiSingleValueAcseListener { copp_responder, copp_reader: PhantomData::<R>, copp_writer: PhantomData::<W>, response: None, acse_user_data }, request))
     }
 
     pub fn set_response(&mut self, response: Option<AcseResponseInformation>) {
@@ -153,12 +132,7 @@ pub struct RustyOsiSingleValueAcseResponder<T: CoppResponder, R: CoppReader, W: 
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseResponder<T, R, W> {
     pub fn new(copp_responder: T, response: AcseResponseInformation) -> Self {
-        RustyOsiSingleValueAcseResponder {
-            copp_responder,
-            copp_reader: PhantomData,
-            copp_writer: PhantomData,
-            response,
-        }
+        RustyOsiSingleValueAcseResponder { copp_responder, copp_reader: PhantomData, copp_writer: PhantomData, response }
     }
 }
 
@@ -167,11 +141,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseResponder
         let acse_data = self.response.serialise(&Some(user_data))?;
         let copp_connection = self
             .copp_responder
-            .accept(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
-                transfer_syntax_name: None,
-                presentation_context_identifier: vec![1],
-                presentation_data_values: PresentationDataValues::SingleAsn1Type(acse_data),
-            }])))
+            .accept(Some(UserData::FullyEncoded(vec![PresentationDataValueList { transfer_syntax_name: None, presentation_context_identifier: vec![1], presentation_data_values: PresentationDataValues::SingleAsn1Type(acse_data) }])))
             .await?;
         let (copp_reader, copp_writer) = copp_connection.split().await?;
         Ok(RustyAcseConnection { copp_reader, copp_writer })
@@ -286,10 +256,7 @@ impl AcseRequestInformation {
             der_parser::ber::BerObjectContent::Sequence(
                 vec![
                     // Version Default 1 - Not really needed, but we will put it anyway
-                    Some(BerObject::from_header_and_content(
-                        Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
-                        BerObjectContent::BitString(7, BitStringObject { data: &[0x80] }),
-                    )),
+                    Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)), BerObjectContent::BitString(7, BitStringObject { data: &[0x80] }))),
                     // Application Context Name
                     Some(BerObject::from_header_and_content(
                         Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
@@ -414,10 +381,7 @@ impl AcseRequestInformation {
                     self.implementation_information
                         .iter()
                         .map(|implementation_information| {
-                            BerObject::from_header_and_content(
-                                Header::new(Class::ContextSpecific, false, Tag::from(29), der_parser::ber::Length::Definite(0)),
-                                BerObjectContent::GraphicString(implementation_information),
-                            )
+                            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(29), der_parser::ber::Length::Definite(0)), BerObjectContent::GraphicString(implementation_information))
                         })
                         .last(),
                     // User Information
@@ -590,10 +554,7 @@ impl AcseResponseInformation {
                     self.implementation_information
                         .iter()
                         .map(|implementation_information| {
-                            BerObject::from_header_and_content(
-                                Header::new(Class::ContextSpecific, false, Tag::from(29), der_parser::ber::Length::Definite(0)),
-                                BerObjectContent::GraphicString(implementation_information),
-                            )
+                            BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(29), der_parser::ber::Length::Definite(0)), BerObjectContent::GraphicString(implementation_information))
                         })
                         .last(),
                     // User Information

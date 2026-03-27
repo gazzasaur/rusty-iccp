@@ -72,10 +72,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_happy() -> Result<(), anyhow::Error> {
-        assert_eq!(
-            serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[])))?,
-            hex::decode("06D00000000000")?.as_slice()
-        );
+        assert_eq!(serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![], &[])))?, hex::decode("06D00000000000")?.as_slice());
         Ok(())
     }
 
@@ -83,15 +80,7 @@ mod tests {
     #[traced_test]
     async fn parse_payloads_with_alternative_classes_happy() -> Result<(), anyhow::Error> {
         assert_eq!(
-            serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
-                1,
-                0,
-                0,
-                ConnectionClass::Class0,
-                vec![ConnectionOption::Unknown(1), ConnectionOption::Unknown(3)],
-                vec![],
-                &[],
-            )))?,
+            serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(1, 0, 0, ConnectionClass::Class0, vec![ConnectionOption::Unknown(1), ConnectionOption::Unknown(3)], vec![], &[],)))?,
             hex::decode("06D10000000005")?.as_slice()
         );
 
@@ -101,15 +90,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_with_alternative_classes_sad() -> Result<(), anyhow::Error> {
-        match serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
-            0,
-            0,
-            0,
-            ConnectionClass::Class4,
-            vec![ConnectionOption::Unknown(1), ConnectionOption::Unknown(3)],
-            vec![],
-            &[],
-        ))) {
+        match serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class4, vec![ConnectionOption::Unknown(1), ConnectionOption::Unknown(3)], vec![], &[]))) {
             Ok(_) => assert!(false, "Expected this to result in an error"),
             Err(CotpError::ProtocolError(message)) => assert_eq!("Unsupported class Class4. Only Class 0 is supported by this package.", message),
             _ => assert!(false, "Unexpected failure result."),
@@ -120,15 +101,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn parse_payloads_with_parameters_happy() -> Result<(), anyhow::Error> {
-        match serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(
-            0,
-            0,
-            0,
-            ConnectionClass::Class0,
-            vec![],
-            vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])],
-            &[],
-        ))) {
+        match serialise(&TransportProtocolDataUnit::CC(ConnectionConfirm::new(0, 0, 0, ConnectionClass::Class0, vec![], vec![CotpParameter::UnknownParameter(0xAB, vec![0x48, 0x65, 0x6C, 0x6C, 0x6F])], &[]))) {
             Ok(_) => assert!(false, "Expected this to result in an error"),
             Err(CotpError::ProtocolError(message)) => assert_eq!("Unsupported Parameter: Some(UnknownParameter(171, [72, 101, 108, 108, 111]))", message),
             _ => assert!(false, "Unexpected failure result."),

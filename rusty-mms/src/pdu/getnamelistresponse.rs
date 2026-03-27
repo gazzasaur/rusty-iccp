@@ -42,15 +42,10 @@ pub(crate) fn get_name_list_response_to_ber<'a>(list_of_identifiers: &'a Vec<Str
                 Some(BerObject::from_header_and_content(
                     Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
                     BerObjectContent::Sequence(
-                        list_of_identifiers
-                            .iter()
-                            .map(|id| BerObject::from_header_and_content(Header::new(Class::Universal, false, Tag::VisibleString, Length::Definite(0)), BerObjectContent::VisibleString(id.as_str())))
-                            .collect(),
+                        list_of_identifiers.iter().map(|id| BerObject::from_header_and_content(Header::new(Class::Universal, false, Tag::VisibleString, Length::Definite(0)), BerObjectContent::VisibleString(id.as_str()))).collect(),
                     ),
                 )),
-                more_follows
-                    .as_ref()
-                    .map(|mf| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Boolean(*mf))),
+                more_follows.as_ref().map(|mf| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Boolean(*mf))),
             ]
             .into_iter()
             .filter_map(|i| i)

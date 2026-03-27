@@ -21,19 +21,14 @@ pub(crate) fn parse_unconfirmed(payload: Any<'_>) -> Result<MmsMessage, MmsError
         }
     }
 
-    Ok(MmsMessage::Unconfirmed {
-        unconfirmed_service: unconfirmed_payload.ok_or_else(|| MmsError::ProtocolError("No payload on confirmed response".into()))?,
-    })
+    Ok(MmsMessage::Unconfirmed { unconfirmed_service: unconfirmed_payload.ok_or_else(|| MmsError::ProtocolError("No payload on confirmed response".into()))? })
 }
 
 pub(crate) fn unconfirmed_to_ber<'a>(payload: &'a MmsUnconfirmedService) -> Result<BerObject<'a>, MmsError> {
     Ok(BerObject::from_header_and_content(
         Header::new(Class::ContextSpecific, true, Tag::from(3), Length::Definite(0)),
         BerObjectContent::Sequence(vec![match payload {
-            MmsUnconfirmedService::InformationReport {
-                variable_access_specification,
-                access_results,
-            } => information_report_to_ber(variable_access_specification, access_results)?,
+            MmsUnconfirmedService::InformationReport { variable_access_specification, access_results } => information_report_to_ber(variable_access_specification, access_results)?,
         }]),
     ))
 }

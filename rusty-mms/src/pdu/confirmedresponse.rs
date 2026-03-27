@@ -54,16 +54,8 @@ pub(crate) fn confirmed_response_to_ber<'a>(invocation_id: &'a [u8], payload: &'
             BerObject::from(BerObjectContent::Integer(invocation_id)),
             match payload {
                 MmsConfirmedResponse::GetNameList { list_of_identifiers, more_follows } => get_name_list_response_to_ber(list_of_identifiers, more_follows)?,
-                MmsConfirmedResponse::Identify {
-                    vendor_name,
-                    model_name,
-                    revision,
-                    abstract_syntaxes,
-                } => identify_response_to_ber(vendor_name, model_name, revision, abstract_syntaxes),
-                MmsConfirmedResponse::Read {
-                    variable_access_specification,
-                    access_results,
-                } => read_response_to_ber(variable_access_specification, access_results)?,
+                MmsConfirmedResponse::Identify { vendor_name, model_name, revision, abstract_syntaxes } => identify_response_to_ber(vendor_name, model_name, revision, abstract_syntaxes),
+                MmsConfirmedResponse::Read { variable_access_specification, access_results } => read_response_to_ber(variable_access_specification, access_results)?,
                 MmsConfirmedResponse::Write { write_results } => write_response_to_ber(write_results)?,
                 MmsConfirmedResponse::GetVariableAccessAttributes { deletable, type_description } => get_variable_access_attributes_response_to_ber(*deletable, type_description)?,
                 MmsConfirmedResponse::DefineNamedVariableList => define_named_variable_list_response_to_ber()?,

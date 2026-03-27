@@ -18,18 +18,8 @@ pub(crate) fn parse_write_request(payload: &Any<'_>) -> Result<MmsConfirmedReque
     }
 
     match items[0].header.raw_tag() {
-        Some([160]) => {
-            variable_access_specification = Some(MmsVariableAccessSpecification::parse(
-                "Read Response PDU",
-                items[0].to_der_vec().map_err(to_mms_error("Failed to parse WriteRequest"))?.as_slice(),
-            )?)
-        }
-        Some([161]) => {
-            variable_access_specification = Some(MmsVariableAccessSpecification::parse(
-                "Read Response PDU",
-                items[0].to_der_vec().map_err(to_mms_error("Failed to parse WriteRequest"))?.as_slice(),
-            )?)
-        }
+        Some([160]) => variable_access_specification = Some(MmsVariableAccessSpecification::parse("Read Response PDU", items[0].to_der_vec().map_err(to_mms_error("Failed to parse WriteRequest"))?.as_slice())?),
+        Some([161]) => variable_access_specification = Some(MmsVariableAccessSpecification::parse("Read Response PDU", items[0].to_der_vec().map_err(to_mms_error("Failed to parse WriteRequest"))?.as_slice())?),
         x => warn!("Unsupported tag in MMS Write Request PDU: {:?}", x),
     }
     for data in process_constructed_data(items[1].data).map_err(to_mms_error("Failed to parse list of data in Write Request PDU"))? {
@@ -51,10 +41,7 @@ pub(crate) fn write_request_to_ber<'a>(variable_access_specification: &'a MmsVar
         BerObjectContent::Sequence(
             vec![
                 Some(variable_access_specification.to_ber()),
-                Some(BerObject::from_header_and_content(
-                    Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
-                    BerObjectContent::Sequence(list_of_data_ber),
-                )),
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)), BerObjectContent::Sequence(list_of_data_ber))),
             ]
             .into_iter()
             .filter_map(|i| i)

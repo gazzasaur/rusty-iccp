@@ -39,8 +39,5 @@ pub(crate) fn write_response_to_ber<'a>(write_results: &'a Vec<MmsWriteResult>) 
         }
     }
 
-    Ok(BerObject::from_header_and_content(
-        Header::new(Class::ContextSpecific, true, Tag::from(5), Length::Definite(0)),
-        BerObjectContent::Sequence(write_results_ber),
-    ))
+    Ok(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(5), Length::Definite(0)), BerObjectContent::Sequence(write_results_ber)))
 }

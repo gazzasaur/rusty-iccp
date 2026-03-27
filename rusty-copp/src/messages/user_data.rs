@@ -39,10 +39,7 @@ impl UserData {
                 for presentation_data_value_list in presentation_data_value_lists {
                     pdv_lists.push(presentation_data_value_list.to_ber());
                 }
-                der_parser::ber::BerObject::from_header_and_content(
-                    Header::new(Class::Application, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
-                    der_parser::ber::BerObjectContent::Sequence(pdv_lists),
-                )
+                der_parser::ber::BerObject::from_header_and_content(Header::new(Class::Application, true, Tag::from(1), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::Sequence(pdv_lists))
             }
         }
     }

@@ -23,11 +23,7 @@ pub fn parse_parameter(buffer: &[u8]) -> Result<(CotpParameter, usize), CotpErro
     let parameter_code = buffer[0];
     let parameter_value_length = buffer[1] as usize;
     if buffer.len() < parameter_value_length + 2 {
-        return Err(CotpError::ProtocolError(format!(
-            "Insufficient data to parse parameter. The buffer has {} bytes but the header claims the parameter is {} bytes.",
-            buffer.len(),
-            parameter_value_length + 2
-        )));
+        return Err(CotpError::ProtocolError(format!("Insufficient data to parse parameter. The buffer has {} bytes but the header claims the parameter is {} bytes.", buffer.len(), parameter_value_length + 2)));
     }
 
     match parameter_code {

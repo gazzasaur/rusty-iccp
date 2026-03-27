@@ -61,11 +61,7 @@ pub struct TcpTpktReader {
 
 impl TcpTpktReader {
     pub fn new(reader: ReadHalf<TcpStream>) -> Self {
-        Self {
-            reader,
-            parser: TpktParser::new(),
-            receive_buffer: BytesMut::new(),
-        }
+        Self { reader, parser: TpktParser::new(), receive_buffer: BytesMut::new() }
     }
 }
 
@@ -93,11 +89,7 @@ pub struct TcpTpktWriter {
 
 impl TcpTpktWriter {
     pub fn new(writer: WriteHalf<TcpStream>) -> Self {
-        Self {
-            serialiser: TpktSerialiser::new(),
-            writer,
-            write_buffer: BytesMut::new(),
-        }
+        Self { serialiser: TpktSerialiser::new(), writer, write_buffer: BytesMut::new() }
     }
 }
 

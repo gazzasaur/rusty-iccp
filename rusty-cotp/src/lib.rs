@@ -156,11 +156,7 @@ mod tests {
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
 
-        let connect_information = CotpConnectInformation {
-            calling_tsap_id: calling_tsap_id.clone(),
-            called_tsap_id: called_tsap_id.clone(),
-            ..Default::default()
-        };
+        let connect_information = CotpConnectInformation { calling_tsap_id: calling_tsap_id.clone(), called_tsap_id: called_tsap_id.clone(), ..Default::default() };
         let accept_information = CotpAcceptInformation { ..Default::default() };
 
         let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(),).await }, async {

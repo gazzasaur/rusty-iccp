@@ -46,22 +46,11 @@ pub(crate) fn get_name_list_request_to_ber<'a>(object_class: &'a MmsObjectClass,
         Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
         BerObjectContent::Sequence(
             vec![
-                Some(BerObject::from_header_and_content(
-                    Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)),
-                    BerObjectContent::Sequence(vec![object_class.to_ber()]),
-                )),
-                Some(BerObject::from_header_and_content(
-                    Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)),
-                    BerObjectContent::Sequence(vec![object_scope.to_ber()]),
-                )),
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(0), Length::Definite(0)), BerObjectContent::Sequence(vec![object_class.to_ber()]))),
+                Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(1), Length::Definite(0)), BerObjectContent::Sequence(vec![object_scope.to_ber()]))),
                 continue_after
                     .iter()
-                    .map(|x| {
-                        BerObject::from_header_and_content(
-                            Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)),
-                            BerObjectContent::Sequence(vec![BerObject::from(BerObjectContent::VisibleString(x))]),
-                        )
-                    })
+                    .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, true, Tag::from(2), Length::Definite(0)), BerObjectContent::Sequence(vec![BerObject::from(BerObjectContent::VisibleString(x))])))
                     .last(),
             ]
             .into_iter()
