@@ -472,10 +472,11 @@ pub struct RustyMmsListener<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcs
     acse_responder: T,
     _r: PhantomData<R>,
     _w: PhantomData<W>,
+    mms_request_information: MmsRequestInformation,
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsListener<T, R, W> {
-    pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<(RustyMmsListener<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsRequestInformation), MmsError> {
+    pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<RustyMmsListener<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsError> {
         let (acse_responder, init_data) = acse_listener.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
         let request = InitiateRequestPdu::parse(init_data)?;
 
@@ -489,13 +490,17 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
             services_supported_calling: request.init_request_details().services_supported_calling.options.clone(),
         };
 
-        Ok((RustyMmsListener { acse_responder, _r: PhantomData::<R>, _w: PhantomData::<W> }, mms_request_information))
+        Ok(RustyMmsListener { acse_responder, mms_request_information, _r: PhantomData::<R>, _w: PhantomData::<W> })
+    }
+
+    pub fn mms_request_information(&self) -> &MmsRequestInformation {
+        &self.mms_request_information
     }
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsListener for RustyMmsListener<T, R, W> {
     async fn responder(self) -> Result<impl MmsResponder, MmsError> {
-        Ok(RustyMmsResponder { acse_responder: self.acse_responder, _r: PhantomData::<R>, _w: PhantomData::<W> })
+        Ok(RustyMmsResponder { acse_responder: self.acse_responder, mms_request_information: self.mms_request_information, _r: PhantomData::<R>, _w: PhantomData::<W> })
     }
 }
 
@@ -503,15 +508,16 @@ pub struct RustyMmsResponder<T: OsiSingleValueAcseResponder, R: OsiSingleValueAc
     acse_responder: T,
     _r: PhantomData<R>,
     _w: PhantomData<W>,
+    mms_request_information: MmsRequestInformation,
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsResponder for RustyMmsResponder<T, R, W> {
     async fn accept(self) -> Result<impl MmsConnection, MmsError> {
         let repsonse = InitiateResponsePdu::new(
             None,
-            10,
-            11,
-            Some(12),
+            self.mms_request_information.proposed_max_serv_outstanding_calling,
+            self.mms_request_information.proposed_max_serv_outstanding_called,
+            self.mms_request_information.proposed_data_structure_nesting_level,
             InitRequestResponseDetails {
                 proposed_version_number: 1,
                 propsed_parameter_cbb: ParameterSupportOptions {

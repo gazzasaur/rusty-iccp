@@ -225,7 +225,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
             implementation_information: None,
         }));
 
-        let (mms_listener, _) = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
+        let mms_listener = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
         let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
         let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
 

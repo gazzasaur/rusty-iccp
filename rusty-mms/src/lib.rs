@@ -85,7 +85,7 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConne
             responding_ae_invocation_identifier: acse_request_information.called_ae_invocation_identifier,
             implementation_information: None,
         }));
-        let (mms_listener, _) = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await?;
+        let mms_listener = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await?;
         let mms_responder = mms_listener.responder().await?;
         mms_responder.accept().await
     }
