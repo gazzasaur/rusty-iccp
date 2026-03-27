@@ -140,6 +140,7 @@ impl Default for MmsServiceConnectionParameters {
                 ServiceSupportOption::DeleteNamedVariableList,
                 ServiceSupportOption::Read,
                 ServiceSupportOption::InformationReport,
+                ServiceSupportOption::Conclude,
             ],
         }
     }

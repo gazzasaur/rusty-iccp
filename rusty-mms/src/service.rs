@@ -162,6 +162,7 @@ impl Default for MmsRequestInformation {
                 ServiceSupportOption::DefineNamedVariableList,
                 ServiceSupportOption::DeleteNamedVariableList,
                 ServiceSupportOption::InformationReport,
+                ServiceSupportOption::Conclude,
             ],
         }
     }
@@ -515,6 +516,7 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
     async fn accept(self) -> Result<impl MmsConnection, MmsError> {
         let repsonse = InitiateResponsePdu::new(
             None,
+            // TODO This should be configurable on the server.
             self.mms_request_information.proposed_max_serv_outstanding_calling,
             self.mms_request_information.proposed_max_serv_outstanding_called,
             self.mms_request_information.proposed_data_structure_nesting_level,
@@ -540,6 +542,7 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
                         ServiceSupportOption::DefineNamedVariableList,
                         ServiceSupportOption::DeleteNamedVariableList,
                         ServiceSupportOption::InformationReport,
+                        ServiceSupportOption::Conclude,
                     ],
                 },
             },

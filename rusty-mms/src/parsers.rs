@@ -176,6 +176,7 @@ pub(crate) fn process_mms_service_support_option<'a>(npm_object: &Any<'a>, error
             if bit_string_obj.is_set(11) { Some(ServiceSupportOption::DefineNamedVariableList) } else { None },
             if bit_string_obj.is_set(13) { Some(ServiceSupportOption::DeleteNamedVariableList) } else { None },
             if bit_string_obj.is_set(79) { Some(ServiceSupportOption::InformationReport) } else { None },
+            if bit_string_obj.is_set(83) { Some(ServiceSupportOption::Conclude) } else { None },
         ]
         .into_iter()
         .filter_map(|i| i)
