@@ -1,6 +1,7 @@
 use der_parser::{
     ber::{BerObject, BerObjectContent, Length},
     der::{Class, Header, Tag},
+    num_bigint::BigInt,
 };
 use tracing::warn;
 
@@ -28,20 +29,14 @@ impl InitiateResponsePdu {
         negotiated_data_structure_nesting_level: Option<i8>,
         init_response_details: InitRequestResponseDetails,
     ) -> Self {
-        Self {
-            local_detail_calling,
-            negotiated_max_serv_outstanding_calling,
-            negotiated_max_serv_outstanding_called,
-            negotiated_data_structure_nesting_level,
-            init_response_details,
-        }
+        Self { local_detail_calling, negotiated_max_serv_outstanding_calling, negotiated_max_serv_outstanding_called, negotiated_data_structure_nesting_level, init_response_details }
     }
 
     pub(crate) fn serialise(self) -> Result<Vec<u8>, MmsError> {
-        let local_detail_calling = self.local_detail_calling.map(|x| x.to_be_bytes());
-        let negotiated_max_serv_outstanding_calling = self.negotiated_max_serv_outstanding_calling.to_be_bytes();
-        let negotiated_max_serv_outstanding_called = self.negotiated_max_serv_outstanding_called.to_be_bytes();
-        let negotiated_data_structure_nesting_level = self.negotiated_data_structure_nesting_level.map(|x| x.to_be_bytes());
+        let local_detail_calling = self.local_detail_calling.map(|x| BigInt::from(x).to_signed_bytes_be());
+        let negotiated_max_serv_outstanding_calling = BigInt::from(self.negotiated_max_serv_outstanding_calling).to_signed_bytes_be();
+        let negotiated_max_serv_outstanding_called = BigInt::from(self.negotiated_max_serv_outstanding_called).to_signed_bytes_be();
+        let negotiated_data_structure_nesting_level = self.negotiated_data_structure_nesting_level.map(|x| BigInt::from(x).to_signed_bytes_be());
         let negotiated_parameter_cbb = ParameterSupportOptionsBerObject::new(self.init_response_details.propsed_parameter_cbb);
         let services_supported_calling = ServiceSupportOptionsBerObject::new(self.init_response_details.services_supported_calling);
 
@@ -49,26 +44,16 @@ impl InitiateResponsePdu {
             Header::new(Class::ContextSpecific, true, Tag::from(9), Length::Definite(0)),
             BerObjectContent::Sequence(
                 vec![
-                    local_detail_calling
-                        .as_ref()
-                        .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Integer(x))),
-                    Some(BerObject::from_header_and_content(
-                        Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)),
-                        BerObjectContent::Integer(&negotiated_max_serv_outstanding_calling),
-                    )),
-                    Some(BerObject::from_header_and_content(
-                        Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)),
-                        BerObjectContent::Integer(&negotiated_max_serv_outstanding_called),
-                    )),
-                    negotiated_data_structure_nesting_level
-                        .as_ref()
-                        .map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Integer(x))),
+                    local_detail_calling.as_ref().map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)), BerObjectContent::Integer(x))),
+                    Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(1), Length::Definite(0)), BerObjectContent::Integer(&negotiated_max_serv_outstanding_calling))),
+                    Some(BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::Integer(&negotiated_max_serv_outstanding_called))),
+                    negotiated_data_structure_nesting_level.as_ref().map(|x| BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Integer(x))),
                     Some(BerObject::from_header_and_content(
                         Header::new(Class::ContextSpecific, true, Tag::from(4), Length::Definite(0)),
                         BerObjectContent::Sequence(vec![
                             BerObject::from_header_and_content(
                                 Header::new(Class::ContextSpecific, false, Tag::from(0), Length::Definite(0)),
-                                BerObjectContent::Integer(&self.init_response_details.proposed_version_number.to_be_bytes()),
+                                BerObjectContent::Integer(&BigInt::from(self.init_response_details.proposed_version_number).to_signed_bytes_be()),
                             ),
                             negotiated_parameter_cbb.to_ber_object(Tag::from(1)),
                             services_supported_calling.to_ber_object(Tag::from(2)),

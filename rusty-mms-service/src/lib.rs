@@ -171,7 +171,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         let copp_initiator = RustyCoppInitiatorIsoStack::<R, W>::new(cosp_initiator, copp_connection_info);
 
         let acse_connection_info = AcseRequestInformation {
-            application_context_name: Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error("Failed to create MMS Application Context Name"))?,
+            application_context_name: Oid::from(&[1, 0, 9506, 2, 3]).map_err(to_mms_error("Failed to create MMS Application Context Name"))?,
             called_ap_title: parameters.called_ap_title.map(|x| ApTitle::Form2(x)),
             called_ae_qualifier: parameters.called_ae_qualifier.map(|x| AeQualifier::Form2(x)),
             called_ap_invocation_identifier: parameters.called_ap_invocation_identifier,
@@ -216,7 +216,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
 
         let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseListenerIsoStack::<R, W>::new(copp_responder).await.map_err(to_mms_error(""))?;
         acse_listener.set_response(Some(AcseResponseInformation {
-            application_context_name: Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error(""))?,
+            application_context_name: Oid::from(&[1, 0, 9506, 2, 3]).map_err(to_mms_error(""))?,
             associate_result: AssociateResult::Accepted,
             associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
             responding_ap_title: acse_request_info.called_ap_title,
