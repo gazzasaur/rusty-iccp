@@ -9,7 +9,7 @@ rusty-acse = { path = "./rusty-acse", version = "0.2.0" }
 rusty-copp = { path = "./rusty-copp", version = "0.2.0" }
 rusty-cosp = { path = "./rusty-cosp", version = "0.2.0" }
 rusty-cotp = { path = "./rusty-cotp", version = "0.2.0" }
-rusty-tpkt = { path = "./rusty-tpkt", version = "0.2.0" }
+rusty-tpkt = { path = "./rusty-tpkt", version = "0.3.0" }
 
 rand = "0.9"
 bytes = "1.10"
