@@ -1,29 +1,3 @@
-# Rusty TPKT
-A pure rust implementation of TPKT over TCP.
-
-TPKT is a glue protocol between the ISO standard protocols and TCP (an IETF protocol).
-
-This standard is known by many names:
-* ITOT
-* TPKT
-* RFC 2126
-
-Normally this package would be used in conjunction with a higher level protocol. Like:
-* [rusty-mms-service](https://crates.io/crates/rusty-mms-service).
-
-## Conformance
-This packet implements Class 0 functionality.
-
-This allows most ISO protcols to be operated over this implementation of TPKT, normally using the 'kernel only' or 'core features' of higher layer protocols. Please refer to the conformance statement of the standard you are using to ensure all the features you require are offered given the comformance of this implementation.
-
-## References
-* [RFC 2126](https://datatracker.ietf.org/doc/html/rfc2126)
-
-## Examples
-
-Examples may be found in the [examples](https://github.com/gazzasaur/rusty-iccp/blob/main/rusty-tpkt/examples) directory. Basic useage is shown below.
-
-```
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
@@ -98,4 +72,3 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
 
     Ok(())
 }
-```

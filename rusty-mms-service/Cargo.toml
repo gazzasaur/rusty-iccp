@@ -1,6 +1,6 @@
 [package]
 name = "rusty-mms-service"
-version = "0.2.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "A high level service wrapper around the Manufacturing Message Specification (MMS)/ISO 9506/IEC 9506 provided by the rusty-mms crate."

@@ -4,12 +4,13 @@ members = [ "rusty-acse", "rusty-copp", "rusty-cosp", "rusty-cotp", "rusty-iccp"
 
 
 [workspace.dependencies]
-rusty-mms = { path = "./rusty-mms", version = "0.2.0" }
-rusty-acse = { path = "./rusty-acse", version = "0.2.0" }
-rusty-copp = { path = "./rusty-copp", version = "0.2.0" }
-rusty-cosp = { path = "./rusty-cosp", version = "0.2.0" }
-rusty-cotp = { path = "./rusty-cotp", version = "0.2.0" }
-rusty-tpkt = { path = "./rusty-tpkt", version = "0.3.0" }
+rusty-mms-service = { path = "./rusty-mms", version = "0.4.0" }
+rusty-mms = { path = "./rusty-mms", version = "0.4.0" }
+rusty-acse = { path = "./rusty-acse", version = "0.4.0" }
+rusty-copp = { path = "./rusty-copp", version = "0.4.0" }
+rusty-cosp = { path = "./rusty-cosp", version = "0.4.0" }
+rusty-cotp = { path = "./rusty-cotp", version = "0.4.0" }
+rusty-tpkt = { path = "./rusty-tpkt", version = "0.4.0" }
 
 rand = "0.9"
 bytes = "1.10"

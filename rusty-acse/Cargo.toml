@@ -1,6 +1,6 @@
 [package]
 name = "rusty-acse"
-version = "0.2.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Implements the Application Control Service Element (ACSE)/ISO 8650-1/IEC 8650-1/ITU-T X.227 standard targeting ISO protocol transport."

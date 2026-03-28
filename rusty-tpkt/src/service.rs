@@ -12,17 +12,18 @@ use crate::{
     serialiser::TpktSerialiser,
 };
 
-pub struct TcpTpktService {}
-
+/// A TPKT server implemented over a TCP connection.
 pub struct TcpTpktServer {
     listener: TcpListener,
 }
 
 impl TcpTpktServer {
+    /// Start listening on the provided TCP port.
     pub async fn listen(address: SocketAddr) -> Result<Self, TpktError> {
         Ok(Self { listener: TcpListener::bind(address).await? })
     }
 
+    /// Accept an incoming connection. This may be called multiple times.
     pub async fn accept<'a>(&self) -> Result<(TcpTpktConnection, SocketAddr), TpktError> {
         let (stream, remote_host) = self.listener.accept().await?;
         let (reader, writer) = split(stream);
@@ -30,12 +31,14 @@ impl TcpTpktServer {
     }
 }
 
+/// An established TPKT connection.
 pub struct TcpTpktConnection {
     reader: TcpTpktReader,
     writer: TcpTpktWriter,
 }
 
 impl TcpTpktConnection {
+    /// Initiates a client TPKT connection.
     pub async fn connect<'a>(address: SocketAddr) -> Result<TcpTpktConnection, TpktError> {
         let stream = TcpStream::connect(address).await?;
         let (reader, writer) = split(stream);
@@ -53,6 +56,7 @@ impl TpktConnection for TcpTpktConnection {
     }
 }
 
+/// The read half of a TPKT connection.
 pub struct TcpTpktReader {
     parser: TpktParser,
     receive_buffer: BytesMut,
@@ -60,7 +64,7 @@ pub struct TcpTpktReader {
 }
 
 impl TcpTpktReader {
-    pub fn new(reader: ReadHalf<TcpStream>) -> Self {
+    fn new(reader: ReadHalf<TcpStream>) -> Self {
         Self { reader, parser: TpktParser::new(), receive_buffer: BytesMut::new() }
     }
 }
@@ -81,6 +85,7 @@ impl TpktReader for TcpTpktReader {
     }
 }
 
+/// The write half of a TPKT connection.
 pub struct TcpTpktWriter {
     write_buffer: BytesMut,
     serialiser: TpktSerialiser,
@@ -88,7 +93,7 @@ pub struct TcpTpktWriter {
 }
 
 impl TcpTpktWriter {
-    pub fn new(writer: WriteHalf<TcpStream>) -> Self {
+    fn new(writer: WriteHalf<TcpStream>) -> Self {
         Self { serialiser: TpktSerialiser::new(), writer, write_buffer: BytesMut::new() }
     }
 }
