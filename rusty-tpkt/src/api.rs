@@ -5,12 +5,15 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum TpktError {
+    /// Indicates issues with parsing of incoming packets or protocol violations with input user data.
     #[error("TPKT Protocol Error - {}", .0)]
     ProtocolError(String),
 
+    /// Indicates issues with the underlying TCP socket or hardware.
     #[error("TPKT IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),
 
+    /// Usually indicates a bug or an unhandled error condition.
     #[error("TPKT Error: {}", .0)]
     InternalError(String),
 }
@@ -25,7 +28,7 @@ dyn_clone::clone_trait_object!(ProtocolInformation);
 pub trait TpktConnection: Send {
     fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn ProtocolInformation>>;
 
-    /// Splits a connection into reader and writer components, releasing the connection information to the caller. This must be done before the connection is used.
+    /// Splits a connection into reader and writer components. This must be done before the connection is used.
     fn split(self) -> impl std::future::Future<Output = Result<(impl TpktReader, impl TpktWriter), TpktError>> + Send;
 }
 
