@@ -9,7 +9,7 @@ This standard is known by many names:
 * RFC 2126
 
 Normally this package would be used in conjunction with a higher level protocol. Like:
-* [rusty-mms-service](https://crates.io/crates/rusty-mms-service).
+* [rusty-mms-service](https://crates.io/crates/rusty-mms-service)
 
 ## Conformance
 This packet implements Class 0 functionality.

@@ -1,11 +1,12 @@
 [package]
 name = "rusty-tpkt"
-version = "0.4.0"
-edition = "2024"
-license = "MIT OR Apache-2.0"
 description = "Implements the TPKT standard to encapsulate ISO protocols for TCP transport."
-homepage = "https://github.com/gazzasaur/rusty-iccp"
-repository = "https://github.com/gazzasaur/rusty-iccp"
+
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 bytes = { workspace = true }

@@ -1,11 +1,12 @@
 [package]
 name = "rusty-cosp"
-version = "0.4.0"
-edition = "2024"
-license = "MIT OR Apache-2.0"
 description = "Implements the Kernel Function of Connection Oriented Session Protocol/ISO 8327-1/IEC 8327-1/ITU-T X.225 standard."
-homepage = "https://github.com/gazzasaur/rusty-iccp"
-repository = "https://github.com/gazzasaur/rusty-iccp"
+
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 rusty-cotp = { workspace = true }
