@@ -2,6 +2,7 @@
 name = "rusty-copp"
 description = "Implements the Kernel Function of Connection Oriented Presentation Protocol/ISO 8823-1/IEC 8823-1/ITU-T X.226 standard."
 
+authors = { workspace = true }
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

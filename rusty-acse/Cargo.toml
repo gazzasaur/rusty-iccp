@@ -2,6 +2,7 @@
 name = "rusty-acse"
 description = "Implements the Application Control Service Element (ACSE)/ISO 8650-1/IEC 8650-1/ITU-T X.227 standard targeting ISO protocol transport."
 
+authors = { workspace = true }
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

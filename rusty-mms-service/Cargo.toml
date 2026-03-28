@@ -2,6 +2,7 @@
 name = "rusty-mms-service"
 description = "A high level service wrapper around the Manufacturing Message Specification (MMS)/ISO 9506/IEC 9506 provided by the rusty-mms crate."
 
+authors = { workspace = true }
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

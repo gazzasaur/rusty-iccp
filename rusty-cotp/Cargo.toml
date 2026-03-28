@@ -2,6 +2,7 @@
 name = "rusty-cotp"
 description = "Implements the Kernel Function of Connection Oriented Transport Protocol/ISO 8073/IEC 8073/ITU-T X.224 standard."
 
+authors = { workspace = true }
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

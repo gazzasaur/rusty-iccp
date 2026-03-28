@@ -13,6 +13,7 @@ mod tests {
 
     use std::{collections::VecDeque, io::ErrorKind, ops::Range};
 
+    use anyhow::anyhow;
     use rand::RngCore;
     use tracing_test::traced_test;
 
@@ -41,56 +42,33 @@ mod tests {
         drop(server);
 
         for _ in 0..1000 {
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(&mut VecDeque::from(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"Hello"));
-                    client_writer.send(&mut VecDeque::from(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"Hello"));
-                    server_writer.send(&mut VecDeque::from(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(&mut VecDeque::from(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"Hello"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"Hello"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
         }
 
         // Drain connections so they can be gracefully shutdown.
-        match server_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"World"));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
-        match client_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"Hello"));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
+        assert_eq!(server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"World"));
+        assert_eq!(client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"Hello"));
 
         drop(server_writer);
         drop(server_reader);
 
         match client_reader.recv().await? {
-            TpktRecvResult::Closed => (),
-            _ => assert!(false, "Failed to close connection gracefully."),
+            None => (),
+            _ => return Err(anyhow!("Failed to close connection gracefully.")),
         };
 
         Ok(())
@@ -115,56 +93,33 @@ mod tests {
         drop(server);
 
         for _ in 0..1000 {
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"Hello"));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => panic!("Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => panic!("Connection was unexpectedly closed"),
-            }
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"Hello"));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => panic!("Connection was unexpectedly closed"),
-            }
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => panic!("Connection was unexpectedly closed"),
-            }
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"Hello"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"Hello"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
         }
 
-        match client_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"Hello"));
-            }
-            _ => panic!("Connection was unexpectedly closed"),
-        }
-        match client_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"World"));
-            }
-            _ => panic!("Connection was unexpectedly closed"),
-        }
+        assert_eq!(client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"Hello"));
+        assert_eq!(client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"World"));
 
         drop(client_writer);
         drop(client_reader);
 
         // Drain connections so they can be gracefully shutdown.
         match server_reader.recv().await? {
-            TpktRecvResult::Closed => (),
-            _ => assert!(false, "Failed to close connection gracefully."),
+            None => (),
+            _ => return Err(anyhow!("Failed to close connection gracefully.")),
         };
 
         Ok(())
@@ -189,56 +144,33 @@ mod tests {
         drop(server);
 
         for _ in 0..1000 {
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"Hello"));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"Hello"));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"Hello"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"Hello"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
         }
 
         // Drain connections so they can be gracefully shutdown.
-        match server_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"World"));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
-        match client_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"Hello"));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
+        assert_eq!(server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"World"));
+        assert_eq!(client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"Hello"));
 
         drop(server_writer);
         drop(server_reader);
 
         match client_reader.recv().await? {
-            TpktRecvResult::Closed => (),
-            _ => assert!(false, "Failed to close connection gracefully."),
+            None => (),
+            _ => return Err(anyhow!("Failed to close connection gracefully.")),
         };
 
         Ok(())
@@ -263,56 +195,33 @@ mod tests {
         client_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         for _ in 0..1000 {
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b""));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b""));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b""));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b""));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
         }
 
         // Drain connections so they can be gracefully shutdown.
-        match server_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"World"));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
-        match client_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b""));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
+        assert_eq!(server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"World"));
+        assert_eq!(client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b""));
 
         drop(server_writer);
         drop(server_reader);
 
         match client_reader.recv().await? {
-            TpktRecvResult::Closed => (),
-            _ => assert!(false, "Failed to close connection gracefully."),
+            None => (),
+            _ => return Err(anyhow!("Failed to close connection gracefully.")),
         };
 
         Ok(())
@@ -340,56 +249,33 @@ mod tests {
         client_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         for _ in 0..1000 {
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(buffer));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(buffer));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(buffer));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(buffer));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
         }
 
         // Drain connections so they can be gracefully shutdown.
-        match server_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"World"));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
-        match client_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(buffer));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
+        assert_eq!(server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"World"));
+        assert_eq!(client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(buffer));
 
         drop(server_writer);
         drop(server_reader);
 
         match client_reader.recv().await? {
-            TpktRecvResult::Closed => (),
-            _ => assert!(false, "Failed to close connection gracefully."),
+            None => (),
+            _ => return Err(anyhow!("Failed to close connection gracefully.")),
         };
 
         Ok(())
@@ -416,7 +302,7 @@ mod tests {
         match server_writer.send(&mut VecDeque::from_iter(vec![over_buffer.to_vec()])).await {
             Ok(_) => assert!(false, "This was expected to fail as it is over the max payload limit"),
             Err(TpktError::ProtocolError(x)) => assert_eq!(x, "TPKT user data must be less than or equal to 65531 but was 65532"),
-            _ => assert!(false, "Something unexpected happened"),
+            _ => return Err(anyhow!("Something unexpected happened")),
         };
 
         // Try again and lets keep going
@@ -426,56 +312,33 @@ mod tests {
         client_writer.send(&mut VecDeque::from_iter(vec![b"World".to_vec()])).await?;
 
         for _ in 0..100 {
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(buffer));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match server_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(buffer));
-                    server_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
-            match client_reader.recv().await? {
-                TpktRecvResult::Data(x) => {
-                    assert_eq!(x, Vec::from(b"World"));
-                    client_writer.send(&mut VecDeque::from_iter(vec![x.to_vec()])).await?;
-                }
-                _ => assert!(false, "Connection was unexpectedly closed"),
-            }
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(buffer));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(buffer));
+            server_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
+
+            let data = client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
+            assert_eq!(data, Vec::from(b"World"));
+            client_writer.send(&mut VecDeque::from(vec![data.to_vec()])).await?;
         }
 
         // Drain connections so they can be gracefully shutdown.
-        match server_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(b"World"));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
-        match client_reader.recv().await? {
-            TpktRecvResult::Data(x) => {
-                assert_eq!(x, Vec::from(buffer));
-            }
-            _ => assert!(false, "Connection was unexpectedly closed"),
-        }
+        assert_eq!(server_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(b"World"));
+        assert_eq!(client_reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?, Vec::from(buffer));
 
         drop(server_writer);
         drop(server_reader);
 
         match client_reader.recv().await? {
-            TpktRecvResult::Closed => (),
-            _ => assert!(false, "Failed to close connection gracefully."),
+            None => (),
+            _ => return Err(anyhow!("Failed to close connection gracefully.")),
         };
 
         Ok(())
@@ -489,7 +352,7 @@ mod tests {
         match TcpTpktConnection::connect(test_address).await {
             Ok(_) => assert!(false, "This was expected to fail as a socket was not opened."),
             Err(TpktError::IoError(x)) => assert_eq!(x.kind(), ErrorKind::ConnectionRefused),
-            Err(x) => assert!(false, "Something unexpected happened: {:?}", x),
+            Err(x) => return Err(anyhow!("Something unexpected happened: {:?}", x)),
         };
 
         Ok(())

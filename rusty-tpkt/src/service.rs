@@ -7,7 +7,7 @@ use tokio::{
 };
 
 use crate::{
-    TpktConnection, TpktError, TpktReader, TpktRecvResult, TpktWriter,
+    TpktConnection, TpktError, TpktReader, TpktWriter,
     parser::{TpktParser, TpktParserResult},
     serialiser::TpktSerialiser,
 };
@@ -70,16 +70,16 @@ impl TcpTpktReader {
 }
 
 impl TpktReader for TcpTpktReader {
-    async fn recv(&mut self) -> Result<TpktRecvResult, TpktError> {
+    async fn recv(&mut self) -> Result<Option<Vec<u8>>, TpktError> {
         loop {
             let buffer = &mut self.receive_buffer;
             match self.parser.parse(buffer) {
-                Ok(TpktParserResult::Data(x)) => return Ok(TpktRecvResult::Data(x)),
+                Ok(TpktParserResult::Data(x)) => return Ok(Some(x)),
                 Ok(TpktParserResult::InProgress) => (),
                 Err(x) => return Err(x),
             };
             if self.reader.read_buf(buffer).await? == 0 {
-                return Ok(TpktRecvResult::Closed);
+                return Ok(None);
             };
         }
     }

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use bytes::BytesMut;
-use rusty_tpkt::{TpktConnection, TpktReader, TpktRecvResult, TpktWriter};
+use rusty_tpkt::{TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
     CotpAcceptInformation,
@@ -113,8 +113,8 @@ impl<R: TpktReader> CotpReader for TcpCotpReader<R> {
         loop {
             // I don't really care to check max size. It is 2025.
             let raw_data = match self.reader.recv().await? {
-                TpktRecvResult::Closed => return Ok(CotpRecvResult::Closed),
-                TpktRecvResult::Data(raw_data) => raw_data,
+                None => return Ok(CotpRecvResult::Closed),
+                Some(raw_data) => raw_data,
             };
             let data_transfer = match self.parser.parse(raw_data.as_slice())? {
                 // Choosing the standards based option of reporting the TPDU error locally but not sending an error.
@@ -203,8 +203,8 @@ async fn verify_class_compatibility(connection_request: &ConnectionRequest) -> R
 
 async fn receive_connection_request(reader: &mut impl TpktReader, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionRequest, CotpError> {
     let data = match reader.recv().await {
-        Ok(TpktRecvResult::Data(x)) => x,
-        Ok(TpktRecvResult::Closed) => return Err(CotpError::ProtocolError("The connection was closed before the COTP handshake was complete.".into())),
+        Ok(Some(x)) => x,
+        Ok(None) => return Err(CotpError::ProtocolError("The connection was closed before the COTP handshake was complete.".into())),
         Err(e) => return Err(e.into()),
     };
     return Ok(match parser.parse(data.as_slice())? {
@@ -266,8 +266,8 @@ async fn send_connection_request(writer: &mut impl TpktWriter, source_reference:
 
 async fn receive_connection_confirm(reader: &mut impl TpktReader, parser: &TransportProtocolDataUnitParser) -> Result<ConnectionConfirm, CotpError> {
     let data = match reader.recv().await {
-        Ok(TpktRecvResult::Data(x)) => x,
-        Ok(TpktRecvResult::Closed) => return Err(CotpError::ProtocolError("The connection was closed before the COTP handshake was complete.".into())),
+        Ok(Some(x)) => x,
+        Ok(None) => return Err(CotpError::ProtocolError("The connection was closed before the COTP handshake was complete.".into())),
         Err(e) => return Err(e.into()),
     };
     return Ok(match parser.parse(data.as_slice())? {

@@ -27,7 +27,7 @@ Examples may be found in the [examples](https://github.com/gazzasaur/rusty-iccp/
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
-use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TpktConnection, TpktReader, TpktRecvResult, TpktWriter};
+use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TpktConnection, TpktReader, TpktWriter};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -55,10 +55,7 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     let (mut reader, mut writer) = connection.split().await?;
 
     // Get data from the client.
-    let data = match reader.recv().await? {
-        TpktRecvResult::Closed => return Err(anyhow!("Connection Closed")),
-        TpktRecvResult::Data(data) => data,
-    };
+    let data = reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
     assert_eq!(data, "Hello from the client!".as_bytes().to_vec());
 
     // Send data to the client. This uses a buffer to ensure the operation is cancel safe. Store this buffer on your object an reuse it.
@@ -88,10 +85,7 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     }
 
     // Get data from the server.
-    let data = match reader.recv().await? {
-        TpktRecvResult::Closed => return Err(anyhow!("Connection Closed")),
-        TpktRecvResult::Data(data) => data,
-    };
+    let data = reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
     assert_eq!(data, "Hello from the server!".as_bytes().to_vec());
 
     // The connection will be closed when it is dropped.

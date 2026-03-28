@@ -2,6 +2,7 @@
 name = "rusty-iccp"
 description = "Implements the TASE.2/ISO 60870-3-503/IEC 60870-3-503/ICCP standard version 2000.8."
 
+authors = { workspace = true }
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

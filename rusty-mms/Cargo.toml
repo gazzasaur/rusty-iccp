@@ -2,6 +2,7 @@
 name = "rusty-mms"
 description = "Implements the Manufacturing Message Specification (MMS)/ISO 9506/IEC 9506. The operations supported in this package are those required for TASE2/ICCP."
 
+authors = { workspace = true }
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
