@@ -1,6 +1,6 @@
 [package]
 name = "rusty-mms"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Implements the Manufacturing Message Specification (MMS)/ISO 9506/IEC 9506. The operations supported in this package are those required for TASE2/ICCP."
@@ -8,19 +8,19 @@ homepage = "https://github.com/gazzasaur/rusty-iccp"
 repository = "https://github.com/gazzasaur/rusty-iccp"
 
 [dependencies]
-rusty-acse = { path = "../rusty-acse", version = "0.1.0" }
-rusty-copp = { path = "../rusty-copp", version = "0.1.0" }
-rusty-cosp = { path = "../rusty-cosp", version = "0.1.0" }
-rusty-cotp = { path = "../rusty-cotp", version = "0.1.0" }
-rusty-tpkt = { path = "../rusty-tpkt", version = "0.1.0" }
+rusty-acse = { workspace = true }
+rusty-copp = { workspace = true }
+rusty-cosp = { workspace = true }
+rusty-cotp = { workspace = true }
+rusty-tpkt = { workspace = true }
 
-tracing = "0.1.41"
-thiserror = "2.0.12"
-num-traits = "0.2.19"
-tokio = { version = "1.47.1", features = ["full"] }
-der-parser = { version = "10.0.0", features = ["bigint", "serialize"] }
+tokio ={ workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+der-parser = { workspace = true }
+num-traits = { workspace = true }
 
 [dev-dependencies]
-rand = "0.9.2"
-anyhow = "1.0.98"
-tracing-test = "0.2.5"
+rand = { workspace = true }
+anyhow = { workspace = true }
+tracing-test = { workspace = true }
