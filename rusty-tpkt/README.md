@@ -49,7 +49,7 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     let server = TcpTpktServer::listen(address.clone()).await?;
 
     // Accept an incoming connection. This can be called in a loop to keep accepting connections.
-    let (connection, _) = server.accept().await?;
+    let connection = server.accept().await?;
 
     // Split the connection into read and write halves. This is often done for easy multi-tasking.
     let (mut reader, mut writer) = connection.split().await?;

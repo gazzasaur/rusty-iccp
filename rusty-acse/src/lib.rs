@@ -92,7 +92,7 @@ mod tests {
         };
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;
-            let (tpkt_connection, _) = tpkt_server.accept().await?;
+            let tpkt_connection = tpkt_server.accept().await?;
             let (cotp_server, _) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection).await?;
             let cotp_connection = cotp_server.accept(CotpAcceptInformation::default()).await?;
             let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;

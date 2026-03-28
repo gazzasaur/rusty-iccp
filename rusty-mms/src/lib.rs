@@ -113,7 +113,7 @@ mod tests {
         };
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;
-            let (tpkt_connection, _) = tpkt_server.accept().await?;
+            let tpkt_connection = tpkt_server.accept().await?;
             let connection = OsiMmsMirrorResponderConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::accept(tpkt_connection).await?;
 
             Ok(connection)

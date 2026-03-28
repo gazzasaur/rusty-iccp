@@ -11,7 +11,12 @@ pub use crate::service::*;
 #[cfg(test)]
 mod tests {
 
-    use std::{collections::VecDeque, io::ErrorKind, ops::Range};
+    use std::{
+        any::Any,
+        collections::VecDeque,
+        io::ErrorKind,
+        ops::{Deref, Range},
+    };
 
     use anyhow::anyhow;
     use rand::RngCore;
@@ -28,8 +33,11 @@ mod tests {
         // This proves we can drop the connection after the split takes place.
         let (mut client_reader, mut client_writer, mut server_reader, mut server_writer) = {
             let client_connection = TcpTpktConnection::connect(test_address).await?;
-            let (server_connection, remote_host) = server.accept().await?;
-            assert!(remote_host.to_string().starts_with("127.0.0.1:"));
+            let server_connection = server.accept().await?;
+            match (server_connection.get_protocol_infomation_list().get(0).ok_or_else(|| anyhow!("Test Failed"))?.deref() as &dyn Any).downcast_ref::<TcpTpktProtocolInformation>() {
+                Some(info) => assert!(info.remote_address.to_string().starts_with("127.0.0.1:")),
+                None => return Err(anyhow!("Test Failed")),
+            };
 
             let (client_reader, client_writer) = client_connection.split().await?;
             let (server_reader, server_writer) = server_connection.split().await?;
@@ -81,8 +89,16 @@ mod tests {
         let server = TcpTpktServer::listen(test_address).await?;
 
         let client_connection = TcpTpktConnection::connect(test_address).await?;
-        let (server_connection, remote_host) = server.accept().await?;
-        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
+        let server_connection = server.accept().await?;
+
+        match (client_connection.get_protocol_infomation_list().get(0).ok_or_else(|| anyhow!("Test Failed"))?.deref() as &dyn Any).downcast_ref::<TcpTpktProtocolInformation>() {
+            Some(info) => assert!(info.remote_address.to_string().starts_with("127.0.0.1:")),
+            None => return Err(anyhow!("Test Failed")),
+        };
+        match (server_connection.get_protocol_infomation_list().get(0).ok_or_else(|| anyhow!("Test Failed"))?.deref() as &dyn Any).downcast_ref::<TcpTpktProtocolInformation>() {
+            Some(info) => assert!(info.remote_address.to_string().starts_with("127.0.0.1:")),
+            None => return Err(anyhow!("Test Failed")),
+        };
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -132,8 +148,7 @@ mod tests {
         let server = TcpTpktServer::listen(test_address).await?;
 
         let client_connection = TcpTpktConnection::connect(test_address).await?;
-        let (server_connection, remote_host) = server.accept().await?;
-        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
+        let server_connection = server.accept().await?;
 
         let (mut client_reader, mut client_writer) = client_connection.split().await?;
         let (mut server_reader, mut server_writer) = server_connection.split().await?;
@@ -183,8 +198,7 @@ mod tests {
         let server = TcpTpktServer::listen(test_address).await?;
 
         let client_connection = TcpTpktConnection::connect(test_address).await?;
-        let (server_connection, remote_host) = server.accept().await?;
-        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
+        let server_connection = server.accept().await?;
 
         drop(server);
 
@@ -234,8 +248,7 @@ mod tests {
         let server = TcpTpktServer::listen(test_address).await?;
 
         let client_connection = TcpTpktConnection::connect(test_address).await?;
-        let (server_connection, remote_host) = server.accept().await?;
-        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
+        let server_connection = server.accept().await?;
 
         drop(server);
 
@@ -288,8 +301,7 @@ mod tests {
         let server = TcpTpktServer::listen(test_address).await?;
 
         let client_connection = TcpTpktConnection::connect(test_address).await?;
-        let (server_connection, remote_host) = server.accept().await?;
-        assert!(remote_host.to_string().starts_with("127.0.0.1:"));
+        let server_connection = server.accept().await?;
 
         drop(server);
 

@@ -7,10 +7,18 @@ use tokio::{
 };
 
 use crate::{
-    TpktConnection, TpktError, TpktReader, TpktWriter,
+    ProtocolInformation, TpktConnection, TpktError, TpktReader, TpktWriter,
     parser::{TpktParser, TpktParserResult},
     serialiser::TpktSerialiser,
 };
+
+/// Keeps track of tpkt connection information
+#[derive(Clone, Debug)]
+pub struct TcpTpktProtocolInformation {
+    pub remote_address: SocketAddr,
+}
+
+impl ProtocolInformation for TcpTpktProtocolInformation {}
 
 /// A TPKT server implemented over a TCP connection.
 pub struct TcpTpktServer {
@@ -24,10 +32,10 @@ impl TcpTpktServer {
     }
 
     /// Accept an incoming connection. This may be called multiple times.
-    pub async fn accept<'a>(&self) -> Result<(TcpTpktConnection, SocketAddr), TpktError> {
+    pub async fn accept<'a>(&self) -> Result<TcpTpktConnection, TpktError> {
         let (stream, remote_host) = self.listener.accept().await?;
         let (reader, writer) = split(stream);
-        Ok((TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer)), remote_host))
+        Ok(TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer), Box::new(TcpTpktProtocolInformation { remote_address: remote_host })))
     }
 }
 
@@ -35,6 +43,7 @@ impl TcpTpktServer {
 pub struct TcpTpktConnection {
     reader: TcpTpktReader,
     writer: TcpTpktWriter,
+    protocol_information_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
 impl TcpTpktConnection {
@@ -42,15 +51,19 @@ impl TcpTpktConnection {
     pub async fn connect<'a>(address: SocketAddr) -> Result<TcpTpktConnection, TpktError> {
         let stream = TcpStream::connect(address).await?;
         let (reader, writer) = split(stream);
-        return Ok(TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer)));
+        return Ok(TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer), Box::new(TcpTpktProtocolInformation { remote_address: address })));
     }
 
-    fn new(reader: TcpTpktReader, writer: TcpTpktWriter) -> Self {
-        TcpTpktConnection { reader, writer }
+    fn new(reader: TcpTpktReader, writer: TcpTpktWriter, protocol_information: Box<dyn ProtocolInformation>) -> Self {
+        TcpTpktConnection { reader, writer, protocol_information_list: vec![protocol_information] }
     }
 }
 
 impl TpktConnection for TcpTpktConnection {
+    fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn crate::ProtocolInformation>> {
+        &self.protocol_information_list
+    }
+
     async fn split(self) -> Result<(impl TpktReader, impl TpktWriter), TpktError> {
         Ok((self.reader, self.writer))
     }

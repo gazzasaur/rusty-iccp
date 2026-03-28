@@ -1,5 +1,6 @@
-use std::collections::VecDeque;
+use std::{any::Any, collections::VecDeque, fmt::Debug};
 
+use dyn_clone::DynClone;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -14,9 +15,17 @@ pub enum TpktError {
     InternalError(String),
 }
 
+/// Information regarding the protocol stack. This is useful for authentication and logging.
+pub trait ProtocolInformation: Any + Send + Debug + DynClone {
+}
+
+dyn_clone::clone_trait_object!(ProtocolInformation);
+
 /// A trait representing a TPKT connection. There is no distinction between a client and a server connection once they are established.
 pub trait TpktConnection: Send {
-    /// Splits a connection into reader and writer components. This must be done before the connection is used.
+    fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn ProtocolInformation>>;
+
+    /// Splits a connection into reader and writer components, releasing the connection information to the caller. This must be done before the connection is used.
     fn split(self) -> impl std::future::Future<Output = Result<(impl TpktReader, impl TpktWriter), TpktError>> + Send;
 }
 

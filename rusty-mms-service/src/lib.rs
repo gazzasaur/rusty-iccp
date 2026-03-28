@@ -78,7 +78,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
 
 impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> TpktServerConnectionFactory<T, R, W> for RustyTpktServerConnectionFactory<T, R, W> {
     async fn create_connection<'a>(&mut self) -> Result<impl TpktConnection + 'a, MmsServiceError> {
-        Ok(self.server.accept().await.map_err(to_mms_error("failed to accept connection"))?.0)
+        Ok(self.server.accept().await.map_err(to_mms_error("failed to accept connection"))?)
     }
 }
 

@@ -13,6 +13,7 @@ repository = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+dyn-clone = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
