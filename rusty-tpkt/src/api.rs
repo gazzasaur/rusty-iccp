@@ -34,9 +34,9 @@ pub trait TpktConnection: Send {
 /// A trait representing the read half of TPKT connection.
 pub trait TpktReader: Send {
     /// Reads from a TPKT connection. There are three outcomes.
-    /// * Some(data) - Data was read from the socket.
-    /// * None - The underlying TCP connection was closed normally.
-    /// * TpktError - May indicate a TPKT packet was malformed, there was an IO error or some other internal failure occurred.
+    /// * Some(data) - Data was read.
+    /// * None - The underlying connection was closed normally.
+    /// * TpktError - May indicate a packet was malformed, there was an IO error or some other internal failure occurred.
     /// 
     /// This operation is cancel safe.
     fn recv(&mut self) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, TpktError>> + Send;

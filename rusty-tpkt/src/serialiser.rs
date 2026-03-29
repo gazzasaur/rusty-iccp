@@ -9,11 +9,11 @@ pub const MAX_PAYLOAD_LENGTH: usize = MAX_PACKET_LENGTH - HEADER_LENGTH;
 pub struct TpktSerialiser {}
 
 impl TpktSerialiser {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {}
     }
 
-    pub fn serialise(&self, data: &[u8]) -> Result<BytesMut, TpktError> {
+    pub(crate) fn serialise(&self, data: &[u8]) -> Result<BytesMut, TpktError> {
         if data.len() > MAX_PAYLOAD_LENGTH {
             return Err(TpktError::ProtocolError(format!("TPKT user data must be less than or equal to {} but was {}", MAX_PAYLOAD_LENGTH, data.len())));
         }

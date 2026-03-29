@@ -7,19 +7,19 @@ use crate::api::TpktError;
 pub const HEADER_LENGTH: usize = 4;
 pub const TPKT_MAGIC_START_NUMBER: u8 = 0x03u8;
 
-pub enum TpktParserResult {
+pub(crate) enum TpktParserResult {
     InProgress,
     Data(Vec<u8>),
 }
 
-pub struct TpktParser {}
+pub(crate) struct TpktParser {}
 
 impl TpktParser {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {}
     }
 
-    pub fn parse(&self, data: &mut BytesMut) -> Result<TpktParserResult, TpktError> {
+    pub(crate) fn parse(&self, data: &mut BytesMut) -> Result<TpktParserResult, TpktError> {
         let packet_length_value = match data.len() {
             0 => return Ok(TpktParserResult::InProgress),
             x if x > 0 && data[0] != TPKT_MAGIC_START_NUMBER => {
