@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use rusty_tpkt::TpktError;
+use rusty_tpkt::{ProtocolInformation, TpktError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -19,28 +19,45 @@ pub enum CotpError {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct CotpConnectInformation {
-    pub initiator_reference: u16,
-    pub calling_tsap_id: Option<Vec<u8>>,
-    pub called_tsap_id: Option<Vec<u8>>,
+pub struct CotpProtocolInformation {
+    initiator_reference: u16,
+    responder_reference: u16,
+    calling_tsap_id: Option<Vec<u8>>,
+    called_tsap_id: Option<Vec<u8>>,
 }
 
-impl Default for CotpConnectInformation {
-    fn default() -> Self {
-        Self { initiator_reference: rand::random(), calling_tsap_id: None, called_tsap_id: None }
+impl CotpProtocolInformation {
+    pub(crate) fn new(initiator_reference: u16, responder_reference: u16, calling_tsap_id: Option<Vec<u8>>, called_tsap_id: Option<Vec<u8>>) -> Self {
+        CotpProtocolInformation { initiator_reference, responder_reference, calling_tsap_id, called_tsap_id }
+    }
+
+    pub fn initiator(calling_tsap_id: Option<Vec<u8>>, called_tsap_id: Option<Vec<u8>>) -> Self {
+        CotpProtocolInformation { initiator_reference: rand::random(), responder_reference: 0, calling_tsap_id, called_tsap_id }
+    }
+
+    pub fn responder(self) -> Self {
+        CotpProtocolInformation { initiator_reference: self.initiator_reference, responder_reference: rand::random(), calling_tsap_id: self.calling_tsap_id.clone(), called_tsap_id: self.calling_tsap_id.clone() }
+    }
+
+    pub fn initiator_reference(&self) -> u16 {
+        self.initiator_reference
+    }
+
+    /// This will be 0 for the first request from the initiator.
+    pub fn responder_reference(&self) -> u16 {
+        self.responder_reference
+    }
+
+    pub fn calling_tsap_id(&self) -> Option<&Vec<u8>> {
+        self.calling_tsap_id.as_ref()
+    }
+
+    pub fn called_tsap_id(&self) -> Option<&Vec<u8>> {
+        self.called_tsap_id.as_ref()
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub struct CotpAcceptInformation {
-    pub responder_reference: u16,
-}
-
-impl Default for CotpAcceptInformation {
-    fn default() -> Self {
-        Self { responder_reference: rand::random() }
-    }
-}
+impl ProtocolInformation for CotpProtocolInformation {}
 
 pub enum CotpRecvResult {
     Closed,
@@ -48,10 +65,12 @@ pub enum CotpRecvResult {
 }
 
 pub trait CotpResponder: Send {
-    fn accept(self, options: CotpAcceptInformation) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
+    fn accept(self, options: CotpProtocolInformation) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
 }
 
 pub trait CotpConnection: Send {
+    fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn ProtocolInformation>>;
+
     fn split(self) -> impl std::future::Future<Output = Result<(impl CotpReader, impl CotpWriter), CotpError>> + Send;
 }
 

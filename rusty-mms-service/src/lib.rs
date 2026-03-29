@@ -6,7 +6,7 @@ use rusty_acse::{
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
 use rusty_cosp::{CospConnectionInformation, RustyCospInitiatorIsoStack, RustyCospListenerIsoStack};
-use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection};
+use rusty_cotp::{CotpProtocolInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection};
 use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 use tokio::sync::{
     Mutex,
@@ -161,7 +161,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
     pub async fn create_client_connection(&mut self, tpkt_connection_factory: &mut impl TpktClientConnectionFactory<T, R, W>, parameters: MmsServiceConnectionParameters) -> Result<RustyMmsInitiatorService, MmsServiceError> {
         let tpkt_connection = tpkt_connection_factory.create_connection().await?;
 
-        let cotp_connection_info = CotpConnectInformation { called_tsap_id: parameters.called_tsap_id, calling_tsap_id: parameters.calling_tsap_id, ..Default::default() };
+        let cotp_connection_info = CotpProtocolInformation::initiator(parameters.calling_tsap_id, parameters.called_tsap_id);
         let cotp_connection = TcpCotpConnection::<R, W>::initiate(tpkt_connection, cotp_connection_info).await.map_err(to_mms_error("Failed to create COTP Connection"))?;
 
         let cosp_connection_info = CospConnectionInformation { called_session_selector: parameters.called_session_selector, calling_session_selector: parameters.calling_session_selector, ..Default::default() };
@@ -204,8 +204,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
     pub async fn create_server_connection(&mut self, tpkt_connection_factory: &mut impl TpktServerConnectionFactory<T, R, W>, parameters: MmsServiceConnectionParameters) -> Result<RustyMmsResponderService, MmsServiceError> {
         let tpkt_connection = tpkt_connection_factory.create_connection().await?;
 
-        let cotp_connection_info = CotpAcceptInformation { ..Default::default() };
-        let (cotp_listener, _) = TcpCotpAcceptor::<R, W>::new(tpkt_connection).await.map_err(to_mms_error("Failed to create COTP Server"))?;
+        let (cotp_listener, cotp_connection_info) = TcpCotpAcceptor::<R, W>::new(tpkt_connection).await.map_err(to_mms_error("Failed to create COTP Server"))?;
         let cotp_connection = cotp_listener.accept(cotp_connection_info).await.map_err(to_mms_error(""))?;
 
         let (cosp_listener, _) = RustyCospListenerIsoStack::<R, W>::new(cotp_connection).await.map_err(to_mms_error("Failed to create COSP Connection"))?;

@@ -19,8 +19,7 @@ pub enum TpktError {
 }
 
 /// Information regarding the protocol stack. This is useful for authentication and logging.
-pub trait ProtocolInformation: Any + Send + Debug + DynClone {
-}
+pub trait ProtocolInformation: Any + Send + Debug + DynClone {}
 
 dyn_clone::clone_trait_object!(ProtocolInformation);
 

@@ -20,7 +20,7 @@ pub type RustyCospConnectionIsoStack<R, W> = TcpCospConnection<TcpCotpReader<R>,
 mod tests {
     use std::{collections::VecDeque, ops::Range};
 
-    use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
+    use rusty_cotp::{CotpProtocolInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -168,7 +168,7 @@ mod tests {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         // let test_address = "127.0.0.1:10002".parse()?;
 
-        let connect_information = CotpConnectInformation::default();
+        let connect_information = CotpProtocolInformation::initiator(None, None);
 
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
@@ -176,7 +176,7 @@ mod tests {
         let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone()).await }, async {
             let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?).await?;
             assert_eq!(remote, connect_information);
-            acceptor.accept(CotpAcceptInformation::default()).await
+            acceptor.accept(remote).await
         });
 
         let cotp_client = cotp_initiator?;

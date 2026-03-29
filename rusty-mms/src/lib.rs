@@ -14,7 +14,7 @@ use rusty_acse::{
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
 use rusty_cosp::{CospConnectionInformation, TcpCospInitiator, TcpCospListener};
-use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
+use rusty_cotp::{CotpProtocolInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
 use rusty_tpkt::{TpktConnection, TpktReader, TpktWriter};
 pub use service::*;
 
@@ -36,7 +36,7 @@ pub struct OsiMmsInitiatorConnectionFactory<T: TpktConnection, R: TpktReader, W:
 impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsInitiatorConnectionFactory<T, R, W> {
     pub async fn connect(
         tpkt_connection: T,
-        cotp_information: CotpConnectInformation,
+        cotp_information: CotpProtocolInformation,
         cosp_information: CospConnectionInformation,
         copp_information: CoppConnectionInformation,
         acse_information: AcseRequestInformation,
@@ -59,8 +59,8 @@ pub struct OsiMmsMirrorResponderConnectionFactory<T: TpktConnection, R: TpktRead
 
 impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConnectionFactory<T, R, W> {
     pub async fn accept(tpkt_connection: T) -> Result<impl MmsConnection, MmsError> {
-        let (cotp_listener, _) = TcpCotpAcceptor::<R, W>::new(tpkt_connection).await.map_err(to_mms_error("Failed to create COTP connection when creating an MMS association"))?;
-        let cotp_connection = cotp_listener.accept(CotpAcceptInformation::default()).await.map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
+        let (cotp_listener, init_info) = TcpCotpAcceptor::<R, W>::new(tpkt_connection).await.map_err(to_mms_error("Failed to create COTP connection when creating an MMS association"))?;
+        let cotp_connection = cotp_listener.accept(init_info.responder()).await.map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
         let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<R>, TcpCotpWriter<W>>::new(cotp_connection).await.map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
         let (copp_listener, _) = RustyCoppListenerIsoStack::<R, W>::new(cosp_listener).await.map_err(to_mms_error("Failed to create COPP listener"))?;
         let (mut acse_listener, acse_request_information) = RustyOsiSingleValueAcseListenerIsoStack::<R, W>::new(copp_listener).await.map_err(to_mms_error("Failed to create a COPP connection when creating an MMS association"))?;
@@ -101,7 +101,7 @@ mod tests {
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
             let connection = OsiMmsInitiatorConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::connect(
                 tpkt_client,
-                CotpConnectInformation::default(),
+                CotpProtocolInformation::initiator(None, None),
                 CospConnectionInformation::default(),
                 CoppConnectionInformation::default(),
                 AcseRequestInformation { application_context_name: Oid::from(&[1, 2, 3])?, ..Default::default() },

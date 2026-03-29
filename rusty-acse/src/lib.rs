@@ -21,7 +21,7 @@ mod tests {
     use der_parser::Oid;
     use rusty_copp::{CoppError, RustyCoppListener};
     use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
-    use rusty_cotp::{CotpAcceptInformation, CotpConnectInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
+    use rusty_cotp::{CotpProtocolInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -79,7 +79,7 @@ mod tests {
         // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
         let test_address = "127.0.0.1:10002".parse()?;
 
-        let connect_information = CotpConnectInformation::default();
+        let connect_information = CotpProtocolInformation::initiator(None, None);
 
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
@@ -93,8 +93,8 @@ mod tests {
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;
             let tpkt_connection = tpkt_server.accept().await?;
-            let (cotp_server, _) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection).await?;
-            let cotp_connection = cotp_server.accept(CotpAcceptInformation::default()).await?;
+            let (cotp_server, initiator_info) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection).await?;
+            let cotp_connection = cotp_server.accept(initiator_info.responder()).await?;
             let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
             let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
