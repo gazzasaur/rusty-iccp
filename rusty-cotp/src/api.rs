@@ -5,19 +5,24 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum CotpError {
+    /// Indicates issues with parsing of incoming packets or protocol violations with input user data.
     #[error("COTP Protocol Error - {}", .0)]
     ProtocolError(String),
 
+    /// Indicates issues with lower layers.
     #[error("COTP over TPKT Protocol Stack Error - {}", .0)]
     ProtocolStackError(#[from] TpktError),
 
+    /// Indicates issues with the underlying TCP socket or hardware.
     #[error("COTP IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),
 
+    /// Usually indicates a bug or an unhandled error condition.
     #[error("COTP Error: {}", .0)]
     InternalError(String),
 }
 
+/// Captures information about a COTP connection allowing it to be used later for connection negotiation.
 #[derive(PartialEq, Clone, Debug)]
 pub struct CotpProtocolInformation {
     initiator_reference: u16,
@@ -31,10 +36,12 @@ impl CotpProtocolInformation {
         CotpProtocolInformation { initiator_reference, responder_reference, calling_tsap_id, called_tsap_id }
     }
 
+    /// Used to specify information used by the COTP service during the initiator phase. This generates a random initiator and set the responder reference to 0.
     pub fn initiator(calling_tsap_id: Option<Vec<u8>>, called_tsap_id: Option<Vec<u8>>) -> Self {
         CotpProtocolInformation { initiator_reference: rand::random(), responder_reference: 0, calling_tsap_id, called_tsap_id }
     }
 
+    /// Convert initiator information received by a connection request to responder information. This generates a random responder reference.
     pub fn responder(self) -> Self {
         CotpProtocolInformation { initiator_reference: self.initiator_reference, responder_reference: rand::random(), calling_tsap_id: self.calling_tsap_id.clone(), called_tsap_id: self.calling_tsap_id.clone() }
     }
@@ -43,7 +50,7 @@ impl CotpProtocolInformation {
         self.initiator_reference
     }
 
-    /// This will be 0 for the first request from the initiator.
+    /// This will be 0 for information received from the initiator.
     pub fn responder_reference(&self) -> u16 {
         self.responder_reference
     }
@@ -59,18 +66,18 @@ impl CotpProtocolInformation {
 
 impl ProtocolInformation for CotpProtocolInformation {}
 
-pub enum CotpRecvResult {
-    Closed,
-    Data(Vec<u8>),
-}
-
+/// Provides a mechnism to respond with negotiated values suring the connect phase.
 pub trait CotpResponder: Send {
+    /// Accepts a connection with the given parameters.
     fn accept(self, options: CotpProtocolInformation) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
 }
 
+/// A trait representing a COTP connection.
 pub trait CotpConnection: Send {
+    /// Gets the information regarding the protocols that have been negotiated during the connect phase.
     fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn ProtocolInformation>>;
 
+    /// Splits a connection into reader and writer components. This must be done before the connection is used.
     fn split(self) -> impl std::future::Future<Output = Result<(impl CotpReader, impl CotpWriter), CotpError>> + Send;
 }
 
@@ -81,7 +88,7 @@ pub trait CotpReader: Send {
     /// * TpktError - May indicate a packet was malformed, there was an IO error or some other internal failure occurred.
     /// 
     /// This operation is cancel safe.
-    fn recv(&mut self) -> impl std::future::Future<Output = Result<CotpRecvResult, CotpError>> + Send;
+    fn recv(&mut self) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, CotpError>> + Send;
 }
 
 pub trait CotpWriter: Send {

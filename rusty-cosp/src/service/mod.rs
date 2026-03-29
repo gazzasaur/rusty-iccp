@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use rusty_cotp::{CotpConnection, CotpReader, CotpRecvResult, CotpWriter};
+use rusty_cotp::{CotpConnection, CotpReader, CotpWriter};
 
 use crate::{
     CospConnection, CospConnectionInformation, CospError, CospInitiator, CospListener, CospReader, CospRecvResult, CospResponder, CospWriter,
@@ -166,8 +166,8 @@ impl<R: CotpReader> CospReader for TcpCospReader<R> {
         loop {
             let receive_result = self.cotp_reader.recv().await?;
             let data = match receive_result {
-                CotpRecvResult::Closed => return Ok(CospRecvResult::Closed),
-                CotpRecvResult::Data(data) => data,
+                None => return Ok(CospRecvResult::Closed),
+                Some(data) => data,
             };
 
             let received_message = CospMessage::from_spdu_list(SessionPduList::deserialise(&data)?)?;

@@ -25,6 +25,7 @@ dyn_clone::clone_trait_object!(ProtocolInformation);
 
 /// A trait representing a TPKT connection. There is no distinction between a client and a server connection once they are established.
 pub trait TpktConnection: Send {
+    /// Gets the information regarding the protocols that have been negotiated during the connect phase.
     fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn ProtocolInformation>>;
 
     /// Splits a connection into reader and writer components. This must be done before the connection is used.

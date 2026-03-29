@@ -1,4 +1,4 @@
-use rusty_cotp::{CotpReader, CotpRecvResult};
+use rusty_cotp::{CotpReader};
 
 use crate::{CospError, message::CospMessage, packet::pdu::SessionPduList};
 
@@ -7,8 +7,8 @@ pub(crate) const MAX_PAYLOAD_SIZE: usize = 65510; // Technically the maximum is 
 
 pub(crate) async fn receive_message(reader: &mut impl CotpReader) -> Result<CospMessage, CospError> {
     let data = match reader.recv().await? {
-        CotpRecvResult::Closed => return Err(CospError::ProtocolError("The transport connection was closed before the conection could be established.".into())),
-        CotpRecvResult::Data(data) => data,
+        None => return Err(CospError::ProtocolError("The transport connection was closed before the conection could be established.".into())),
+        Some(data) => data,
     };
     CospMessage::from_spdu_list(SessionPduList::deserialise(&data)?)
 }

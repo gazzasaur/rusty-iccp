@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
 
 use bytes::BytesMut;
-use rusty_tpkt::{TpktConnection, TpktReader, TpktWriter};
+use rusty_tpkt::{ProtocolInformation, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
-    api::{CotpConnection, CotpError, CotpProtocolInformation, CotpReader, CotpRecvResult, CotpResponder, CotpWriter},
+    api::{CotpConnection, CotpError, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter},
     packet::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
@@ -22,10 +22,15 @@ pub struct TcpCotpConnection<R: TpktReader, W: TpktWriter> {
 
     max_payload_size: usize,
     parser: TransportProtocolDataUnitParser,
+    protocol_infomation_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
 impl<R: TpktReader, W: TpktWriter> TcpCotpConnection<R, W> {
     pub async fn initiate(connection: impl TpktConnection, options: CotpProtocolInformation) -> Result<TcpCotpConnection<impl TpktReader, impl TpktWriter>, CotpError> {
+        // FIXME WARN Log the differences between remote and local parameters.
+        let mut protocol_infomation_list = connection.get_protocol_infomation_list().clone();
+        let local_calling_tsap = options.calling_tsap_id().cloned();
+
         let source_reference: u16 = options.initiator_reference();
         let parser = TransportProtocolDataUnitParser::new();
         let (mut reader, mut writer) = connection.split().await?;
@@ -34,17 +39,20 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpConnection<R, W> {
         let connection_confirm = receive_connection_confirm(&mut reader, &parser).await?;
         let (_, max_payload_size) = calculate_remote_size_payload(connection_confirm.parameters()).await?;
 
-        Ok(TcpCotpConnection::new(reader, writer, max_payload_size).await)
+        let remote_called_tsap = connection_confirm.parameters().iter().filter_map(|x| if let CotpParameter::CalledTsap(tsap) = x { Some(tsap.clone()) } else { None }).last();
+        protocol_infomation_list.push(Box::new(CotpProtocolInformation::new(source_reference, connection_confirm.destination_reference(), local_calling_tsap, remote_called_tsap)));
+
+        Ok(TcpCotpConnection::new(reader, writer, max_payload_size, protocol_infomation_list).await)
     }
 
-    async fn new(reader: R, writer: W, max_payload_size: usize) -> TcpCotpConnection<R, W> {
-        TcpCotpConnection { reader, writer, max_payload_size, parser: TransportProtocolDataUnitParser::new() }
+    async fn new(reader: R, writer: W, max_payload_size: usize, protocol_infomation_list: Vec<Box<dyn ProtocolInformation>>) -> TcpCotpConnection<R, W> {
+        TcpCotpConnection { reader, writer, max_payload_size, parser: TransportProtocolDataUnitParser::new(), protocol_infomation_list }
     }
 }
 
 impl<R: TpktReader, W: TpktWriter> CotpConnection for TcpCotpConnection<R, W> {
     fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn rusty_tpkt::ProtocolInformation>> {
-        todo!()
+        &self.protocol_infomation_list
     }
 
     async fn split(self) -> Result<(impl CotpReader, impl CotpWriter), CotpError> {
@@ -62,11 +70,13 @@ pub struct TcpCotpAcceptor<R: TpktReader, W: TpktWriter> {
     max_payload_indicator: TpduSize,
     called_tsap_id: Option<Vec<u8>>,
     calling_tsap_id: Option<Vec<u8>>,
+    lower_layer_protocol_options_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
 impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
     pub async fn new(tpkt_connection: impl TpktConnection) -> Result<(TcpCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpProtocolInformation), CotpError> {
         let parser = TransportProtocolDataUnitParser::new();
+        let lower_layer_protocol_options_list = tpkt_connection.get_protocol_infomation_list().clone();
         let (mut reader, writer) = tpkt_connection.split().await?;
 
         let connection_request = receive_connection_request(&mut reader, &parser).await?;
@@ -84,7 +94,16 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
         }
 
         Ok((
-            TcpCotpAcceptor { reader, writer, max_payload_size, max_payload_indicator, called_tsap_id: called_tsap_id.clone(), calling_tsap_id: calling_tsap_id.clone(), initiator_reference: connection_request.source_reference() },
+            TcpCotpAcceptor {
+                reader,
+                writer,
+                max_payload_size,
+                max_payload_indicator,
+                called_tsap_id: called_tsap_id.clone(),
+                calling_tsap_id: calling_tsap_id.clone(),
+                initiator_reference: connection_request.source_reference(),
+                lower_layer_protocol_options_list,
+            },
             CotpProtocolInformation::new(connection_request.source_reference(), 0, calling_tsap_id, called_tsap_id),
         ))
     }
@@ -93,12 +112,11 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
 impl<R: TpktReader, W: TpktWriter> CotpResponder for TcpCotpAcceptor<R, W> {
     async fn accept(mut self, options: CotpProtocolInformation) -> Result<impl CotpConnection, CotpError> {
         send_connection_confirm(&mut self.writer, options.responder_reference(), self.initiator_reference, self.max_payload_indicator, self.calling_tsap_id, self.called_tsap_id).await?;
-        Ok(TcpCotpConnection::new(self.reader, self.writer, self.max_payload_size).await)
+        Ok(TcpCotpConnection::new(self.reader, self.writer, self.max_payload_size, self.lower_layer_protocol_options_list).await)
     }
 }
 
 pub struct TcpCotpReader<R: TpktReader> {
-    // Not caring about the size of the payload we receive.
     reader: R,
     parser: TransportProtocolDataUnitParser,
 
@@ -112,11 +130,12 @@ impl<R: TpktReader> TcpCotpReader<R> {
 }
 
 impl<R: TpktReader> CotpReader for TcpCotpReader<R> {
-    async fn recv(&mut self) -> Result<CotpRecvResult, CotpError> {
+    async fn recv(&mut self) -> Result<Option<Vec<u8>>, CotpError> {
         loop {
-            // I don't really care to check max size. It is 2025.
+            // FIXME SECURITY Check inbound size per packet and add a limit on the max constructed payload size.
+
             let raw_data = match self.reader.recv().await? {
-                None => return Ok(CotpRecvResult::Closed),
+                None => return Ok(None),
                 Some(raw_data) => raw_data,
             };
             let data_transfer = match self.parser.parse(raw_data.as_slice())? {
@@ -124,16 +143,20 @@ impl<R: TpktReader> CotpReader for TcpCotpReader<R> {
                 TransportProtocolDataUnit::ER(tpdu_error) => return Err(CotpError::ProtocolError(format!("Received an error from the remote host: {:?}", tpdu_error.reason()).into())),
                 TransportProtocolDataUnit::CR(_) => return Err(CotpError::ProtocolError("Received a Connection Request when expecting data.".into())),
                 TransportProtocolDataUnit::CC(_) => return Err(CotpError::ProtocolError("Received a Connection Config when expecting data.".into())),
-                TransportProtocolDataUnit::DR(_) => return Ok(CotpRecvResult::Closed),
+                TransportProtocolDataUnit::DR(_) => return Ok(None),
                 TransportProtocolDataUnit::DT(data_transfer) => data_transfer,
             };
-            // I do not really care about the source and destination reference here. It is over a TCP stream. I'd rather keep it relaxed and avoid interop issues.
+
+            // Not performing strict checking of source and destination reference:
+            // - This is running over a TCP stream.
+            // - It can be checked from the protocol info.
+            // - Going too strict can lead to more interop problems than it is worth.
 
             self.data_buffer.extend_from_slice(data_transfer.user_data());
             if data_transfer.end_of_transmission() {
                 let data = self.data_buffer.to_vec();
                 self.data_buffer.clear();
-                return Ok(CotpRecvResult::Data(data));
+                return Ok(Some(data));
             }
         }
     }

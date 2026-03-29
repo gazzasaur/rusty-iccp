@@ -11,7 +11,7 @@ homepage = "https://github.com/gazzasaur/rusty-iccp"
 repository = "https://github.com/gazzasaur/rusty-iccp"
 
 [workspace.dependencies]
-rusty-mms-service = { path = "./rusty-mms", version = "0.6.0" }
+rusty-mms-service = { path = "./rusty-mms-service", version = "0.6.0" }
 rusty-mms = { path = "./rusty-mms", version = "0.6.0" }
 rusty-acse = { path = "./rusty-acse", version = "0.6.0" }
 rusty-copp = { path = "./rusty-copp", version = "0.6.0" }

@@ -29,7 +29,7 @@ pub(crate) fn parse_confirmed_request(payload: Any<'_>) -> Result<MmsMessage, Mm
         match item.header.raw_tag() {
             Some(&[2]) => invocation_id = Some(item.data.to_vec()),
             Some(&[161]) => confirmed_payload = Some(parse_get_name_list_request(&item)?),
-            Some(&[162]) => confirmed_payload = Some(parse_identify_request(&item)?),
+            Some(&[130]) => confirmed_payload = Some(parse_identify_request(&item)?),
             Some(&[164]) => confirmed_payload = Some(parse_read_request(&item)?),
             Some(&[165]) => confirmed_payload = Some(parse_write_request(&item)?),
             Some(&[166]) => confirmed_payload = Some(parse_get_variable_access_attributes_reqeust(&item)?),
