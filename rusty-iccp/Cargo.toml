@@ -10,3 +10,13 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
+rusty-mms-service = { workspace = true }
+rusty-mms = { workspace = true }
+rusty-acse = { workspace = true }
+rusty-copp = { workspace = true }
+rusty-cosp = { workspace = true }
+rusty-cotp = { workspace = true }
+rusty-tpkt = { workspace = true }
+
+thiserror = { workspace = true }
+async-trait = { workspace = true }
