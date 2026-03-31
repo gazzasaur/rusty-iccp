@@ -93,7 +93,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    async fn it_works() -> Result<(), anyhow::Error> {
+    async fn test_all_payloads() -> Result<(), anyhow::Error> {
         let mut test_buffer = VecDeque::new();
         let test_address = "127.0.0.1:10002".parse()?;
         let client_path = async {
