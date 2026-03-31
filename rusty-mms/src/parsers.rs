@@ -142,7 +142,7 @@ pub(crate) fn process_mms_parameter_support_options<'a>(npm_object: &Any<'a>, er
             if bit_string_obj.is_set(0) { Some(ParameterSupportOption::Str1) } else { None },
             if bit_string_obj.is_set(1) { Some(ParameterSupportOption::Str2) } else { None },
             if bit_string_obj.is_set(2) { Some(ParameterSupportOption::Vnam) } else { None },
-            if bit_string_obj.is_set(3) { Some(ParameterSupportOption::Valt) } else { None },
+            // if bit_string_obj.is_set(3) { Some(ParameterSupportOption::Valt) } else { None },
             if bit_string_obj.is_set(7) { Some(ParameterSupportOption::Vlis) } else { None },
         ]
         .into_iter()

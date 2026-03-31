@@ -149,7 +149,7 @@ impl Default for MmsRequestInformation {
                 ParameterSupportOption::Str1,
                 ParameterSupportOption::Str2,
                 ParameterSupportOption::Vnam,
-                ParameterSupportOption::Valt,
+                // ParameterSupportOption::Valt,
                 ParameterSupportOption::Vlis,
             ],
             services_supported_calling: vec![

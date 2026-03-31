@@ -22,7 +22,7 @@ pub enum ParameterSupportOption {
     Str1, // Bit 0
     Str2, // Bit 1
     Vnam, // Bit 2
-    Valt, // Bit 3
+    // Valt, // Bit 3 - Not Supported
     Vlis, // Bit 7
     Unsupported(u8),
 }
@@ -47,9 +47,9 @@ impl<'a> ParameterSupportOptionsBerObject<'a> {
                 ParameterSupportOption::Vnam => {
                     obj.data[0] |= 0x20;
                 }
-                ParameterSupportOption::Valt => {
-                    obj.data[0] |= 0x10;
-                }
+                // ParameterSupportOption::Valt => {
+                //     obj.data[0] |= 0x10;
+                // }
                 ParameterSupportOption::Vlis => {
                     obj.data[0] |= 0x01;
                 }
@@ -281,7 +281,7 @@ mod tests {
             (0, 7, vec![131u8, 2u8, 7u8, 128u8], ParameterSupportOption::Str1),
             (1, 6, vec![131u8, 2u8, 6u8, 64u8], ParameterSupportOption::Str2),
             (2, 5, vec![131u8, 2u8, 5u8, 32u8], ParameterSupportOption::Vnam),
-            (3, 4, vec![131u8, 2u8, 4u8, 16u8], ParameterSupportOption::Valt),
+            // (3, 4, vec![131u8, 2u8, 4u8, 16u8], ParameterSupportOption::Valt),
             (7, 0, vec![131u8, 2u8, 0u8, 1u8], ParameterSupportOption::Vlis),
         ];
 
