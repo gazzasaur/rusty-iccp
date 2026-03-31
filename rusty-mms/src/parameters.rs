@@ -153,6 +153,7 @@ impl<'a> ServiceSupportOptionsBerObject<'a> {
     }
 
     pub(crate) fn to_ber_object(&'a self, tag: Tag) -> BerObject<'a> {
+        // Do not condense named bit-string as some implementation struggle with it.
         BerObject::from_header_and_content(
             Header::new(Class::ContextSpecific, false, tag, Length::Definite(0)),
             BerObjectContent::BitString((self.ignored_bits % 8) as u8, BitStringObject { data: &self.data[0..(self.data.len() - self.ignored_bits / 8)] }),

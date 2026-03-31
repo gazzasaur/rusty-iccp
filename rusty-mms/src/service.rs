@@ -189,7 +189,8 @@ impl MmsData {
             }
             MmsData::Structure(_) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(2), Length::Definite(0)), BerObjectContent::Null),
 
-            MmsData::Boolean(value) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Boolean(*value)),
+            // Some implementations struggle with a BER Boolena true of 255. Using int 1 instead which is still technically compliant.
+            MmsData::Boolean(value) => BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), Length::Definite(0)), BerObjectContent::Integer(if *value { &[1] } else { &[0] })),
             MmsData::BitString(padding, bit_data) => {
                 BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(4), Length::Definite(0)), BerObjectContent::BitString(*padding, BitStringObject { data: &bit_data }))
             }
