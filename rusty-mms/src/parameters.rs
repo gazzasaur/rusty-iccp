@@ -28,35 +28,29 @@ pub enum ParameterSupportOption {
 }
 
 pub(crate) struct ParameterSupportOptionsBerObject<'a> {
-    data: [u8; 1],
-    ignored_bits: usize,
+    data: [u8; 2],
     _lifetime: PhantomData<&'a ()>,
 }
 
 impl<'a> ParameterSupportOptionsBerObject<'a> {
     pub(crate) fn new(parameter_support_options: ParameterSupportOptions) -> ParameterSupportOptionsBerObject<'a> {
-        let mut obj = ParameterSupportOptionsBerObject { ignored_bits: 8, data: [0], _lifetime: PhantomData::<&'a ()> };
+        let mut obj = ParameterSupportOptionsBerObject { data: [0, 0], _lifetime: PhantomData::<&'a ()> };
 
         for option in parameter_support_options.options {
             match option {
                 ParameterSupportOption::Str1 => {
-                    obj.ignored_bits = obj.ignored_bits.min(7);
                     obj.data[0] |= 0x80;
                 }
                 ParameterSupportOption::Str2 => {
-                    obj.ignored_bits = obj.ignored_bits.min(6);
                     obj.data[0] |= 0x40;
                 }
                 ParameterSupportOption::Vnam => {
-                    obj.ignored_bits = obj.ignored_bits.min(5);
                     obj.data[0] |= 0x20;
                 }
                 ParameterSupportOption::Valt => {
-                    obj.ignored_bits = obj.ignored_bits.min(4);
                     obj.data[0] |= 0x10;
                 }
                 ParameterSupportOption::Vlis => {
-                    obj.ignored_bits = obj.ignored_bits.min(0);
                     obj.data[0] |= 0x01;
                 }
                 _ => (),
@@ -67,10 +61,8 @@ impl<'a> ParameterSupportOptionsBerObject<'a> {
     }
 
     pub(crate) fn to_ber_object(&'a self, tag: Tag) -> BerObject<'a> {
-        BerObject::from_header_and_content(
-            Header::new(Class::ContextSpecific, false, tag, Length::Definite(0)),
-            BerObjectContent::BitString((self.ignored_bits % 8) as u8, BitStringObject { data: &self.data[0..(1 - self.ignored_bits / 8)] }),
-        )
+        // Do not condense named bit-string as some implementation struggle with it.
+        BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, tag, Length::Definite(0)), BerObjectContent::BitString(5, BitStringObject { data: &self.data }))
     }
 }
 
@@ -95,54 +87,43 @@ pub enum ServiceSupportOption {
 
 pub(crate) struct ServiceSupportOptionsBerObject<'a> {
     data: [u8; 11],
-    ignored_bits: usize,
     _lifetime: PhantomData<&'a ()>,
 }
 
 impl<'a> ServiceSupportOptionsBerObject<'a> {
     pub(crate) fn new(service_support_options: ServiceSupportOptions) -> ServiceSupportOptionsBerObject<'a> {
-        let mut obj = ServiceSupportOptionsBerObject { ignored_bits: 88, data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], _lifetime: PhantomData::<&'a ()> };
+        let mut obj = ServiceSupportOptionsBerObject { data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], _lifetime: PhantomData::<&'a ()> };
 
         for option in service_support_options.options {
             match option {
                 ServiceSupportOption::GetNameList => {
-                    obj.ignored_bits = obj.ignored_bits.min(86); // 87
                     obj.data[0] |= 0x40;
                 }
                 ServiceSupportOption::Identify => {
-                    obj.ignored_bits = obj.ignored_bits.min(85);
                     obj.data[0] |= 0x20;
                 }
                 ServiceSupportOption::Read => {
-                    obj.ignored_bits = obj.ignored_bits.min(83);
                     obj.data[0] |= 0x08;
                 }
                 ServiceSupportOption::Write => {
-                    obj.ignored_bits = obj.ignored_bits.min(82);
                     obj.data[0] |= 0x04;
                 }
                 ServiceSupportOption::GetVariableAccessAttributes => {
-                    obj.ignored_bits = obj.ignored_bits.min(81);
                     obj.data[0] |= 0x02;
                 }
                 ServiceSupportOption::DefineNamedVariableList => {
-                    obj.ignored_bits = obj.ignored_bits.min(76);
                     obj.data[1] |= 0x10;
                 }
                 ServiceSupportOption::GetNamedVariableListAttribute => {
-                    obj.ignored_bits = obj.ignored_bits.min(75);
                     obj.data[1] |= 0x08;
                 }
                 ServiceSupportOption::DeleteNamedVariableList => {
-                    obj.ignored_bits = obj.ignored_bits.min(74);
                     obj.data[1] |= 0x04;
                 }
                 ServiceSupportOption::InformationReport => {
-                    obj.ignored_bits = obj.ignored_bits.min(8);
                     obj.data[9] |= 0x01;
                 }
                 ServiceSupportOption::Conclude => {
-                    obj.ignored_bits = obj.ignored_bits.min(4);
                     obj.data[10] |= 0x10;
                 }
                 _ => (),
@@ -154,10 +135,7 @@ impl<'a> ServiceSupportOptionsBerObject<'a> {
 
     pub(crate) fn to_ber_object(&'a self, tag: Tag) -> BerObject<'a> {
         // Do not condense named bit-string as some implementation struggle with it.
-        BerObject::from_header_and_content(
-            Header::new(Class::ContextSpecific, false, tag, Length::Definite(0)),
-            BerObjectContent::BitString((self.ignored_bits % 8) as u8, BitStringObject { data: &self.data[0..(self.data.len() - self.ignored_bits / 8)] }),
-        )
+        BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, tag, Length::Definite(0)), BerObjectContent::BitString(3, BitStringObject { data: &self.data }))
     }
 }
 
@@ -343,7 +321,7 @@ mod tests {
                 x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
             }
         }
-        assert_eq!(vec![131, 1, 0], subject.to_ber_object(Tag::from(3)).to_vec()?);
+        assert_eq!(vec![131, 12, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], subject.to_ber_object(Tag::from(3)).to_vec()?);
 
         Ok(())
     }
@@ -351,16 +329,16 @@ mod tests {
     #[test]
     fn it_serialises_service_support_options() -> Result<(), anyhow::Error> {
         let subject_bits = vec![
-            (1, 6, vec![131u8, 2u8, 6u8, 64u8], ServiceSupportOption::GetNameList),
-            (2, 5, vec![131u8, 2u8, 5u8, 32u8], ServiceSupportOption::Identify),
-            (4, 3, vec![131u8, 2u8, 3u8, 8u8], ServiceSupportOption::Read),
-            (5, 2, vec![131u8, 2u8, 2u8, 4u8], ServiceSupportOption::Write),
-            (6, 1, vec![131u8, 2u8, 1u8, 2u8], ServiceSupportOption::GetVariableAccessAttributes),
-            (11, 4, vec![131u8, 3u8, 4u8, 0u8, 16u8], ServiceSupportOption::DefineNamedVariableList),
-            (12, 3, vec![131u8, 3u8, 3u8, 0u8, 8u8], ServiceSupportOption::GetNamedVariableListAttribute),
-            (13, 2, vec![131u8, 3u8, 2u8, 0u8, 4u8], ServiceSupportOption::DeleteNamedVariableList),
-            (79, 0, vec![131u8, 11u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8], ServiceSupportOption::InformationReport),
-            (83, 4, vec![131u8, 12u8, 4u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 16u8], ServiceSupportOption::Conclude),
+            (1, 3, vec![131, 12, 3, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ServiceSupportOption::GetNameList),
+            (2, 3, vec![131, 12, 3, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ServiceSupportOption::Identify),
+            (4, 3, vec![131, 12, 3, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ServiceSupportOption::Read),
+            (5, 3, vec![131, 12, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ServiceSupportOption::Write),
+            (6, 3, vec![131, 12, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ServiceSupportOption::GetVariableAccessAttributes),
+            (11, 3, vec![131, 12, 3, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0], ServiceSupportOption::DefineNamedVariableList),
+            (12, 3, vec![131, 12, 3, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0], ServiceSupportOption::GetNamedVariableListAttribute),
+            (13, 3, vec![131, 12, 3, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0], ServiceSupportOption::DeleteNamedVariableList),
+            (79, 3, vec![131, 12, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0], ServiceSupportOption::InformationReport),
+            (83, 3, vec![131, 12, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16], ServiceSupportOption::Conclude),
         ];
 
         for (subject_bit, expected_ignored_bits, expected_serilised_form, subject_option) in subject_bits {
@@ -385,10 +363,13 @@ mod tests {
     #[test]
     fn it_serialises_service_support_option_multiple() -> Result<(), anyhow::Error> {
         assert_eq!(
-            vec![131, 12, 4, 8, 0, 0, 0, 0, 0, 0, 0, 0, 1, 16],
+            vec![131, 12, 3, 8, 0, 0, 0, 0, 0, 0, 0, 0, 1, 16],
             ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![ServiceSupportOption::InformationReport, ServiceSupportOption::Read, ServiceSupportOption::Conclude] }).to_ber_object(Tag::from(3)).to_vec()?
         );
-        assert_eq!(vec![131, 2, 2, 12], ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![ServiceSupportOption::Write, ServiceSupportOption::Read] }).to_ber_object(Tag::from(3)).to_vec()?);
+        assert_eq!(
+            vec![131, 12, 3, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ServiceSupportOptionsBerObject::new(ServiceSupportOptions { options: vec![ServiceSupportOption::Write, ServiceSupportOption::Read] }).to_ber_object(Tag::from(3)).to_vec()?
+        );
 
         Ok(())
     }

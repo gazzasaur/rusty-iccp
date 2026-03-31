@@ -82,25 +82,26 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
     }
 }
 
+pub struct MmsServiceConnectionIdentityParameters {
+    pub tsap_id: Option<Vec<u8>>,
+    pub session_selector: Option<Vec<u8>>,
+    pub presentation_selector: Option<Vec<u8>>,
+
+    pub ap_title: Option<Oid<'static>>,
+    pub ae_qualifier: Option<Vec<u8>>,
+    pub ap_invocation_identifier: Option<Vec<u8>>,
+    pub ae_invocation_identifier: Option<Vec<u8>>,
+}
+
+impl Default for MmsServiceConnectionIdentityParameters {
+    fn default() -> Self {
+        Self { tsap_id: None, session_selector: None, presentation_selector: None, ap_title: None, ae_qualifier: None, ap_invocation_identifier: None, ae_invocation_identifier: None }
+    }
+}
+
 pub struct MmsServiceConnectionParameters {
-    pub called_tsap_id: Option<Vec<u8>>,
-    pub calling_tsap_id: Option<Vec<u8>>,
-
-    pub called_session_selector: Option<Vec<u8>>,
-    pub calling_session_selector: Option<Vec<u8>>,
-
-    pub called_presentation_selector: Option<Vec<u8>>,
-    pub calling_presentation_selector: Option<Vec<u8>>,
-
-    pub called_ap_title: Option<Oid<'static>>,
-    pub called_ae_qualifier: Option<Vec<u8>>,
-    pub called_ap_invocation_identifier: Option<Vec<u8>>,
-    pub called_ae_invocation_identifier: Option<Vec<u8>>,
-
-    pub calling_ap_title: Option<Oid<'static>>,
-    pub calling_ae_qualifier: Option<Vec<u8>>,
-    pub calling_ap_invocation_identifier: Option<Vec<u8>>,
-    pub calling_ae_invocation_identifier: Option<Vec<u8>>,
+    pub called: MmsServiceConnectionIdentityParameters,
+    pub calling: MmsServiceConnectionIdentityParameters,
 
     pub proposed_max_serv_outstanding_calling: i16,
     pub proposed_max_serv_outstanding_called: i16,
@@ -112,20 +113,9 @@ pub struct MmsServiceConnectionParameters {
 impl Default for MmsServiceConnectionParameters {
     fn default() -> Self {
         Self {
-            called_tsap_id: None,
-            calling_tsap_id: None,
-            called_session_selector: None,
-            calling_session_selector: None,
-            called_presentation_selector: None,
-            calling_presentation_selector: None,
-            called_ap_title: None,
-            called_ae_qualifier: None,
-            called_ap_invocation_identifier: None,
-            called_ae_invocation_identifier: None,
-            calling_ap_title: None,
-            calling_ae_qualifier: None,
-            calling_ap_invocation_identifier: None,
-            calling_ae_invocation_identifier: None,
+            calling: Default::default(),
+            called: Default::default(),
+
             proposed_max_serv_outstanding_calling: 10,
             proposed_max_serv_outstanding_called: 10,
             proposed_data_structure_nesting_level: Some(2),
@@ -161,25 +151,25 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
     pub async fn create_client_connection(&mut self, tpkt_connection_factory: &mut impl TpktClientConnectionFactory<T, R, W>, parameters: MmsServiceConnectionParameters) -> Result<RustyMmsInitiatorService, MmsServiceError> {
         let tpkt_connection = tpkt_connection_factory.create_connection().await?;
 
-        let cotp_connection_info = CotpProtocolInformation::initiator(parameters.calling_tsap_id, parameters.called_tsap_id);
+        let cotp_connection_info = CotpProtocolInformation::initiator(parameters.calling.tsap_id, parameters.called.tsap_id);
         let cotp_connection = TcpCotpConnection::<R, W>::initiate(tpkt_connection, cotp_connection_info).await.map_err(to_mms_error("Failed to create COTP Connection"))?;
 
-        let cosp_connection_info = CospConnectionInformation { called_session_selector: parameters.called_session_selector, calling_session_selector: parameters.calling_session_selector, ..Default::default() };
+        let cosp_connection_info = CospConnectionInformation { called_session_selector: parameters.called.session_selector, calling_session_selector: parameters.calling.session_selector, ..Default::default() };
         let cosp_initiator = RustyCospInitiatorIsoStack::<R, W>::new(cotp_connection, cosp_connection_info).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
 
-        let copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called_presentation_selector, calling_presentation_selector: parameters.calling_presentation_selector };
+        let copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };
         let copp_initiator = RustyCoppInitiatorIsoStack::<R, W>::new(cosp_initiator, copp_connection_info);
 
         let acse_connection_info = AcseRequestInformation {
             application_context_name: Oid::from(&[1, 0, 9506, 2, 3]).map_err(to_mms_error("Failed to create MMS Application Context Name"))?,
-            called_ap_title: parameters.called_ap_title.map(|x| ApTitle::Form2(x)),
-            called_ae_qualifier: parameters.called_ae_qualifier.map(|x| AeQualifier::Form2(x)),
-            called_ap_invocation_identifier: parameters.called_ap_invocation_identifier,
-            called_ae_invocation_identifier: parameters.called_ae_invocation_identifier,
-            calling_ap_title: parameters.calling_ap_title.map(|x| ApTitle::Form2(x)),
-            calling_ae_qualifier: parameters.calling_ae_qualifier.map(|x| AeQualifier::Form2(x)),
-            calling_ap_invocation_identifier: parameters.calling_ap_invocation_identifier,
-            calling_ae_invocation_identifier: parameters.calling_ae_invocation_identifier,
+            called_ap_title: parameters.called.ap_title.map(|x| ApTitle::Form2(x)),
+            called_ae_qualifier: parameters.called.ae_qualifier.map(|x| AeQualifier::Form2(x)),
+            called_ap_invocation_identifier: parameters.called.ap_invocation_identifier,
+            called_ae_invocation_identifier: parameters.called.ae_invocation_identifier,
+            calling_ap_title: parameters.calling.ap_title.map(|x| ApTitle::Form2(x)),
+            calling_ae_qualifier: parameters.calling.ae_qualifier.map(|x| AeQualifier::Form2(x)),
+            calling_ap_invocation_identifier: parameters.calling.ap_invocation_identifier,
+            calling_ae_invocation_identifier: parameters.calling.ae_invocation_identifier,
             ..Default::default()
         };
         let acse_initiator = RustyOsiSingleValueAcseInitiatorIsoStack::<R, W>::new(copp_initiator, acse_connection_info);
@@ -210,7 +200,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         let (cosp_listener, _) = RustyCospListenerIsoStack::<R, W>::new(cotp_connection).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
 
         // TODO: Need to expose this.
-        let _copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called_presentation_selector, calling_presentation_selector: parameters.calling_presentation_selector };
+        let _copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };
         let (copp_responder, _) = RustyCoppListenerIsoStack::<R, W>::new(cosp_listener).await.map_err(to_mms_error(""))?;
 
         let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseListenerIsoStack::<R, W>::new(copp_responder).await.map_err(to_mms_error(""))?;
