@@ -54,7 +54,7 @@ pub enum MmsObjectName {
     AaSpecific(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MmsObjectScope {
     Vmd,
     Domain(String),

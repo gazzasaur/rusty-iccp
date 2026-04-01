@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use rusty_mms::MmsError;
+use rusty_mms_service::error::MmsServiceError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -9,7 +9,7 @@ pub enum IccpError {
     ProtocolError(String),
 
     #[error("ICCP Protocol Stack Error - {}", .0)]
-    ProtocolStackError(#[from] MmsError),
+    ProtocolStackError(#[from] MmsServiceError),
 
     #[error("ICCP IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),

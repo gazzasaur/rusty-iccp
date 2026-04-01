@@ -19,4 +19,5 @@ rusty-cotp = { workspace = true }
 rusty-tpkt = { workspace = true }
 
 thiserror = { workspace = true }
+num-bigint = { workspace = true }
 async-trait = { workspace = true }
