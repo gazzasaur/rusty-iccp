@@ -85,13 +85,12 @@ impl TcpTpktReader {
 impl TpktReader for TcpTpktReader {
     async fn recv(&mut self) -> Result<Option<Vec<u8>>, TpktError> {
         loop {
-            let buffer = &mut self.receive_buffer;
-            match self.parser.parse(buffer) {
+            match self.parser.parse(&mut self.receive_buffer) {
                 Ok(TpktParserResult::Data(x)) => return Ok(Some(x)),
                 Ok(TpktParserResult::InProgress) => (),
                 Err(x) => return Err(x),
             };
-            if self.reader.read_buf(buffer).await? == 0 {
+            if self.reader.read_buf(&mut self.receive_buffer).await? == 0 {
                 return Ok(None);
             };
         }

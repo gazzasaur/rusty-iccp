@@ -3,24 +3,24 @@ mod message;
 mod packet;
 mod service;
 
-use rusty_cotp::TcpCotpReader;
-use rusty_cotp::TcpCotpWriter;
+use rusty_cotp::RustyCotpReader;
+use rusty_cotp::RustyCotpWriter;
 
 pub use crate::api::*;
 pub use crate::service::*;
 
-pub type RustyCospReaderIsoStack<R> = TcpCospReader<TcpCotpReader<R>>;
-pub type RustyCospWriterIsoStack<W> = TcpCospWriter<TcpCotpWriter<W>>;
-pub type RustyCospInitiatorIsoStack<R, W> = TcpCospInitiator<TcpCotpReader<R>, TcpCotpWriter<W>>;
-pub type RustyCospListenerIsoStack<R, W> = TcpCospListener<TcpCotpReader<R>, TcpCotpWriter<W>>;
-pub type RustyCospResponderIsoStack<R, W> = TcpCospResponder<TcpCotpReader<R>, TcpCotpWriter<W>>;
-pub type RustyCospConnectionIsoStack<R, W> = TcpCospConnection<TcpCotpReader<R>, TcpCotpWriter<W>>;
+pub type RustyCospReaderIsoStack<R> = TcpCospReader<RustyCotpReader<R>>;
+pub type RustyCospWriterIsoStack<W> = TcpCospWriter<RustyCotpWriter<W>>;
+pub type RustyCospInitiatorIsoStack<R, W> = TcpCospInitiator<RustyCotpReader<R>, RustyCotpWriter<W>>;
+pub type RustyCospListenerIsoStack<R, W> = TcpCospListener<RustyCotpReader<R>, RustyCotpWriter<W>>;
+pub type RustyCospResponderIsoStack<R, W> = TcpCospResponder<RustyCotpReader<R>, RustyCotpWriter<W>>;
+pub type RustyCospConnectionIsoStack<R, W> = TcpCospConnection<RustyCotpReader<R>, RustyCotpWriter<W>>;
 
 #[cfg(test)]
 mod tests {
     use std::{collections::VecDeque, ops::Range};
 
-    use rusty_cotp::{CotpProtocolInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
+    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpAcceptor, RustyCotpConnection, RustyCotpReader, RustyCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -173,15 +173,15 @@ mod tests {
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
 
-        let (cotp_initiator, cotp_acceptor) = join!(async { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone()).await }, async {
-            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?).await?;
+        let (cotp_initiator, cotp_acceptor) = join!(async { RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(), Default::default()).await }, async {
+            let (acceptor, remote) = RustyCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, Default::default()).await?;
             assert_eq!(remote, connect_information);
             acceptor.accept(remote).await
         });
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
-        let cosp_client_connector = TcpCospInitiator::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client, options.clone()).await?;
+        let cosp_client_connector = TcpCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, options.clone()).await?;
 
         let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(connect_data.map(|o| o.to_vec())).await }, async {
             let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;

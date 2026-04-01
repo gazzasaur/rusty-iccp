@@ -21,7 +21,7 @@ mod tests {
     use der_parser::Oid;
     use rusty_copp::{CoppError, RustyCoppListener};
     use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
-    use rusty_cotp::{CotpProtocolInformation, CotpResponder, TcpCotpAcceptor, TcpCotpConnection, TcpCotpReader, TcpCotpWriter};
+    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpAcceptor, RustyCotpConnection, RustyCotpReader, RustyCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -84,8 +84,8 @@ mod tests {
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
-            let cotp_client = TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone()).await?;
-            let cosp_client = TcpCospInitiator::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_client, Default::default()).await?;
+            let cotp_client = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone(), Default::default()).await?;
+            let cosp_client = TcpCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, Default::default()).await?;
             let copp_client = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_client, Default::default());
             let acse_client = RustyOsiSingleValueAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_client, reqeust_options.clone());
             Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, connect_data.clone()).await?)
@@ -93,11 +93,11 @@ mod tests {
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;
             let tpkt_connection = tpkt_server.accept().await?;
-            let (cotp_server, initiator_info) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection).await?;
+            let (cotp_server, initiator_info) = RustyCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
             let cotp_connection = cotp_server.accept(initiator_info.responder()).await?;
-            let (cosp_listener, _) = TcpCospListener::<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
+            let (cosp_listener, _) = TcpCospListener::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
             let (copp_listener, _) =
-                RustyCoppListener::<TcpCospResponder<TcpCotpReader<TcpTpktReader>, TcpCotpWriter<TcpTpktWriter>>, TcpCospReader<TcpCotpReader<TcpTpktReader>>, TcpCospWriter<TcpCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
+                RustyCoppListener::<TcpCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, TcpCospReader<RustyCotpReader<TcpTpktReader>>, TcpCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
             let (mut acse_listener, received_request_information) = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
             acse_listener.set_response(Some(response_options.clone()));
             let (acse_responder, received_connect_data) = acse_listener.responder().await?;

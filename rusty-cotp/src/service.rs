@@ -4,29 +4,31 @@ use bytes::BytesMut;
 use rusty_tpkt::{ProtocolInformation, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
-    api::{CotpConnection, CotpError, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter},
-    packet::{
+    CotpConnectionParameters, api::{CotpConnection, CotpError, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter}, packet::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
         data_transfer::DataTransfer,
         parameters::{ConnectionClass, CotpParameter, TpduSize},
         payload::TransportProtocolDataUnit,
-    },
-    parser::packet::TransportProtocolDataUnitParser,
-    serialiser::packet::serialise,
+    }, parser::packet::TransportProtocolDataUnitParser, serialiser::packet::serialise
 };
 
-pub struct TcpCotpConnection<R: TpktReader, W: TpktWriter> {
+/// A COTP connection provides a packet based data exchange mechanism.
+/// 
+/// Initiator connections may be initiated via this struct. To act as a responder, the acceptor class should be used.
+pub struct RustyCotpConnection<R: TpktReader, W: TpktWriter> {
     reader: R,
     writer: W,
 
     max_payload_size: usize,
     parser: TransportProtocolDataUnitParser,
+    connection_options: CotpConnectionParameters,
     protocol_infomation_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
-impl<R: TpktReader, W: TpktWriter> TcpCotpConnection<R, W> {
-    pub async fn initiate(connection: impl TpktConnection, options: CotpProtocolInformation) -> Result<TcpCotpConnection<impl TpktReader, impl TpktWriter>, CotpError> {
+impl<R: TpktReader, W: TpktWriter> RustyCotpConnection<R, W> {
+    /// Initiates a connection to a responder COTP service.
+    pub async fn initiate(connection: impl TpktConnection, options: CotpProtocolInformation, connection_options: CotpConnectionParameters) -> Result<RustyCotpConnection<impl TpktReader, impl TpktWriter>, CotpError> {
         // FIXME WARN Log the differences between remote and local parameters.
         let mut protocol_infomation_list = connection.get_protocol_infomation_list().clone();
         let local_calling_tsap = options.calling_tsap_id().cloned();
@@ -42,15 +44,15 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpConnection<R, W> {
         let remote_called_tsap = connection_confirm.parameters().iter().filter_map(|x| if let CotpParameter::CalledTsap(tsap) = x { Some(tsap.clone()) } else { None }).last();
         protocol_infomation_list.push(Box::new(CotpProtocolInformation::new(source_reference, connection_confirm.destination_reference(), local_calling_tsap, remote_called_tsap)));
 
-        Ok(TcpCotpConnection::new(reader, writer, max_payload_size, protocol_infomation_list).await)
+        Ok(RustyCotpConnection::new(reader, writer, max_payload_size, protocol_infomation_list, connection_options).await)
     }
 
-    async fn new(reader: R, writer: W, max_payload_size: usize, protocol_infomation_list: Vec<Box<dyn ProtocolInformation>>) -> TcpCotpConnection<R, W> {
-        TcpCotpConnection { reader, writer, max_payload_size, parser: TransportProtocolDataUnitParser::new(), protocol_infomation_list }
+    async fn new(reader: R, writer: W, max_payload_size: usize, protocol_infomation_list: Vec<Box<dyn ProtocolInformation>>, connection_options: CotpConnectionParameters) -> RustyCotpConnection<R, W> {
+        RustyCotpConnection { reader, writer, max_payload_size, parser: TransportProtocolDataUnitParser::new(), protocol_infomation_list, connection_options }
     }
 }
 
-impl<R: TpktReader, W: TpktWriter> CotpConnection for TcpCotpConnection<R, W> {
+impl<R: TpktReader, W: TpktWriter> CotpConnection for RustyCotpConnection<R, W> {
     fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn rusty_tpkt::ProtocolInformation>> {
         &self.protocol_infomation_list
     }
@@ -58,11 +60,12 @@ impl<R: TpktReader, W: TpktWriter> CotpConnection for TcpCotpConnection<R, W> {
     async fn split(self) -> Result<(impl CotpReader, impl CotpWriter), CotpError> {
         let reader = self.reader;
         let writer = self.writer;
-        Ok((TcpCotpReader::new(reader, self.parser), TcpCotpWriter::new(writer, self.max_payload_size)))
+        Ok((RustyCotpReader::new(reader, self.parser, self.connection_options), RustyCotpWriter::new(writer, self.max_payload_size)))
     }
 }
 
-pub struct TcpCotpAcceptor<R: TpktReader, W: TpktWriter> {
+/// Creates a responder that consumes the underlying TPKT service to negotiate a COTP connection.
+pub struct RustyCotpAcceptor<R: TpktReader, W: TpktWriter> {
     reader: R,
     writer: W,
     initiator_reference: u16,
@@ -70,11 +73,16 @@ pub struct TcpCotpAcceptor<R: TpktReader, W: TpktWriter> {
     max_payload_indicator: TpduSize,
     called_tsap_id: Option<Vec<u8>>,
     calling_tsap_id: Option<Vec<u8>>,
+    connection_options: CotpConnectionParameters,
     lower_layer_protocol_options_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
-impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
-    pub async fn new(tpkt_connection: impl TpktConnection) -> Result<(TcpCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpProtocolInformation), CotpError> {
+impl<R: TpktReader, W: TpktWriter> RustyCotpAcceptor<R, W> {
+    /// Creates an acceptor.
+    /// 
+    /// This is a single use component used to upgrade an underlying TPKT connection to a COTP connection.
+    /// The TPKT connection should be a server, but this is not enforced.
+    pub async fn new(tpkt_connection: impl TpktConnection, connection_options: CotpConnectionParameters) -> Result<(RustyCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpProtocolInformation), CotpError> {
         let parser = TransportProtocolDataUnitParser::new();
         let lower_layer_protocol_options_list = tpkt_connection.get_protocol_infomation_list().clone();
         let (mut reader, writer) = tpkt_connection.split().await?;
@@ -94,10 +102,11 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
         }
 
         Ok((
-            TcpCotpAcceptor {
+            RustyCotpAcceptor {
                 reader,
                 writer,
                 max_payload_size,
+                connection_options,
                 max_payload_indicator,
                 called_tsap_id: called_tsap_id.clone(),
                 calling_tsap_id: calling_tsap_id.clone(),
@@ -109,31 +118,32 @@ impl<R: TpktReader, W: TpktWriter> TcpCotpAcceptor<R, W> {
     }
 }
 
-impl<R: TpktReader, W: TpktWriter> CotpResponder for TcpCotpAcceptor<R, W> {
+impl<R: TpktReader, W: TpktWriter> CotpResponder for RustyCotpAcceptor<R, W> {
     async fn accept(mut self, options: CotpProtocolInformation) -> Result<impl CotpConnection, CotpError> {
         send_connection_confirm(&mut self.writer, options.responder_reference(), self.initiator_reference, self.max_payload_indicator, self.calling_tsap_id, self.called_tsap_id).await?;
-        Ok(TcpCotpConnection::new(self.reader, self.writer, self.max_payload_size, self.lower_layer_protocol_options_list).await)
+        Ok(RustyCotpConnection::new(self.reader, self.writer, self.max_payload_size, self.lower_layer_protocol_options_list, self.connection_options).await)
     }
 }
 
-pub struct TcpCotpReader<R: TpktReader> {
+// Used to receive data to a remote a COTP host.
+pub struct RustyCotpReader<R: TpktReader> {
     reader: R,
     parser: TransportProtocolDataUnitParser,
+    connection_options: CotpConnectionParameters,
 
     data_buffer: BytesMut,
 }
 
-impl<R: TpktReader> TcpCotpReader<R> {
-    pub fn new(reader: R, parser: TransportProtocolDataUnitParser) -> Self {
-        Self { reader, parser, data_buffer: BytesMut::new() }
+impl<R: TpktReader> RustyCotpReader<R> {
+    fn new(reader: R, parser: TransportProtocolDataUnitParser, connection_options: CotpConnectionParameters,
+) -> Self {
+        Self { reader, parser, data_buffer: BytesMut::new(), connection_options }
     }
 }
 
-impl<R: TpktReader> CotpReader for TcpCotpReader<R> {
+impl<R: TpktReader> CotpReader for RustyCotpReader<R> {
     async fn recv(&mut self) -> Result<Option<Vec<u8>>, CotpError> {
         loop {
-            // FIXME SECURITY Check inbound size per packet and add a limit on the max constructed payload size.
-
             let raw_data = match self.reader.recv().await? {
                 None => return Ok(None),
                 Some(raw_data) => raw_data,
@@ -149,10 +159,15 @@ impl<R: TpktReader> CotpReader for TcpCotpReader<R> {
 
             // Not performing strict checking of source and destination reference:
             // - This is running over a TCP stream.
-            // - It can be checked from the protocol info.
-            // - Going too strict can lead to more interop problems than it is worth.
+            // - This package supports Class 0 only, which is a single COTP association per TCP stream. References look like the are used in Class 1-4.
 
             self.data_buffer.extend_from_slice(data_transfer.user_data());
+            if self.data_buffer.len() > self.connection_options.max_reassembled_payload_size {
+                let reassembled_size = self.data_buffer.len();
+                let max_reassembled_size = self.connection_options.max_reassembled_payload_size;
+                self.data_buffer.clear();
+                return Err(CotpError::ProtocolError(format!("Reassembled payload size {reassembled_size} exceeds maximum payload size {max_reassembled_size}")))
+            }
             if data_transfer.end_of_transmission() {
                 let data = self.data_buffer.to_vec();
                 self.data_buffer.clear();
@@ -162,19 +177,20 @@ impl<R: TpktReader> CotpReader for TcpCotpReader<R> {
     }
 }
 
-pub struct TcpCotpWriter<W: TpktWriter> {
+// Used to send data to a remote a COTP host.
+pub struct RustyCotpWriter<W: TpktWriter> {
     writer: W,
     max_payload_size: usize,
     chunks: VecDeque<Vec<u8>>,
 }
 
-impl<W: TpktWriter> TcpCotpWriter<W> {
-    pub fn new(writer: W, max_payload_size: usize) -> Self {
+impl<W: TpktWriter> RustyCotpWriter<W> {
+    fn new(writer: W, max_payload_size: usize) -> Self {
         Self { writer, max_payload_size, chunks: VecDeque::new() }
     }
 }
 
-impl<W: TpktWriter> CotpWriter for TcpCotpWriter<W> {
+impl<W: TpktWriter> CotpWriter for RustyCotpWriter<W> {
     async fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> Result<(), CotpError> {
         const HEADER_LENGTH: usize = 3;
 

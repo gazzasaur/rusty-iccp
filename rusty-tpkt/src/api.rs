@@ -37,7 +37,7 @@ pub trait TpktReader: Send {
     /// Reads from a TPKT connection. There are three outcomes.
     /// * Some(data) - Data was read.
     /// * None - The underlying connection was closed normally.
-    /// * TpktError - May indicate a packet was malformed, there was an IO error or some other internal failure occurred.
+    /// * TpktError - May indicate a packet was malformed, there was an IO error or some other internal failure occurred. The stream should be discarded.
     /// 
     /// This operation is cancel safe.
     fn recv(&mut self) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, TpktError>> + Send;
@@ -48,6 +48,8 @@ pub trait TpktWriter: Send {
     /// Writes to a TPKT connection. This uses a VedDeque as a buffer. This is to ensure the operation is cancel safe so long as the buffer is not dropped while it has data.
     /// 
     /// This operation is cancel safe as long as the data in the input buffer is not dropped.
-    /// The Veque is intended to be used as a FIFO buffer stored on the caller and reused.
+    /// The VecDeque is intended to be used as a FIFO buffer stored on the caller and reused.
+    /// 
+    /// On Error the stream should be discarded.
     fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), TpktError>> + Send;
 }

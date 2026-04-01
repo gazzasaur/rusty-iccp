@@ -22,6 +22,21 @@ pub enum CotpError {
     InternalError(String),
 }
 
+/// Provides a set of parameters used to tune timers or prevent the runaway consumption or resources due to a malicious client.
+#[derive(PartialEq, Clone, Debug)]
+pub struct CotpConnectionParameters {
+    /// A limit on the reassembled payload. If this is exceeded, an error will be raised on the read operation.
+    /// 
+    /// Defaults to 1MB for payload plus a 1024 byte overhead to account for headers. Only applies to inbound data.
+    pub max_reassembled_payload_size: usize,
+}
+
+impl Default for CotpConnectionParameters {
+    fn default() -> Self {
+        Self { max_reassembled_payload_size: 1048576 + 1024 }
+    }
+}
+
 /// Captures information about a COTP connection allowing it to be used later for connection negotiation.
 #[derive(PartialEq, Clone, Debug)]
 pub struct CotpProtocolInformation {
@@ -46,19 +61,24 @@ impl CotpProtocolInformation {
         CotpProtocolInformation { initiator_reference: self.initiator_reference, responder_reference: rand::random(), calling_tsap_id: self.calling_tsap_id.clone(), called_tsap_id: self.calling_tsap_id.clone() }
     }
 
+    /// The initiator reference. As this supports Class 0 only, the reference is informational.
     pub fn initiator_reference(&self) -> u16 {
         self.initiator_reference
     }
 
+    /// The responder reference. As this supports Class 0 only, the reference is informational.
+    /// 
     /// This will be 0 for information received from the initiator.
     pub fn responder_reference(&self) -> u16 {
         self.responder_reference
     }
 
+    /// The Transport Id of the caller. Similar to a TCP port except it is not ephemeral for the calling party.
     pub fn calling_tsap_id(&self) -> Option<&Vec<u8>> {
         self.calling_tsap_id.as_ref()
     }
 
+    /// The Transport Id of the called host. Similar to a TCP port.
     pub fn called_tsap_id(&self) -> Option<&Vec<u8>> {
         self.called_tsap_id.as_ref()
     }
@@ -69,6 +89,8 @@ impl ProtocolInformation for CotpProtocolInformation {}
 /// Provides a mechnism to respond with negotiated values suring the connect phase.
 pub trait CotpResponder: Send {
     /// Accepts a connection with the given parameters.
+    /// 
+    /// This the CotpResponder is dropped the connection will be closed.
     fn accept(self, options: CotpProtocolInformation) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
 }
 

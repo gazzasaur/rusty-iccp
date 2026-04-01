@@ -24,7 +24,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_transfers_data() -> Result<(), anyhow::Error> {
-        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None).await?;
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None, Default::default()).await?;
 
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
@@ -41,7 +41,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_transfers_data_with_tsaps() -> Result<(), anyhow::Error> {
-        let (cotp_client, cotp_server) = create_cotp_connection_pair(Some(vec![1u8, 2u8, 3u8]), Some(vec![4u8, 5u8, 6u8])).await?;
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(Some(vec![1u8, 2u8, 3u8]), Some(vec![4u8, 5u8, 6u8]), Default::default()).await?;
 
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
@@ -58,7 +58,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_transfers_data_over_multiple_segments() -> Result<(), anyhow::Error> {
-        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None).await?;
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None, Default::default()).await?;
 
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
@@ -77,10 +77,42 @@ mod tests {
         Ok(())
     }
 
+    
+    #[tokio::test]
+    #[traced_test]
+    async fn it_fails_on_max_reassembled_payload_exceeded() -> Result<(), anyhow::Error> {
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None, Default::default()).await?;
+
+        let (_, mut client_writer) = cotp_client.split().await?;
+        let (mut server_read, _) = cotp_server.split().await?;
+
+        let mut over_buffer = [0u8; 1024];
+        let mut data_buffer = Vec::new();
+        for _ in 1..10000 {
+            rand::rng().fill_bytes(&mut over_buffer[..]);
+            data_buffer.extend_from_slice(&over_buffer);
+        }
+
+        match timeout(Duration::from_millis(100), client_writer.send(&mut VecDeque::from(vec![data_buffer.to_vec()]))).await {
+            Ok(_) => assert!(false, "Expected the data to be too large for the buffer."),
+            Err(_) => (),
+        }
+        match timeout(Duration::from_millis(100), server_read.recv()).await {
+            Ok(Ok(_)) => assert!(false, "Expected that all the payload was not yet send."),
+            Ok(Err(e)) => {
+                assert_eq!(format!("{e}"), "COTP Protocol Error - Reassembled payload size 1051130 exceeds maximum payload size 1049600");
+                return Ok(())
+            },
+            Err(_) => assert!(false, "Expected to failed on buffer exceeded."),
+        }
+
+        Ok(())
+    }
+
     #[tokio::test]
     #[traced_test]
     async fn it_flushes_correctly() -> Result<(), anyhow::Error> {
-        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None).await?;
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None, CotpConnectionParameters { max_reassembled_payload_size: 32*1024*1024 }).await?;
 
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
@@ -102,7 +134,8 @@ mod tests {
                 Err(_) => (),
             };
             match timeout(Duration::from_millis(100), server_read.recv()).await {
-                Ok(_) => assert!(false, "Expected that all the payload was not yet send."),
+                Ok(Ok(_)) => assert!(false, "Expected that all the payload was not yet send."),
+                Ok(Err(e)) => return Err(e)?,
                 Err(_) => (),
             }
         }
@@ -126,7 +159,7 @@ mod tests {
         Ok(())
     }
 
-    async fn create_cotp_connection_pair(calling_tsap_id: Option<Vec<u8>>, called_tsap_id: Option<Vec<u8>>) -> Result<(TcpCotpConnection<impl TpktReader, impl TpktWriter>, impl CotpConnection), anyhow::Error> {
+    async fn create_cotp_connection_pair(calling_tsap_id: Option<Vec<u8>>, called_tsap_id: Option<Vec<u8>>, connection_parameters: CotpConnectionParameters) -> Result<(RustyCotpConnection<impl TpktReader, impl TpktWriter>, impl CotpConnection), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
 
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;
@@ -134,9 +167,10 @@ mod tests {
 
         let connect_information = CotpProtocolInformation::initiator(calling_tsap_id, called_tsap_id);
 
+        let initiator_connection_parameters = connection_parameters.clone();
         let initiator_connect_information = connect_information.clone();
-        let (cotp_initiator, cotp_acceptor) = join!(async move { TcpCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, initiator_connect_information).await }, async {
-            let (acceptor, remote) = TcpCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?).await?;
+        let (cotp_initiator, cotp_acceptor) = join!(async move { RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, initiator_connect_information, initiator_connection_parameters).await }, async move {
+            let (acceptor, remote) = RustyCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, connection_parameters).await?;
             assert_eq!(remote, connect_information);
             acceptor.accept(connect_information).await
         });

@@ -270,7 +270,7 @@ mod tests {
                 x => return Err(anyhow::anyhow!("Expected bit string but got {:?}", x)),
             }
         }
-        assert_eq!(vec![131, 1, 0], subject.to_ber_object(Tag::from(3)).to_vec()?);
+        assert_eq!(vec![131, 3, 5, 0, 0], subject.to_ber_object(Tag::from(3)).to_vec()?);
 
         Ok(())
     }
@@ -278,11 +278,11 @@ mod tests {
     #[test]
     fn it_serialises_parameter_support_options() -> Result<(), anyhow::Error> {
         let subject_bits = vec![
-            (0, 7, vec![131u8, 2u8, 7u8, 128u8], ParameterSupportOption::Str1),
-            (1, 6, vec![131u8, 2u8, 6u8, 64u8], ParameterSupportOption::Str2),
-            (2, 5, vec![131u8, 2u8, 5u8, 32u8], ParameterSupportOption::Vnam),
-            // (3, 4, vec![131u8, 2u8, 4u8, 16u8], ParameterSupportOption::Valt),
-            (7, 0, vec![131u8, 2u8, 0u8, 1u8], ParameterSupportOption::Vlis),
+            (0, 5, vec![131, 3, 5, 128, 0], ParameterSupportOption::Str1),
+            (1, 5, vec![131, 3, 5, 64, 0], ParameterSupportOption::Str2),
+            (2, 5, vec![131, 3, 5, 32, 0], ParameterSupportOption::Vnam),
+            // (3, 4, vec![131, 3, 5, 16, 0], ParameterSupportOption::Valt),
+            (7, 5, vec![131, 3, 5, 1, 0], ParameterSupportOption::Vlis),
         ];
 
         for (subject_bit, expected_ignored_bits, expected_serilised_form, subject_option) in subject_bits {
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn it_serialises_parameter_support_option_multiple() -> Result<(), anyhow::Error> {
-        assert_eq!(vec![131, 2, 0, 129], ParameterSupportOptionsBerObject::new(ParameterSupportOptions { options: vec![ParameterSupportOption::Str1, ParameterSupportOption::Vlis] }).to_ber_object(Tag::from(3)).to_vec()?);
+        assert_eq!(vec![131, 3, 5, 129, 0], ParameterSupportOptionsBerObject::new(ParameterSupportOptions { options: vec![ParameterSupportOption::Str1, ParameterSupportOption::Vlis] }).to_ber_object(Tag::from(3)).to_vec()?);
 
         Ok(())
     }
