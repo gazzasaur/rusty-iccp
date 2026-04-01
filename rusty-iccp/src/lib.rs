@@ -31,8 +31,7 @@ pub trait IccpClient: Send + Sync + Clone {
     // fn fetch_transfer_report
 }
 
-pub enum QualityFlag {
-}
+pub enum QualityFlag {}
 
 pub enum IccpData {
     RealQ(f32, Vec<QualityFlag>),

@@ -4,17 +4,21 @@ use bytes::BytesMut;
 use rusty_tpkt::{ProtocolInformation, TpktConnection, TpktReader, TpktWriter};
 
 use crate::{
-    CotpConnectionParameters, api::{CotpConnection, CotpError, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter}, packet::{
+    CotpConnectionParameters,
+    api::{CotpConnection, CotpError, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter},
+    packet::{
         connection_confirm::ConnectionConfirm,
         connection_request::ConnectionRequest,
         data_transfer::DataTransfer,
         parameters::{ConnectionClass, CotpParameter, TpduSize},
         payload::TransportProtocolDataUnit,
-    }, parser::packet::TransportProtocolDataUnitParser, serialiser::packet::serialise
+    },
+    parser::packet::TransportProtocolDataUnitParser,
+    serialiser::packet::serialise,
 };
 
 /// A COTP connection provides a packet based data exchange mechanism.
-/// 
+///
 /// Initiator connections may be initiated via this struct. To act as a responder, the acceptor class should be used.
 pub struct RustyCotpConnection<R: TpktReader, W: TpktWriter> {
     reader: R,
@@ -79,7 +83,7 @@ pub struct RustyCotpAcceptor<R: TpktReader, W: TpktWriter> {
 
 impl<R: TpktReader, W: TpktWriter> RustyCotpAcceptor<R, W> {
     /// Creates an acceptor.
-    /// 
+    ///
     /// This is a single use component used to upgrade an underlying TPKT connection to a COTP connection.
     /// The TPKT connection should be a server, but this is not enforced.
     pub async fn new(tpkt_connection: impl TpktConnection, connection_options: CotpConnectionParameters) -> Result<(RustyCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpProtocolInformation), CotpError> {
@@ -135,8 +139,7 @@ pub struct RustyCotpReader<R: TpktReader> {
 }
 
 impl<R: TpktReader> RustyCotpReader<R> {
-    fn new(reader: R, parser: TransportProtocolDataUnitParser, connection_options: CotpConnectionParameters,
-) -> Self {
+    fn new(reader: R, parser: TransportProtocolDataUnitParser, connection_options: CotpConnectionParameters) -> Self {
         Self { reader, parser, data_buffer: BytesMut::new(), connection_options }
     }
 }
@@ -166,7 +169,7 @@ impl<R: TpktReader> CotpReader for RustyCotpReader<R> {
                 let reassembled_size = self.data_buffer.len();
                 let max_reassembled_size = self.connection_options.max_reassembled_payload_size;
                 self.data_buffer.clear();
-                return Err(CotpError::ProtocolError(format!("Reassembled payload size {reassembled_size} exceeds maximum payload size {max_reassembled_size}")))
+                return Err(CotpError::ProtocolError(format!("Reassembled payload size {reassembled_size} exceeds maximum payload size {max_reassembled_size}")));
             }
             if data_transfer.end_of_transmission() {
                 let data = self.data_buffer.to_vec();

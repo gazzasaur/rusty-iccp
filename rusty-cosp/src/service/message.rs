@@ -1,4 +1,4 @@
-use rusty_cotp::{CotpReader};
+use rusty_cotp::CotpReader;
 
 use crate::{CospError, message::CospMessage, packet::pdu::SessionPduList};
 

@@ -26,7 +26,7 @@ pub enum CotpError {
 #[derive(PartialEq, Clone, Debug)]
 pub struct CotpConnectionParameters {
     /// A limit on the reassembled payload. If this is exceeded, an error will be raised on the read operation.
-    /// 
+    ///
     /// Defaults to 1MB for payload plus a 1024 byte overhead to account for headers. Only applies to inbound data.
     pub max_reassembled_payload_size: usize,
 }
@@ -67,7 +67,7 @@ impl CotpProtocolInformation {
     }
 
     /// The responder reference. As this supports Class 0 only, the reference is informational.
-    /// 
+    ///
     /// This will be 0 for information received from the initiator.
     pub fn responder_reference(&self) -> u16 {
         self.responder_reference
@@ -89,7 +89,7 @@ impl ProtocolInformation for CotpProtocolInformation {}
 /// Provides a mechnism to respond with negotiated values suring the connect phase.
 pub trait CotpResponder: Send {
     /// Accepts a connection with the given parameters.
-    /// 
+    ///
     /// This the CotpResponder is dropped the connection will be closed.
     fn accept(self, options: CotpProtocolInformation) -> impl std::future::Future<Output = Result<impl CotpConnection, CotpError>> + Send;
 }
@@ -109,7 +109,7 @@ pub trait CotpReader: Send {
     /// * Some(data) - Data was read.
     /// * None - The underlying connection was closed normally.
     /// * TpktError - May indicate a packet was malformed, there was an IO error or some other internal failure occurred.
-    /// 
+    ///
     /// This operation is cancel safe.
     fn recv(&mut self) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, CotpError>> + Send;
 }
@@ -117,7 +117,7 @@ pub trait CotpReader: Send {
 /// A trait representing the write half of COTP connection.
 pub trait CotpWriter: Send {
     /// Writes to a COTP connection. This uses a VedDeque as a buffer. This is to ensure the operation is cancel safe so long as the buffer is not dropped while it has data.
-    /// 
+    ///
     /// This operation is cancel safe as long as the data in the input buffer is not dropped.
     /// The Veque is intended to be used as a FIFO buffer stored on the caller and reused.
     fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CotpError>> + Send;

@@ -79,7 +79,6 @@ mod tests {
         Ok(())
     }
 
-    
     #[tokio::test]
     #[traced_test]
     async fn it_fails_on_max_reassembled_payload_exceeded() -> Result<(), anyhow::Error> {
@@ -103,8 +102,8 @@ mod tests {
             Ok(Ok(_)) => assert!(false, "Expected that all the payload was not yet send."),
             Ok(Err(e)) => {
                 assert_eq!(format!("{e}"), "COTP Protocol Error - Reassembled payload size 1051130 exceeds maximum payload size 1049600");
-                return Ok(())
-            },
+                return Ok(());
+            }
             Err(_) => assert!(false, "Expected to failed on buffer exceeded."),
         }
 
@@ -114,7 +113,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn it_flushes_correctly() -> Result<(), anyhow::Error> {
-        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None, CotpConnectionParameters { max_reassembled_payload_size: 32*1024*1024 }).await?;
+        let (cotp_client, cotp_server) = create_cotp_connection_pair(None, None, CotpConnectionParameters { max_reassembled_payload_size: 32 * 1024 * 1024 }).await?;
 
         let (mut client_read, mut client_writer) = cotp_client.split().await?;
         let (mut server_read, mut server_writer) = cotp_server.split().await?;
@@ -161,7 +160,11 @@ mod tests {
         Ok(())
     }
 
-    async fn create_cotp_connection_pair(calling_tsap_id: Option<Vec<u8>>, called_tsap_id: Option<Vec<u8>>, connection_parameters: CotpConnectionParameters) -> Result<(RustyCotpConnection<impl TpktReader, impl TpktWriter>, impl CotpConnection), anyhow::Error> {
+    async fn create_cotp_connection_pair(
+        calling_tsap_id: Option<Vec<u8>>,
+        called_tsap_id: Option<Vec<u8>>,
+        connection_parameters: CotpConnectionParameters,
+    ) -> Result<(RustyCotpConnection<impl TpktReader, impl TpktWriter>, impl CotpConnection), anyhow::Error> {
         let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
 
         let tpkt_listener = TcpTpktServer::listen(test_address).await?;

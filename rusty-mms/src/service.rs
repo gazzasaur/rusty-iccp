@@ -461,7 +461,7 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
 
         // TODO Figure out what to do with these.
         let (acse_connection, _response, user_data) =
-            self.acse_initiator.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error("Failed to create MMS OID. This is a bug."))?.to_owned(), request_data).await.map_err(to_mms_error("Failed yo initiate MMS connection"))?;
+            self.acse_initiator.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(to_mms_error("Failed to create MMS OID. This is a bug."))?.to_owned(), request_data).await.map_err(to_mms_error("Failed to initiate MMS connection"))?;
         let _response = InitiateResponsePdu::parse(user_data)?;
 
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
