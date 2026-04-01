@@ -125,7 +125,7 @@ impl<R: TpktReader, W: TpktWriter> CotpResponder for RustyCotpAcceptor<R, W> {
     }
 }
 
-// Used to receive data to a remote a COTP host.
+/// Used to receive data to a remote a COTP host.
 pub struct RustyCotpReader<R: TpktReader> {
     reader: R,
     parser: TransportProtocolDataUnitParser,
@@ -177,7 +177,7 @@ impl<R: TpktReader> CotpReader for RustyCotpReader<R> {
     }
 }
 
-// Used to send data to a remote a COTP host.
+/// Used to send data to a remote a COTP host.
 pub struct RustyCotpWriter<W: TpktWriter> {
     writer: W,
     max_payload_size: usize,

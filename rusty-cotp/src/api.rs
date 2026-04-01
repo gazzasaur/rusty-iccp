@@ -103,6 +103,7 @@ pub trait CotpConnection: Send {
     fn split(self) -> impl std::future::Future<Output = Result<(impl CotpReader, impl CotpWriter), CotpError>> + Send;
 }
 
+/// A trait representing the read half of COTP connection.
 pub trait CotpReader: Send {
     /// Reads from a COTP connection. There are three outcomes.
     /// * Some(data) - Data was read.
@@ -113,6 +114,7 @@ pub trait CotpReader: Send {
     fn recv(&mut self) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, CotpError>> + Send;
 }
 
+/// A trait representing the write half of COTP connection.
 pub trait CotpWriter: Send {
     /// Writes to a COTP connection. This uses a VedDeque as a buffer. This is to ensure the operation is cancel safe so long as the buffer is not dropped while it has data.
     /// 

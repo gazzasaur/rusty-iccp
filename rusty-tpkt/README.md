@@ -15,7 +15,7 @@ This package is intended to be used in conjunction with a higher level protocol.
 
 #### Static Dispatch
 
-This library uses static dispatch. TPKT is a very small slice in a large protocol stack. It is called very often. Static dispatch removes vtable lookups reducing call overhead. Static dispatch also allows the types to be resolved at compile time, giving the compiler greater scope to perform optimisations. This also makes it ideal for use in embedded devices.
+This library uses static dispatch. This protocol is a very small slice in a large protocol stack. It is called very often. Static dispatch removes vtable lookups reducing call overhead. Static dispatch also allows the types to be resolved at compile time, giving the compiler greater scope to perform optimisations. This also makes it ideal for use in embedded devices.
 
 The trade of is that static dispatch may be more difficult to work with in complex applications. The rusty-mms-service provides one example of going from a static dispatch to a dynamic dispatch environment without degrading performance.
 
@@ -25,12 +25,12 @@ This library uses async rust and std components. If using this in embedded syste
 
 #### Cancel Safety
 
-Senc and Recv operations are cancel safe as long as the caller does not drop their buffer after cancel if it still contains data. It is safe to call Send and Recv anytime after cancellation.
+Send and Recv operations are cancel safe as long as the caller does not drop their buffer after cancel if it still contains data. It is safe to call Send and Recv anytime after cancellation.
 
 ## Conformance
-This packet implements Class 0 functionality.
+This library implements Class 0 functionality.
 
-This allows most ISO protcols to be operated over this implementation of TPKT, normally using the 'kernel only' or 'core features' of higher layer protocols. Please refer to the conformance statement of the standard you are using to ensure all the features you require are offered given the comformance of this implementation.
+This allows most ISO protcols to be operated over this implementation, normally using the 'kernel only' or 'core features' of higher layer protocols. Please refer to the conformance statement of the standard you are using to ensure all the features you require are offered given the comformance of this implementation.
 
 ## References
 * [RFC 2126](https://datatracker.ietf.org/doc/html/rfc2126)
