@@ -78,7 +78,7 @@ pub struct RustyCotpResponder<R: TpktReader, W: TpktWriter> {
     called_tsap_id: Option<Vec<u8>>,
     calling_tsap_id: Option<Vec<u8>>,
     connection_options: CotpConnectionParameters,
-    lower_layer_protocol_options_list: Vec<Box<dyn ProtocolInformation>>,
+    protocol_information_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
 impl<R: TpktReader, W: TpktWriter> RustyCotpResponder<R, W> {
@@ -88,7 +88,7 @@ impl<R: TpktReader, W: TpktWriter> RustyCotpResponder<R, W> {
     /// The TPKT connection should be a server, but this is not enforced.
     pub async fn new(tpkt_connection: impl TpktConnection, connection_options: CotpConnectionParameters) -> Result<(RustyCotpResponder<impl TpktReader, impl TpktWriter>, CotpProtocolInformation), CotpError> {
         let parser = TransportProtocolDataUnitParser::new();
-        let lower_layer_protocol_options_list = tpkt_connection.get_protocol_infomation_list().clone();
+        let mut protocol_information_list = tpkt_connection.get_protocol_infomation_list().clone();
         let (mut reader, writer) = tpkt_connection.split().await?;
 
         let connection_request = receive_connection_request(&mut reader, &parser).await?;
@@ -105,6 +105,9 @@ impl<R: TpktReader, W: TpktWriter> RustyCotpResponder<R, W> {
             }
         }
 
+        let protocol_information = CotpProtocolInformation::new(connection_request.source_reference(), 0, calling_tsap_id.clone(), called_tsap_id.clone());
+        protocol_information_list.push(Box::new(protocol_information.clone()));
+
         Ok((
             RustyCotpResponder {
                 reader,
@@ -112,12 +115,12 @@ impl<R: TpktReader, W: TpktWriter> RustyCotpResponder<R, W> {
                 max_payload_size,
                 connection_options,
                 max_payload_indicator,
-                called_tsap_id: called_tsap_id.clone(),
-                calling_tsap_id: calling_tsap_id.clone(),
+                called_tsap_id: called_tsap_id,
+                calling_tsap_id: calling_tsap_id,
                 initiator_reference: connection_request.source_reference(),
-                lower_layer_protocol_options_list,
+                protocol_information_list,
             },
-            CotpProtocolInformation::new(connection_request.source_reference(), 0, calling_tsap_id, called_tsap_id),
+            protocol_information,
         ))
     }
 }
@@ -125,7 +128,7 @@ impl<R: TpktReader, W: TpktWriter> RustyCotpResponder<R, W> {
 impl<R: TpktReader, W: TpktWriter> CotpResponder for RustyCotpResponder<R, W> {
     async fn accept(mut self, options: CotpProtocolInformation) -> Result<impl CotpConnection, CotpError> {
         send_connection_confirm(&mut self.writer, options.responder_reference(), self.initiator_reference, self.max_payload_indicator, self.calling_tsap_id, self.called_tsap_id).await?;
-        Ok(RustyCotpConnection::new(self.reader, self.writer, self.max_payload_size, self.lower_layer_protocol_options_list, self.connection_options).await)
+        Ok(RustyCotpConnection::new(self.reader, self.writer, self.max_payload_size, self.protocol_information_list, self.connection_options).await)
     }
 }
 
