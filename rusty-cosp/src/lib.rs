@@ -20,7 +20,7 @@ pub type RustyCospConnectionIsoStack<R, W> = TcpCospConnection<RustyCotpReader<R
 mod tests {
     use std::{collections::VecDeque, ops::Range};
 
-    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpAcceptor, RustyCotpConnection, RustyCotpReader, RustyCotpWriter};
+    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -174,7 +174,7 @@ mod tests {
         let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
 
         let (cotp_initiator, cotp_acceptor) = join!(async { RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(), Default::default()).await }, async {
-            let (acceptor, remote) = RustyCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, Default::default()).await?;
+            let (acceptor, remote) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, Default::default()).await?;
             assert_eq!(remote, connect_information);
             acceptor.accept(remote).await
         });

@@ -175,7 +175,7 @@ mod tests {
         let initiator_connection_parameters = connection_parameters.clone();
         let initiator_connect_information = connect_information.clone();
         let (cotp_initiator, cotp_acceptor) = join!(async move { RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, initiator_connect_information, initiator_connection_parameters).await }, async move {
-            let (acceptor, remote) = RustyCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, connection_parameters).await?;
+            let (acceptor, remote) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, connection_parameters).await?;
             assert_eq!(remote, connect_information);
             acceptor.accept(connect_information).await
         });

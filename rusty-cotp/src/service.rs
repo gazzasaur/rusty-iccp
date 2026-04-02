@@ -69,7 +69,7 @@ impl<R: TpktReader, W: TpktWriter> CotpConnection for RustyCotpConnection<R, W> 
 }
 
 /// Creates a responder that consumes the underlying TPKT service to negotiate a COTP connection.
-pub struct RustyCotpAcceptor<R: TpktReader, W: TpktWriter> {
+pub struct RustyCotpResponder<R: TpktReader, W: TpktWriter> {
     reader: R,
     writer: W,
     initiator_reference: u16,
@@ -81,12 +81,12 @@ pub struct RustyCotpAcceptor<R: TpktReader, W: TpktWriter> {
     lower_layer_protocol_options_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
-impl<R: TpktReader, W: TpktWriter> RustyCotpAcceptor<R, W> {
+impl<R: TpktReader, W: TpktWriter> RustyCotpResponder<R, W> {
     /// Creates an acceptor.
     ///
     /// This is a single use component used to upgrade an underlying TPKT connection to a COTP connection.
     /// The TPKT connection should be a server, but this is not enforced.
-    pub async fn new(tpkt_connection: impl TpktConnection, connection_options: CotpConnectionParameters) -> Result<(RustyCotpAcceptor<impl TpktReader, impl TpktWriter>, CotpProtocolInformation), CotpError> {
+    pub async fn new(tpkt_connection: impl TpktConnection, connection_options: CotpConnectionParameters) -> Result<(RustyCotpResponder<impl TpktReader, impl TpktWriter>, CotpProtocolInformation), CotpError> {
         let parser = TransportProtocolDataUnitParser::new();
         let lower_layer_protocol_options_list = tpkt_connection.get_protocol_infomation_list().clone();
         let (mut reader, writer) = tpkt_connection.split().await?;
@@ -106,7 +106,7 @@ impl<R: TpktReader, W: TpktWriter> RustyCotpAcceptor<R, W> {
         }
 
         Ok((
-            RustyCotpAcceptor {
+            RustyCotpResponder {
                 reader,
                 writer,
                 max_payload_size,
@@ -122,7 +122,7 @@ impl<R: TpktReader, W: TpktWriter> RustyCotpAcceptor<R, W> {
     }
 }
 
-impl<R: TpktReader, W: TpktWriter> CotpResponder for RustyCotpAcceptor<R, W> {
+impl<R: TpktReader, W: TpktWriter> CotpResponder for RustyCotpResponder<R, W> {
     async fn accept(mut self, options: CotpProtocolInformation) -> Result<impl CotpConnection, CotpError> {
         send_connection_confirm(&mut self.writer, options.responder_reference(), self.initiator_reference, self.max_payload_indicator, self.calling_tsap_id, self.called_tsap_id).await?;
         Ok(RustyCotpConnection::new(self.reader, self.writer, self.max_payload_size, self.lower_layer_protocol_options_list, self.connection_options).await)

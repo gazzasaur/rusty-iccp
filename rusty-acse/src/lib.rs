@@ -21,7 +21,7 @@ mod tests {
     use der_parser::Oid;
     use rusty_copp::{CoppError, RustyCoppListener};
     use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
-    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpAcceptor, RustyCotpConnection, RustyCotpReader, RustyCotpWriter};
+    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -93,7 +93,7 @@ mod tests {
         let server_path = async {
             let tpkt_server = TcpTpktServer::listen(test_address).await?;
             let tpkt_connection = tpkt_server.accept().await?;
-            let (cotp_server, initiator_info) = RustyCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
+            let (cotp_server, initiator_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
             let cotp_connection = cotp_server.accept(initiator_info.responder()).await?;
             let (cosp_listener, _) = TcpCospListener::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
             let (copp_listener, _) =
