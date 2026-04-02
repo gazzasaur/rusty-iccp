@@ -45,7 +45,7 @@ Examples may be found in the [examples](https://github.com/gazzasaur/rusty-iccp/
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
-use rusty_cotp::{CotpConnection, CotpConnectionParameters, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter, RustyCotpAcceptor, RustyCotpConnection};
+use rusty_cotp::{CotpConnection, CotpConnectionParameters, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter, RustyCotpResponder, RustyCotpConnection};
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
 
 #[tokio::main]
@@ -71,7 +71,7 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     let tpkt_connection = server.accept().await?;
 
     // Upgrade the TPKT connection to a COTP connection.
-    let (cotp_acceptor, incoming_propertites) = RustyCotpAcceptor::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
+    let (cotp_acceptor, incoming_propertites) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
 
     // If we are okay with the incoming connection attributes, like TSAP id, we will accept the connection.
     let cotp_connection = cotp_acceptor.accept(incoming_propertites.responder()).await?;

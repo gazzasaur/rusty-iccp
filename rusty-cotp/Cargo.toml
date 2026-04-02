@@ -1,6 +1,6 @@
 [package]
 name = "rusty-cotp"
-version = "1.1.1"
+version = "1.1.2"
 description = "Implements the Kernel Function of Connection Oriented Transport Protocol/ISO 8073/IEC 8073/ITU-T X.224 standard."
 
 authors = { workspace = true }
