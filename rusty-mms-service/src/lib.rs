@@ -5,7 +5,7 @@ use rusty_acse::{
     AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
-use rusty_cosp::{CospConnectionInformation, RustyCospInitiatorIsoStack, RustyCospListenerIsoStack};
+use rusty_cosp::{CospProtocolInformation, RustyCospInitiatorIsoStack, RustyCospListenerIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpResponder, RustyCotpConnection};
 use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 use tokio::sync::{
@@ -156,8 +156,8 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         let cotp_connection_info = CotpProtocolInformation::initiator(parameters.calling.tsap_id, parameters.called.tsap_id);
         let cotp_connection = RustyCotpConnection::<R, W>::initiate(tpkt_connection, cotp_connection_info, Default::default()).await.map_err(to_mms_error("Failed to create COTP Connection"))?;
 
-        let cosp_connection_info = CospConnectionInformation { called_session_selector: parameters.called.session_selector, calling_session_selector: parameters.calling.session_selector, ..Default::default() };
-        let cosp_initiator = RustyCospInitiatorIsoStack::<R, W>::new(cotp_connection, cosp_connection_info).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
+        let cosp_connection_info = CospProtocolInformation::new(parameters.called.session_selector, parameters.calling.session_selector);
+        let cosp_initiator = RustyCospInitiatorIsoStack::<R, W>::new(cotp_connection, cosp_connection_info, Default::default()).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
 
         let copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };
         let copp_initiator = RustyCoppInitiatorIsoStack::<R, W>::new(cosp_initiator, copp_connection_info);

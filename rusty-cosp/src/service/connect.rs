@@ -3,11 +3,10 @@ use std::collections::VecDeque;
 use rusty_cotp::CotpWriter;
 
 use crate::{
-    api::{CospConnectionInformation, CospError},
-    packet::{
+    CospConnectionParameters, api::{CospError, CospProtocolInformation}, packet::{
         parameters::{DataOverflowField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
-    },
+    }
 };
 
 pub(crate) enum SendConnectionRequestResult {
@@ -15,7 +14,7 @@ pub(crate) enum SendConnectionRequestResult {
     Overflow(usize),
 }
 
-pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: CospConnectionInformation, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
+pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: CospProtocolInformation, connection_parameters: CospConnectionParameters, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
     const MAX_USER_DATA_PAYLOAD_SIZE: usize = 512;
     const MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE: usize = 10240;
 
@@ -23,7 +22,7 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: 
         SessionPduParameter::ProtocolOptionsParameter(ProtocolOptionsField(0)), // Do not support extended PDUs
         SessionPduParameter::VersionNumberParameter(VersionNumberField(2)),     // Version 2 only
     ];
-    if let Some(size) = options.tsdu_maximum_size {
+    if let Some(size) = connection_parameters.tsdu_maximum_size {
         connect_accept_parameters.push(SessionPduParameter::TsduMaximumSizeParameter(TsduMaximumSizeField::new(size, 0)));
     }
 
@@ -31,12 +30,12 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: 
         SessionPduParameter::ConnectAcceptItemParameter(connect_accept_parameters),
         SessionPduParameter::SessionUserRequirementsParameter(SessionUserRequirementsField(2)), // Full Duplex only
     ];
-    match options.calling_session_selector {
-        Some(calling_session) => parameters.push(SessionPduParameter::CallingSessionSelectorParameter(calling_session)),
+    match options.calling_session_selector() {
+        Some(calling_session) => parameters.push(SessionPduParameter::CallingSessionSelectorParameter(calling_session.clone())),
         None => (),
     };
-    if let Some(called_session) = options.called_session_selector {
-        parameters.push(SessionPduParameter::CalledSessionSelectorParameter(called_session));
+    if let Some(called_session) = options.called_session_selector() {
+        parameters.push(SessionPduParameter::CalledSessionSelectorParameter(called_session.clone()));
     }
     let overflow_length = match user_data {
         Some(user_data) if user_data.len() <= MAX_USER_DATA_PAYLOAD_SIZE => {

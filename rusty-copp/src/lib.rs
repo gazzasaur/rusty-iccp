@@ -19,8 +19,8 @@ mod tests {
     use std::{collections::VecDeque, time::Duration, vec};
 
     use der_parser::Oid;
-    use rusty_cosp::{TcpCospInitiator, TcpCospListener, TcpCospReader, TcpCospResponder, TcpCospWriter};
-    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpWriter};
+    use rusty_cosp::{CospProtocolInformation, TcpCospAcceptor, TcpCospInitiator, TcpCospReader, TcpCospResponder, TcpCospWriter};
+    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
@@ -99,7 +99,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
             let cotp_client = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone(), Default::default()).await?;
-            let cosp_client = TcpCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, Default::default()).await?;
+            let cosp_client = TcpCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(None, None), Default::default()).await?;
             let copp_client =
                 RustyCoppInitiator::<TcpCospInitiator<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, TcpCospReader<RustyCotpReader<TcpTpktReader>>, TcpCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_client, options);
             Ok(copp_client.initiate(PresentationContextType::ContextDefinitionList(contexts), connect_data.clone()).await?)
@@ -109,7 +109,7 @@ mod tests {
             let tpkt_connection = tpkt_server.accept().await?;
             let (cotp_server, protocol_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
             let cotp_connection = cotp_server.accept(protocol_info.responder()).await?;
-            let (cosp_listener, _) = TcpCospListener::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
+            let (cosp_listener, _) = TcpCospAcceptor::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
             let (copp_listener, _) =
                 RustyCoppListener::<TcpCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, TcpCospReader<RustyCotpReader<TcpTpktReader>>, TcpCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
             let (copp_responder, connect_user_data) = copp_listener.responder().await?;

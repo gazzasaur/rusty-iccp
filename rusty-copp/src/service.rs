@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, marker::PhantomData};
 
 use der_parser::Oid;
-use rusty_cosp::{CospConnection, CospInitiator, CospListener, CospReader, CospResponder, CospWriter};
+use rusty_cosp::{CospConnection, CospInitiator, CospAcceptor, CospReader, CospResponder, CospWriter};
 
 use crate::{
     CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType,
@@ -49,8 +49,8 @@ pub struct RustyCoppListener<T: CospResponder, R: CospReader, W: CospWriter> {
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> {
-    pub async fn new(cosp_listener: impl CospListener) -> Result<(RustyCoppListener<impl CospResponder, impl CospReader, impl CospWriter>, CoppConnectionInformation), CoppError> {
-        let (cosp_responder, _, user_data) = cosp_listener.responder().await?;
+    pub async fn new(cosp_listener: impl CospAcceptor) -> Result<(RustyCoppListener<impl CospResponder, impl CospReader, impl CospWriter>, CoppConnectionInformation), CoppError> {
+        let (cosp_responder, user_data) = cosp_listener.accept().await?;
 
         let mut connect_message = match user_data {
             Some(user_data) => ConnectMessage::parse(&user_data)?,
@@ -107,7 +107,7 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> CoppResponder for RustyCopp
         let responder = self.cosp_responder;
         let accept_message = AcceptMessage::new(None, self.connection_information.called_presentation_selector, contexts, accept_data);
         let accept_message_data = Some(accept_message.serialise()?);
-        let (cosp_reader, cosp_writer) = responder.accept(accept_message_data).await?.split().await?;
+        let (cosp_reader, cosp_writer) = responder.complete_connection(accept_message_data).await?.split().await?;
         Ok(RustyCoppConnection::new(cosp_reader, cosp_writer))
     }
 }

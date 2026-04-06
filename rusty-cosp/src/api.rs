@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use rusty_cotp::CotpError;
+use rusty_tpkt::ProtocolInformation;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -18,18 +19,45 @@ pub enum CospError {
     InternalError(String),
 }
 
+/// Connection parameters required by the COSP protocol.
 #[derive(PartialEq, Clone, Debug)]
-pub struct CospConnectionInformation {
+pub struct CospConnectionParameters {
+    /// A limit on the reassembled payload. If this is exceeded, an error will be raised on the read operation.
+    ///
+    /// Defaults to None. This allows for infinite length payloads or for the server to set a length.
     pub tsdu_maximum_size: Option<u16>,
-    pub calling_session_selector: Option<Vec<u8>>,
-    pub called_session_selector: Option<Vec<u8>>,
+
+    // FIXME SECURITY Need a reassembled payload size.
 }
 
-impl Default for CospConnectionInformation {
+impl Default for CospConnectionParameters {
     fn default() -> Self {
-        Self { tsdu_maximum_size: None, calling_session_selector: None, called_session_selector: None }
+        Self { tsdu_maximum_size: None }
     }
 }
+
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct CospProtocolInformation {
+    calling_session_selector: Option<Vec<u8>>,
+    called_session_selector: Option<Vec<u8>>,
+}
+
+impl CospProtocolInformation {
+    pub fn new(calling_session_selector: Option<Vec<u8>>, called_session_selector: Option<Vec<u8>>) -> Self {
+        Self { calling_session_selector, called_session_selector }
+    }
+    
+    pub fn calling_session_selector(&self) -> Option<&Vec<u8>> {
+        self.calling_session_selector.as_ref()
+    }
+    
+    pub fn called_session_selector(&self) -> Option<&Vec<u8>> {
+        self.called_session_selector.as_ref()
+    }
+}
+
+impl ProtocolInformation for CospProtocolInformation {}
 
 pub enum CospRecvResult {
     Closed,
@@ -40,18 +68,21 @@ pub trait CospInitiator: Send {
     fn initiate(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CospConnection, Option<Vec<u8>>), CospError>> + Send;
 }
 
-pub trait CospListener: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl CospResponder, CospConnectionInformation, Option<Vec<u8>>), CospError>> + Send;
+pub trait CospAcceptor: Send {
+    fn accept(self) -> impl std::future::Future<Output = Result<(impl CospResponder, Option<Vec<u8>>), CospError>> + Send;
+    // fn refuse(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }
 
 pub trait CospResponder: Send {
-    fn accept(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
+    fn complete_connection(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
 
-    // fn refuse(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
     // fn abort(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }
 
 pub trait CospConnection: Send {
+    /// Gets the information regarding the protocols that have been negotiated during the connect phase.
+    fn get_protocol_infomation_list(&self) -> &Vec<Box<dyn ProtocolInformation>>;
+
     fn split(self) -> impl std::future::Future<Output = Result<(impl CospReader, impl CospWriter), CospError>> + Send;
 }
 
