@@ -9,12 +9,12 @@ use rusty_cotp::RustyCotpWriter;
 pub use crate::api::*;
 pub use crate::service::*;
 
-pub type RustyCospReaderIsoStack<R> = TcpCospReader<RustyCotpReader<R>>;
-pub type RustyCospWriterIsoStack<W> = TcpCospWriter<RustyCotpWriter<W>>;
-pub type RustyCospInitiatorIsoStack<R, W> = TcpCospInitiator<RustyCotpReader<R>, RustyCotpWriter<W>>;
-pub type RustyCospListenerIsoStack<R, W> = TcpCospAcceptor<RustyCotpReader<R>, RustyCotpWriter<W>>;
-pub type RustyCospResponderIsoStack<R, W> = TcpCospResponder<RustyCotpReader<R>, RustyCotpWriter<W>>;
-pub type RustyCospConnectionIsoStack<R, W> = TcpCospConnection<RustyCotpReader<R>, RustyCotpWriter<W>>;
+pub type RustyCospReaderIsoStack<R> = RustyCospReader<RustyCotpReader<R>>;
+pub type RustyCospWriterIsoStack<W> = RustyCospWriter<RustyCotpWriter<W>>;
+pub type RustyCospInitiatorIsoStack<R, W> = RustyCospInitiator<RustyCotpReader<R>, RustyCotpWriter<W>>;
+pub type RustyCospListenerIsoStack<R, W> = RustyCospAcceptor<RustyCotpReader<R>, RustyCotpWriter<W>>;
+pub type RustyCospResponderIsoStack<R, W> = RustyCospResponder<RustyCotpReader<R>, RustyCotpWriter<W>>;
+pub type RustyCospConnectionIsoStack<R, W> = RustyCospConnection<RustyCotpReader<R>, RustyCotpWriter<W>>;
 
 #[cfg(test)]
 mod tests {
@@ -187,7 +187,7 @@ mod tests {
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
-        let cosp_client_connector = TcpCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, options.clone(), connection_options).await?;
+        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, options.clone(), connection_options).await?;
 
         let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(connect_data.map(|o| o.to_vec())).await }, async {
             let (cosp_server_connector, connection_information) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
