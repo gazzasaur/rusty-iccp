@@ -156,7 +156,7 @@ pub struct RustyCospConnection<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
     cotp_writer: W,
     remote_max_size: TsduMaximumSize,
-    protocol_information_list: Vec<Box<dyn ProtocolInformation>>
+    protocol_information_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
 impl<R: CotpReader, W: CotpWriter> RustyCospConnection<R, W> {

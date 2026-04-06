@@ -6,7 +6,7 @@ use rusty_acse::{
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
 use rusty_cosp::{CospProtocolInformation, RustyCospInitiatorIsoStack, RustyCospListenerIsoStack};
-use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpResponder, RustyCotpConnection};
+use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 use tokio::sync::{
     Mutex,

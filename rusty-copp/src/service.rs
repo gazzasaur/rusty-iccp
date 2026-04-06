@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, marker::PhantomData};
 
 use der_parser::Oid;
-use rusty_cosp::{CospConnection, CospInitiator, CospAcceptor, CospReader, CospResponder, CospWriter};
+use rusty_cosp::{CospAcceptor, CospConnection, CospInitiator, CospReader, CospResponder, CospWriter};
 
 use crate::{
     CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType,

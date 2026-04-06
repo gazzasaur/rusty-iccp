@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
-use rusty_cotp::{CotpConnection, CotpConnectionParameters, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter, RustyCotpResponder, RustyCotpConnection};
+use rusty_cotp::{CotpConnection, CotpConnectionParameters, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter, RustyCotpConnection, RustyCotpResponder};
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
 
 #[tokio::main]

@@ -3,10 +3,12 @@ use std::collections::VecDeque;
 use rusty_cotp::CotpWriter;
 
 use crate::{
-    CospConnectionParameters, api::{CospError, CospProtocolInformation}, packet::{
+    CospConnectionParameters,
+    api::{CospError, CospProtocolInformation},
+    packet::{
         parameters::{DataOverflowField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
-    }
+    },
 };
 
 pub(crate) enum SendConnectionRequestResult {

@@ -100,8 +100,10 @@ mod tests {
             let tpkt_client = TcpTpktConnection::connect(test_address).await?;
             let cotp_client = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone(), Default::default()).await?;
             let cosp_client = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(None, None), Default::default()).await?;
-            let copp_client =
-                RustyCoppInitiator::<RustyCospInitiator<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_client, options);
+            let copp_client = RustyCoppInitiator::<RustyCospInitiator<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(
+                cosp_client,
+                options,
+            );
             Ok(copp_client.initiate(PresentationContextType::ContextDefinitionList(contexts), connect_data.clone()).await?)
         };
         let server_path = async {
@@ -111,7 +113,8 @@ mod tests {
             let cotp_connection = cotp_server.accept(protocol_info.responder()).await?;
             let (cosp_listener, _) = RustyCospAcceptor::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection).await?;
             let (copp_listener, _) =
-                RustyCoppListener::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener).await?;
+                RustyCoppListener::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener)
+                    .await?;
             let (copp_responder, connect_user_data) = copp_listener.responder().await?;
 
             Ok((copp_responder.accept(accept_data.clone()).await?, connect_user_data))

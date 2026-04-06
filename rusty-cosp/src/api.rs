@@ -26,7 +26,6 @@ pub struct CospConnectionParameters {
     ///
     /// Defaults to None. This allows for infinite length payloads or for the server to set a length.
     pub tsdu_maximum_size: Option<u16>,
-
     // FIXME SECURITY Need a reassembled payload size.
 }
 
@@ -35,7 +34,6 @@ impl Default for CospConnectionParameters {
         Self { tsdu_maximum_size: None }
     }
 }
-
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct CospProtocolInformation {
@@ -47,11 +45,11 @@ impl CospProtocolInformation {
     pub fn new(calling_session_selector: Option<Vec<u8>>, called_session_selector: Option<Vec<u8>>) -> Self {
         Self { calling_session_selector, called_session_selector }
     }
-    
+
     pub fn calling_session_selector(&self) -> Option<&Vec<u8>> {
         self.calling_session_selector.as_ref()
     }
-    
+
     pub fn called_session_selector(&self) -> Option<&Vec<u8>> {
         self.called_session_selector.as_ref()
     }
