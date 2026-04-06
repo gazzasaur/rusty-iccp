@@ -4,24 +4,22 @@ use rusty_cotp::{CotpConnection, CotpReader, CotpWriter};
 use rusty_tpkt::ProtocolInformation;
 
 use crate::{
-    CospAcceptor, CospConnection, CospConnectionParameters, CospError, CospInitiator, CospProtocolInformation, CospReader, CospRecvResult, CospResponder, CospWriter,
-    message::{CospMessage, parameters::TsduMaximumSize},
-    packet::{
+    CospAcceptor, CospConnection, CospConnectionParameters, CospError, CospInitiator, CospProtocolInformation, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode, message::{CospMessage, parameters::TsduMaximumSize}, packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    },
-    service::{
+    }, refuse::{receive_refuse_with_all_user_data, send_refuse}, service::{
         accept::{receive_accept_with_all_user_data, send_accept},
         connect::{SendConnectionRequestResult, send_connect_reqeust},
         message::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
         overflow::{receive_connect_data_overflow, receive_overflow_accept, send_connect_data_overflow, send_overflow_accept},
-    },
+    }
 };
 
 pub(crate) mod accept;
 pub(crate) mod connect;
 pub(crate) mod message;
 pub(crate) mod overflow;
+pub(crate) mod refuse;
 
 pub struct RustyCospInitiator<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
@@ -47,17 +45,31 @@ impl<R: CotpReader, W: CotpWriter> CospInitiator for RustyCospInitiator<R, W> {
 
         let send_connect_result = send_connect_reqeust(&mut cotp_writer, self.options, self.connection_options, user_data.as_deref()).await?;
 
-        let accept_message = match (send_connect_result, user_data) {
-            (SendConnectionRequestResult::Complete, _) => receive_accept_with_all_user_data(&mut cotp_reader).await?,
+        let accept_or_refuse_message = match (send_connect_result, user_data) {
+            (SendConnectionRequestResult::Complete, _) => receive_accept_or_refuse_with_all_user_data(&mut cotp_reader).await?,
             (SendConnectionRequestResult::Overflow(sent_data), Some(user_data)) => {
                 let overflow_accept = receive_overflow_accept(&mut cotp_reader).await?;
                 send_connect_data_overflow(&mut cotp_writer, *overflow_accept.maximum_size_to_responder(), &user_data[sent_data..]).await?;
-                receive_accept_with_all_user_data(&mut cotp_reader).await?
+                receive_accept_or_refuse_with_all_user_data(&mut cotp_reader).await?
             }
             (SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
         };
+        let accept_message = match accept_or_refuse_message {
+            CospMessage::AC(accept_message) => accept_message,
+            CospMessage::RF(refuse_message) => return Err(CospError::Refused(refuse_message.reason_code().cloned())),
+            _ => return Err(CospError::ProtocolError(format!("Expected COSP Accept or Refuse but got {}", <CospMessage as Into<&'static str>>::into(accept_or_refuse_message)))),
+        };
 
         Ok((RustyCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder(), self.protocol_information_list), accept_message.user_data().map(|data| data.clone())))
+    }
+}
+
+async fn receive_accept_or_refuse_with_all_user_data(cotp_reader: &mut impl CotpReader) -> Result<CospMessage, CospError> {
+    let message = receive_message(cotp_reader).await?;
+    match message {
+        CospMessage::AC(accept_message) => Ok(CospMessage::AC(receive_accept_with_all_user_data(cotp_reader, accept_message).await?)),
+        CospMessage::RF(refuse_message) => Ok(CospMessage::RF(receive_refuse_with_all_user_data(cotp_reader, refuse_message).await?)),
+        _ => Err(CospError::InternalError(format!("Expected accept or reject but got {}.", <CospMessage as Into<&'static str>>::into(message)))),
     }
 }
 
@@ -126,6 +138,11 @@ impl<R: CotpReader, W: CotpWriter> CospAcceptor for RustyCospAcceptor<R, W> {
         };
 
         Ok((RustyCospResponder::<R, W>::new(cotp_reader, cotp_writer, maximum_size_to_initiator, self.protocol_information_list), self.user_data))
+    }
+    
+    async fn refuse(self, reason_code: Option<ReasonCode>) -> Result<(), CospError> {
+        let mut cotp_writer = self.cotp_writer;
+        send_refuse(&mut cotp_writer, reason_code.as_ref()).await
     }
 }
 

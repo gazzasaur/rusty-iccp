@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use rusty_cotp::CotpError;
 use rusty_tpkt::ProtocolInformation;
+use strum::IntoStaticStr;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -17,6 +18,23 @@ pub enum CospError {
 
     #[error("COSP Error: {}", .0)]
     InternalError(String),
+
+    #[error("COSP Refused")]
+    Refused(Option<ReasonCode>),
+}
+
+#[derive(Clone, Debug, IntoStaticStr, PartialEq, Eq)]
+pub enum ReasonCode {
+    RejectionByCalledSsUser,
+    RejectionByCalledSsUserDueToTemporaryCongestion,
+    RejectionByCalledSsUserWithData(Vec<u8>),
+    SessionSelectorUnknown,
+    SsUserNotAttachedToSsap,
+    SpmCongestionAtConnectTime,
+    ProposedProtocolVersionsNotSupported,
+    RejectionByTheSpm,
+    RejectionByTheSpm2,
+    Unknown(u8),
 }
 
 /// Connection parameters required by the COSP protocol.
@@ -68,7 +86,7 @@ pub trait CospInitiator: Send {
 
 pub trait CospAcceptor: Send {
     fn accept(self) -> impl std::future::Future<Output = Result<(impl CospResponder, Option<Vec<u8>>), CospError>> + Send;
-    // fn refuse(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn refuse(self, reason_code: Option<ReasonCode>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }
 
 pub trait CospResponder: Send {

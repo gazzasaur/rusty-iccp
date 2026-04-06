@@ -1,7 +1,9 @@
+use std::collections::VecDeque;
+
 use bitfield::bitfield;
 use strum::IntoStaticStr;
 
-use crate::api::CospError;
+use crate::{ReasonCode, api::CospError, packet::constants::REASON_CODE_PARAMETER_CODE};
 
 #[derive(Debug, IntoStaticStr)]
 pub(crate) enum SessionPduParameter {
@@ -11,6 +13,7 @@ pub(crate) enum SessionPduParameter {
     OverflowAccept(Vec<SessionPduParameter>),
     ConnectDataOverflow(Vec<SessionPduParameter>),
     Accept(Vec<SessionPduParameter>),
+    Refuse(Vec<SessionPduParameter>),
     GiveTokens(),
     DataTransfer(Vec<SessionPduParameter>),
 
@@ -19,7 +22,7 @@ pub(crate) enum SessionPduParameter {
     ProtocolOptionsParameter(ProtocolOptionsField),
     TsduMaximumSizeParameter(TsduMaximumSizeField),
     VersionNumberParameter(VersionNumberField),
-    // ReasonCodeParameter(ReasonCode), TODO
+    ReasonCodeParameter(ReasonCode),
     SessionUserRequirementsParameter(SessionUserRequirementsField),
     CallingSessionSelectorParameter(Vec<u8>),
     CalledSessionSelectorParameter(Vec<u8>),
@@ -104,71 +107,56 @@ bitfield! {
 // ---
 // Reason Code
 
-// TODO
-// #[derive(Debug, IntoStaticStr)]
-// pub(crate) enum ReasonCode {
-//     RejectionByCalledSsUser,
-//     RejectionByCalledSsUserDueToTemporaryCongestion,
-//     RejectionByCalledSsUserWithData(Vec<u8>),
-//     SessionSelectorUnknown,
-//     SsUserNotAttachedToSsap,
-//     SpmCongestionAtConnectTime,
-//     ProposedProtocolVersionsNotSupported,
-//     RejectionByTheSpm,
-//     RejectionByTheSpm2,
-//     Unknown(u8),
-// }
+impl ReasonCode {
+    pub(crate) fn new(code: u8, user_data: &[u8]) -> Self {
+        match code {
+            0 => ReasonCode::RejectionByCalledSsUser,
+            1 => ReasonCode::RejectionByCalledSsUserDueToTemporaryCongestion,
+            2 => ReasonCode::RejectionByCalledSsUserWithData(user_data.to_vec()),
+            129 => ReasonCode::SessionSelectorUnknown,
+            130 => ReasonCode::SsUserNotAttachedToSsap,
+            131 => ReasonCode::SpmCongestionAtConnectTime,
+            132 => ReasonCode::ProposedProtocolVersionsNotSupported,
+            133 => ReasonCode::RejectionByTheSpm,
+            134 => ReasonCode::RejectionByTheSpm2,
+            x => ReasonCode::Unknown(x),
+        }
+    }
+}
 
-// impl ReasonCode {
-//     pub(crate) fn new(code: u8, user_data: &[u8]) -> Self {
-//         match code {
-//             0 => ReasonCode::RejectionByCalledSsUser,
-//             1 => ReasonCode::RejectionByCalledSsUserDueToTemporaryCongestion,
-//             2 => ReasonCode::RejectionByCalledSsUserWithData(user_data.to_vec()),
-//             129 => ReasonCode::SessionSelectorUnknown,
-//             130 => ReasonCode::SsUserNotAttachedToSsap,
-//             131 => ReasonCode::SpmCongestionAtConnectTime,
-//             132 => ReasonCode::ProposedProtocolVersionsNotSupported,
-//             133 => ReasonCode::RejectionByTheSpm,
-//             134 => ReasonCode::RejectionByTheSpm2,
-//             x => ReasonCode::Unknown(x),
-//         }
-//     }
-// }
+impl TryFrom<&ReasonCode> for Vec<u8> {
+    type Error = CospError;
 
-// impl TryFrom<&ReasonCode> for Vec<u8> {
-//     type Error = CospError;
+    fn try_from(value: &ReasonCode) -> Result<Self, Self::Error> {
+        let mut buffer = VecDeque::new();
 
-//     fn try_from(value: &ReasonCode) -> Result<Self, Self::Error> {
-//         let mut buffer = VecDeque::new();
+        let code = match value {
+            ReasonCode::RejectionByCalledSsUser => 0,
+            ReasonCode::RejectionByCalledSsUserDueToTemporaryCongestion => 1,
+            ReasonCode::RejectionByCalledSsUserWithData(_) => 2,
+            ReasonCode::SessionSelectorUnknown => 129,
+            ReasonCode::SsUserNotAttachedToSsap => 130,
+            ReasonCode::SpmCongestionAtConnectTime => 131,
+            ReasonCode::ProposedProtocolVersionsNotSupported => 132,
+            ReasonCode::RejectionByTheSpm => 133,
+            ReasonCode::RejectionByTheSpm2 => 134,
+            ReasonCode::Unknown(code) => *code,
+        };
 
-//         let code = match value {
-//             ReasonCode::RejectionByCalledSsUser => 0,
-//             ReasonCode::RejectionByCalledSsUserDueToTemporaryCongestion => 1,
-//             ReasonCode::RejectionByCalledSsUserWithData(_) => 2,
-//             ReasonCode::SessionSelectorUnknown => 129,
-//             ReasonCode::SsUserNotAttachedToSsap => 130,
-//             ReasonCode::SpmCongestionAtConnectTime => 131,
-//             ReasonCode::ProposedProtocolVersionsNotSupported => 132,
-//             ReasonCode::RejectionByTheSpm => 133,
-//             ReasonCode::RejectionByTheSpm2 => 134,
-//             ReasonCode::Unknown(code) => *code,
-//         };
+        let empty_vec = vec![];
+        let user_data = match value {
+            ReasonCode::RejectionByCalledSsUserWithData(user_data) => user_data,
+            _ => &empty_vec,
+        };
 
-//         let empty_vec = vec![];
-//         let user_data = match value {
-//             ReasonCode::RejectionByCalledSsUserWithData(user_data) => user_data,
-//             _ => &empty_vec,
-//         };
+        buffer.push_back(REASON_CODE_PARAMETER_CODE);
+        buffer.extend(encode_length(1 + user_data.len())?);
+        buffer.push_back(code);
+        buffer.extend(user_data);
 
-//         buffer.push_back(REASON_CODE_PARAMETER_CODE);
-//         buffer.extend(encode_length(1 + user_data.len())?);
-//         buffer.push_back(code);
-//         buffer.extend(user_data);
-
-//         Ok(buffer.into_iter().collect())
-//     }
-// }
+        Ok(buffer.into_iter().collect())
+    }
+}
 
 // ---
 // Session User Requirements

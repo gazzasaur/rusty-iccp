@@ -3,7 +3,7 @@ use tracing::warn;
 
 use crate::{
     api::CospError,
-    message::{accept::AcceptMessage, connect::ConnectMessage, connect_data_overflow::ConnectDataOverflowMessage, data_transfer::DataTransferMessage, overflow_accept::OverflowAcceptMessage},
+    message::{accept::AcceptMessage, connect::ConnectMessage, connect_data_overflow::ConnectDataOverflowMessage, data_transfer::DataTransferMessage, overflow_accept::OverflowAcceptMessage, refuse::RefuseMessage},
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
 };
 
@@ -13,11 +13,13 @@ pub(crate) mod connect_data_overflow;
 pub(crate) mod data_transfer;
 pub(crate) mod overflow_accept;
 pub(crate) mod parameters;
+pub(crate) mod refuse;
 
 #[derive(IntoStaticStr)]
 pub(crate) enum CospMessage {
     CN(ConnectMessage),
     AC(AcceptMessage),
+    RF(RefuseMessage),
     CDO(ConnectDataOverflowMessage),
     OA(OverflowAcceptMessage),
     DT(DataTransferMessage),
@@ -41,6 +43,7 @@ impl CospMessage {
         Ok(match message_parameter {
             SessionPduParameter::Connect(parameters) => CospMessage::CN(ConnectMessage::from_parameters(parameters.as_slice())?),
             SessionPduParameter::Accept(parameters) => CospMessage::AC(AcceptMessage::from_parameters(parameters.as_slice())?),
+            SessionPduParameter::Refuse(parameters) => CospMessage::RF(RefuseMessage::from_parameters(parameters.as_slice())?),
             SessionPduParameter::ConnectDataOverflow(parameters) => CospMessage::CDO(ConnectDataOverflowMessage::from_parameters(parameters.as_slice())?),
             SessionPduParameter::OverflowAccept(parameters) => CospMessage::OA(OverflowAcceptMessage::from_parameters(parameters.as_slice())?),
             _ => return Err(CospError::ProtocolError(format!("Unsupported SPDU: {}", <&SessionPduParameter as Into<&'static str>>::into(message_parameter)))),

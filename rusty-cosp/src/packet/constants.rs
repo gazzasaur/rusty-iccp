@@ -6,7 +6,7 @@ pub(crate) const DATA_TRANSFER_SI_CODE: u8 = 1;
 pub(crate) const GIVE_TOKENS_SI_CODE: u8 = 1;
 
 // TODO
-// pub(crate) const REFUSE_SI_CODE: u8 = 12;
+pub(crate) const REFUSE_SI_CODE: u8 = 12;
 // pub(crate) const FINISH_SI_CODE: u8 = 9;
 // pub(crate) const DISCONNECT_SI_CODE: u8 = 10;
 // pub(crate) const ABORT_SI_CODE: u8 = 25;
@@ -23,8 +23,8 @@ pub(crate) const CALLING_SESSION_SELECTOR: u8 = 51;
 pub(crate) const CALLED_SESSION_SELECTOR: u8 = 52;
 pub(crate) const DATA_OVERFLOW_PARAMETER_CODE: u8 = 60;
 pub(crate) const ENCLOSURE_PARAMETER_CODE: u8 = 25;
+pub(crate) const REASON_CODE_PARAMETER_CODE: u8 = 50;
 // TODO
-// pub(crate) const REASON_CODE_PARAMETER_CODE: u8 = 50;
 // pub(crate) const REFLECT_PARAMETER_VALUES_PARAMETER_CODE: u8 = 49;
 
 pub(crate) const PROTOCOL_OPTIONS_PARAMETER_CODE: u8 = 19;

@@ -79,13 +79,7 @@ pub(crate) fn serialise_accept(initiator_size: &TsduMaximumSize, is_first: Optio
     SessionPduList::new(vec![SessionPduParameter::Accept(session_parameters)], vec![]).serialise()
 }
 
-pub(crate) async fn receive_accept_with_all_user_data(reader: &mut impl CotpReader) -> Result<AcceptMessage, CospError> {
-    let message = receive_message(reader).await?;
-    let accept_message = match message {
-        CospMessage::AC(accept_message) => accept_message,
-        _ => return Err(CospError::ProtocolError(format!("Expected an Accept message but got: {}", <CospMessage as Into<&'static str>>::into(message)))),
-    };
-
+pub(crate) async fn receive_accept_with_all_user_data(reader: &mut impl CotpReader, accept_message: AcceptMessage) -> Result<AcceptMessage, CospError> {
     let mut buffer = VecDeque::new();
     let has_data = accept_message.user_data().is_some();
     let mut has_more_data = accept_message.has_more_data();

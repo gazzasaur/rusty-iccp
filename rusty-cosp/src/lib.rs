@@ -99,9 +99,8 @@ mod tests {
         Ok(())
     }
 
-    // TODO Need to fix Accept
-    // TODO Need to take into account the mtu of the peer
-    // TODO Need to DT a lot bigger data
+    // FIXME SPEC Need to fix Accept
+    // FIXME SPEC Need to take into account the mtu of the peer
     #[tokio::test]
     #[traced_test]
     async fn it_should_pass_jumbo_connect_and_accept_data() -> Result<(), anyhow::Error> {
@@ -159,6 +158,117 @@ mod tests {
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_refuse_the_connection_without_a_reason() -> Result<(), anyhow::Error> {
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        // let test_address = format!("127.0.0.1:{}", 10002).parse()?;
+
+        let connect_information = CotpProtocolInformation::initiator(None, None);
+
+        let tpkt_listener = TcpTpktServer::listen(test_address).await?;
+        let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
+
+        let (cotp_initiator, cotp_acceptor) = join!(async { RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(), Default::default()).await }, async {
+            let (acceptor, remote) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, Default::default()).await?;
+            assert_eq!(remote, connect_information);
+            acceptor.accept(remote).await
+        });
+
+        let cotp_client = cotp_initiator?;
+        let cotp_server = cotp_acceptor?;
+        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
+
+        let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(Some(vec![0, 1, 2, 3])).await }, async {
+            let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
+            cosp_server_connector.refuse(None).await?;
+            Ok::<_, CospError>(())
+        });
+
+        cosp_server?;
+        match cosp_client {
+            Err(CospError::Refused(reason_code)) => assert_eq!(reason_code, None),
+            Ok(_) => assert!(false, "Test Failed"),
+            Err(_) => assert!(false, "Test Failed"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_refuse_the_connection_with_a_reason_without_data() -> Result<(), anyhow::Error> {
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        // let test_address = format!("127.0.0.1:{}", 10002).parse()?;
+
+        let connect_information = CotpProtocolInformation::initiator(None, None);
+
+        let tpkt_listener = TcpTpktServer::listen(test_address).await?;
+        let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
+
+        let (cotp_initiator, cotp_acceptor) = join!(async { RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(), Default::default()).await }, async {
+            let (acceptor, remote) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, Default::default()).await?;
+            assert_eq!(remote, connect_information);
+            acceptor.accept(remote).await
+        });
+
+        let cotp_client = cotp_initiator?;
+        let cotp_server = cotp_acceptor?;
+        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
+
+        let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(Some(vec![0, 1, 2, 3])).await }, async {
+            let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
+            cosp_server_connector.refuse(Some(ReasonCode::SessionSelectorUnknown)).await?;
+            Ok::<_, CospError>(())
+        });
+
+        cosp_server?;
+        match cosp_client {
+            Err(CospError::Refused(reason_code)) => assert_eq!(reason_code, Some(ReasonCode::SessionSelectorUnknown)),
+            Ok(_) => assert!(false, "Test Failed"),
+            Err(_) => assert!(false, "Test Failed"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_refuse_the_connection_with_a_reason_with_data() -> Result<(), anyhow::Error> {
+        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        // let test_address = format!("127.0.0.1:{}", 10002).parse()?;
+
+        let connect_information = CotpProtocolInformation::initiator(None, None);
+
+        let tpkt_listener = TcpTpktServer::listen(test_address).await?;
+        let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
+
+        let (cotp_initiator, cotp_acceptor) = join!(async { RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(), Default::default()).await }, async {
+            let (acceptor, remote) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, Default::default()).await?;
+            assert_eq!(remote, connect_information);
+            acceptor.accept(remote).await
+        });
+
+        let cotp_client = cotp_initiator?;
+        let cotp_server = cotp_acceptor?;
+        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
+
+        let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(Some(vec![0, 1, 2, 3])).await }, async {
+            let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
+            cosp_server_connector.refuse(Some(ReasonCode::RejectionByCalledSsUserWithData(b"hello".to_vec()))).await?;
+            Ok::<_, CospError>(())
+        });
+
+        cosp_server?;
+        match cosp_client {
+            Err(CospError::Refused(reason_code)) => assert_eq!(reason_code, Some(ReasonCode::RejectionByCalledSsUserWithData(b"hello".to_vec()))),
+            Ok(_) => assert!(false, "Test Failed"),
+            Err(_) => assert!(false, "Test Failed"),
         }
 
         Ok(())
