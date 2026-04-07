@@ -274,6 +274,50 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_refuse_the_connection_with_a_reason_with_data_using_jumbo_payloads() -> Result<(), anyhow::Error> {
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = format!("127.0.0.1:{}", 10002).parse()?;
+
+        let mut initial_connect_data = vec![0x00u8; 10240 + 65520 + 65520 + 100];
+        rand::fill(initial_connect_data.as_mut_slice());
+
+        let mut init_refuse_data = vec![0x00u8; 65510 + 65510 + 100];
+        rand::fill(init_refuse_data.as_mut_slice());
+        let recv_refuse_data = init_refuse_data.clone();
+
+        let connect_information = CotpProtocolInformation::initiator(None, None);
+
+        let tpkt_listener = TcpTpktServer::listen(test_address).await?;
+        let (tpkt_client, tpkt_server) = join!(TcpTpktConnection::connect(test_address), tpkt_listener.accept());
+
+        let (cotp_initiator, cotp_acceptor) = join!(async { RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client?, connect_information.clone(), Default::default()).await }, async {
+            let (acceptor, remote) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_server?, Default::default()).await?;
+            assert_eq!(remote, connect_information);
+            acceptor.accept(remote).await
+        });
+
+        let cotp_client = cotp_initiator?;
+        let cotp_server = cotp_acceptor?;
+        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
+
+        let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(Some(vec![0, 1, 2, 3])).await }, async {
+            let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
+            cosp_server_connector.refuse(Some(ReasonCode::RejectionByCalledSsUserWithData(init_refuse_data))).await?;
+            Ok::<_, CospError>(())
+        });
+
+        cosp_server?;
+        match cosp_client {
+            Err(CospError::Refused(reason_code)) => assert_eq!(reason_code, Some(ReasonCode::RejectionByCalledSsUserWithData(recv_refuse_data))),
+            Ok(_) => assert!(false, "Test Failed"),
+            Err(_) => assert!(false, "Test Failed"),
+        }
+
+        Ok(())
+    }
+
     // FIXME TEST verify connect info
     async fn create_cosp_connection_pair_with_options(
         connect_data: Option<&[u8]>,

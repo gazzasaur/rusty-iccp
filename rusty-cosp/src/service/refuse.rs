@@ -1,18 +1,57 @@
 use std::collections::VecDeque;
 
 use rusty_cotp::{CotpReader, CotpWriter};
+use tracing::warn;
 
 use crate::{
     CospError, ReasonCode, message::{CospMessage, refuse::RefuseMessage}, packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    }, service::message::receive_message
+    }, service::message::{MAX_PAYLOAD_SIZE, receive_message}
 };
 
 // FIXME SPEC Support fragmented refuse payloads
 pub(crate) async fn send_refuse(writer: &mut impl CotpWriter, reason_code: Option<&ReasonCode>) -> Result<(), CospError> {
-    let payload_data = serialise_refuse(reason_code, None, None)?;
-    return Ok(writer.send(&mut VecDeque::from(vec![payload_data])).await?);
+    // As we may need to send multiple refuse payloads, we will precalculate the size of the header without enclosure.
+    let optimistic_refuse = serialise_refuse(None, None, None)?;
+
+    // Fetch the user data that is included in the Ss User reason
+    let user_data = match reason_code {
+        Some(ReasonCode::RejectionByCalledSsUserWithData(user_data)) => Some(user_data),
+        _ => None,
+    };
+
+    // Add an extra 8 bytes for enclosure and headers.
+    let optimistic_size = optimistic_refuse.len() + user_data.as_ref().map(|data| data.len()).unwrap_or(0) + 8;
+
+    if !matches!(reason_code, Some(ReasonCode::RejectionByCalledSsUserWithData(_))) || optimistic_size <= MAX_PAYLOAD_SIZE {
+        let payload_data = serialise_refuse(reason_code, None, None)?;
+        return Ok(writer.send(&mut VecDeque::from(vec![payload_data])).await?);
+    }
+
+    let mut cursor = 0;
+    let mut beginning = true;
+    let default_user_data = &vec![];
+    // The -2 accounts a 16-bit encoded length when the size is >254 bytes.
+    let maximum_data_size = MAX_PAYLOAD_SIZE;
+    let user_data = match user_data {
+        Some(user_data) => user_data,
+        None => default_user_data,
+    };
+    loop {
+        let start_index = cursor;
+        cursor = cursor + maximum_data_size;
+        if cursor > user_data.len() {
+            cursor = user_data.len()
+        }
+
+        let payload_data = serialise_refuse(Some(&ReasonCode::RejectionByCalledSsUserWithData(user_data[start_index..cursor].to_vec())),  Some(beginning), Some(cursor >= user_data.len()))?;
+        writer.send(&mut VecDeque::from(vec![payload_data])).await?;
+        if cursor >= user_data.len() {
+            return Ok(());
+        }
+        beginning = false;
+    }
 }
 
 pub(crate) fn serialise_refuse(reason_code: Option<&ReasonCode>, is_first: Option<bool>, is_last: Option<bool>) -> Result<Vec<u8>, CospError> {
