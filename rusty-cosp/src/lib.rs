@@ -1,5 +1,4 @@
 /// Connection Reuse is not supported.
-
 mod api;
 mod message;
 mod packet;
@@ -184,7 +183,8 @@ mod tests {
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
-        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
+        let cosp_client_connector =
+            RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
 
         let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(Some(vec![0, 1, 2, 3])).await }, async {
             let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
@@ -221,7 +221,8 @@ mod tests {
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
-        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
+        let cosp_client_connector =
+            RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
 
         let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(Some(vec![0, 1, 2, 3])).await }, async {
             let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
@@ -258,7 +259,8 @@ mod tests {
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
-        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
+        let cosp_client_connector =
+            RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
 
         let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(Some(vec![0, 1, 2, 3])).await }, async {
             let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
@@ -302,7 +304,8 @@ mod tests {
 
         let cotp_client = cotp_initiator?;
         let cotp_server = cotp_acceptor?;
-        let cosp_client_connector = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
+        let cosp_client_connector =
+            RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), CospConnectionParameters { ..Default::default() }).await?;
 
         let (cosp_client, cosp_server) = join!(async { cosp_client_connector.initiate(Some(vec![0, 1, 2, 3])).await }, async {
             let (cosp_server_connector, _) = RustyCospListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_server).await?;
@@ -386,7 +389,7 @@ mod tests {
             CospRecvResult::Disconnect(data) => assert_eq!(data, Some(b"Disconnect Data".to_vec())),
             x => {
                 assert!(false, "Expected the connection to be open: {:?}", x);
-            },
+            }
         }
 
         Ok(())
@@ -422,7 +425,7 @@ mod tests {
             CospRecvResult::Disconnect(data) => assert_eq!(data, Some(b"Disconnect Data".to_vec())),
             x => {
                 assert!(false, "Expected the connection to be open: {:?}", x);
-            },
+            }
         }
 
         Ok(())

@@ -3,10 +3,13 @@ use std::collections::VecDeque;
 use rusty_cotp::{CotpReader, CotpWriter};
 
 use crate::{
-    CospError, ReasonCode, message::{CospMessage, refuse::RefuseMessage}, packet::{
+    CospError, ReasonCode,
+    message::{CospMessage, refuse::RefuseMessage},
+    packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    }, service::message::{MAX_PAYLOAD_SIZE, receive_message}
+    },
+    service::message::{MAX_PAYLOAD_SIZE, receive_message},
 };
 
 // FIXME SPEC Support fragmented refuse payloads, using tsdu
@@ -44,7 +47,7 @@ pub(crate) async fn send_refuse(writer: &mut impl CotpWriter, reason_code: Optio
             cursor = user_data.len()
         }
 
-        let payload_data = serialise_refuse(Some(&ReasonCode::RejectionByCalledSsUserWithData(user_data[start_index..cursor].to_vec())),  Some(beginning), Some(cursor >= user_data.len()))?;
+        let payload_data = serialise_refuse(Some(&ReasonCode::RejectionByCalledSsUserWithData(user_data[start_index..cursor].to_vec())), Some(beginning), Some(cursor >= user_data.len()))?;
         writer.send(&mut VecDeque::from(vec![payload_data])).await?;
         if cursor >= user_data.len() {
             return Ok(());

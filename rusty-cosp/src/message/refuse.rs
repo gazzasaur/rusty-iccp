@@ -1,5 +1,7 @@
 use crate::{
-    ReasonCode, api::CospError, packet::parameters::{EnclosureField, SessionPduParameter}
+    ReasonCode,
+    api::CospError,
+    packet::parameters::{EnclosureField, SessionPduParameter},
 };
 
 pub(crate) struct RefuseMessage {
