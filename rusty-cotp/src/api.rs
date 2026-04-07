@@ -33,7 +33,7 @@ pub struct CotpConnectionParameters {
 
 impl Default for CotpConnectionParameters {
     fn default() -> Self {
-        Self { max_reassembled_payload_size: 1048576 + 1024 }
+        Self { max_reassembled_payload_size: 1024*1024 + 1024 }
     }
 }
 

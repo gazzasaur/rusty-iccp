@@ -3,13 +3,10 @@ use std::collections::VecDeque;
 use rusty_cotp::{CotpReader, CotpWriter};
 
 use crate::{
-    CospError,
-    message::{CospMessage, abort::AbortMessage, parameters::TsduMaximumSize},
-    packet::{
+    CospConnectionParameters, CospError, message::{CospMessage, abort::AbortMessage, parameters::TsduMaximumSize}, packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    },
-    service::message::{MAX_PAYLOAD_SIZE, receive_message},
+    }, service::message::{MAX_PAYLOAD_SIZE, receive_message}
 };
 
 pub(crate) async fn send_abort(writer: &mut impl CotpWriter, negotiated_size: TsduMaximumSize, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
@@ -74,7 +71,7 @@ pub(crate) fn serialise_abort(is_first: Option<bool>, is_last: Option<bool>, use
     SessionPduList::new(vec![SessionPduParameter::Abort(session_parameters)], vec![]).serialise()
 }
 
-pub(crate) async fn receive_abort_with_all_user_data(reader: &mut impl CotpReader, abort_message: AbortMessage) -> Result<AbortMessage, CospError> {
+pub(crate) async fn receive_abort_with_all_user_data(reader: &mut impl CotpReader, abort_message: AbortMessage, connection_options: &CospConnectionParameters) -> Result<AbortMessage, CospError> {
     let mut buffer = VecDeque::new();
     let has_data = abort_message.user_data().is_some();
     let mut has_more_data = abort_message.has_more_data();
@@ -92,6 +89,10 @@ pub(crate) async fn receive_abort_with_all_user_data(reader: &mut impl CotpReade
         has_more_data = abort_message.has_more_data();
         if let Some(user_data) = abort_message.user_data() {
             buffer.extend(user_data);
+        }
+
+        if buffer.len() > connection_options.maximum_reassembled_payload_size {
+            return Err(CospError::ProtocolError("Message length is exceeds maximum payload size.".into()))
         }
     }
 

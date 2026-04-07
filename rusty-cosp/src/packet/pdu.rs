@@ -82,7 +82,7 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, C
 
             SessionPduParameter::ReasonCodeParameter(field) => field.try_into()?,
 
-            SessionPduParameter::Unknown => todo!(),
+            SessionPduParameter::Unknown => continue,
         });
     }
     Ok(buffer.drain(..).collect())

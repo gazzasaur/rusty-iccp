@@ -5,7 +5,7 @@ use rusty_acse::{
     AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
-use rusty_cosp::{CospProtocolInformation, RustyCospInitiatorIsoStack, RustyCospListenerIsoStack};
+use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospInitiatorIsoStack, RustyCospListenerIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{marker::PhantomData, net::SocketAddr, sync::Arc};
 use tokio::sync::{
@@ -199,7 +199,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         let (cotp_listener, cotp_connection_info) = RustyCotpResponder::<R, W>::new(tpkt_connection, Default::default()).await.map_err(to_mms_error("Failed to create COTP Server"))?;
         let cotp_connection = cotp_listener.accept(cotp_connection_info).await.map_err(to_mms_error(""))?;
 
-        let (cosp_listener, _) = RustyCospListenerIsoStack::<R, W>::new(cotp_connection).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
+        let (cosp_listener, _) = RustyCospListenerIsoStack::<R, W>::new(cotp_connection, CospConnectionParameters::default()).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
 
         // TODO: Need to expose this.
         let _copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };

@@ -3,13 +3,10 @@ use std::collections::VecDeque;
 use rusty_cotp::{CotpReader, CotpWriter};
 
 use crate::{
-    CospError,
-    message::{CospMessage, finish::FinishMessage, parameters::TsduMaximumSize},
-    packet::{
+    CospConnectionParameters, CospError, message::{CospMessage, finish::FinishMessage, parameters::TsduMaximumSize}, packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    },
-    service::message::{MAX_PAYLOAD_SIZE, receive_message},
+    }, service::message::{MAX_PAYLOAD_SIZE, receive_message}
 };
 
 pub(crate) async fn send_finish(writer: &mut impl CotpWriter, negotiated_size: TsduMaximumSize, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
@@ -74,7 +71,7 @@ pub(crate) fn serialise_finish(is_first: Option<bool>, is_last: Option<bool>, us
     SessionPduList::new(vec![SessionPduParameter::Finish(session_parameters)], vec![]).serialise()
 }
 
-pub(crate) async fn receive_finish_with_all_user_data(reader: &mut impl CotpReader, finish_message: FinishMessage) -> Result<FinishMessage, CospError> {
+pub(crate) async fn receive_finish_with_all_user_data(reader: &mut impl CotpReader, finish_message: FinishMessage, connection_options: &CospConnectionParameters) -> Result<FinishMessage, CospError> {
     let mut buffer = VecDeque::new();
     let has_data = finish_message.user_data().is_some();
     let mut has_more_data = finish_message.has_more_data();
@@ -92,6 +89,10 @@ pub(crate) async fn receive_finish_with_all_user_data(reader: &mut impl CotpRead
         has_more_data = finish_message.has_more_data();
         if let Some(user_data) = finish_message.user_data() {
             buffer.extend(user_data);
+        }
+
+        if buffer.len() > connection_options.maximum_reassembled_payload_size {
+            return Err(CospError::ProtocolError("Message length is exceeds maximum payload size.".into()))
         }
     }
 

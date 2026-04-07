@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 use rusty_cotp::CotpWriter;
 
 use crate::{
-    CospConnectionParameters,
     api::{CospError, CospProtocolInformation},
     packet::{
         parameters::{DataOverflowField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField},
@@ -16,7 +15,7 @@ pub(crate) enum SendConnectionRequestResult {
     Overflow(usize),
 }
 
-pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: CospProtocolInformation, connection_parameters: CospConnectionParameters, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
+pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: CospProtocolInformation, user_data: Option<&[u8]>) -> Result<SendConnectionRequestResult, CospError> {
     const MAX_USER_DATA_PAYLOAD_SIZE: usize = 512;
     const MAX_EXTENDED_USER_DATA_PAYLOAD_SIZE: usize = 10240;
 
@@ -24,9 +23,9 @@ pub(crate) async fn send_connect_reqeust(writer: &mut impl CotpWriter, options: 
         SessionPduParameter::ProtocolOptionsParameter(ProtocolOptionsField(0)), // Do not support extended PDUs
         SessionPduParameter::VersionNumberParameter(VersionNumberField(2)),     // Version 2 only
     ];
-    if let Some(size) = connection_parameters.tsdu_maximum_size {
-        connect_accept_parameters.push(SessionPduParameter::TsduMaximumSizeParameter(TsduMaximumSizeField::new(size, 0)));
-    }
+
+    // The requested TSDU size is set to unlimited. We can handle any size in this stack.
+    connect_accept_parameters.push(SessionPduParameter::TsduMaximumSizeParameter(TsduMaximumSizeField::new(0, 0)));
 
     let mut parameters = vec![
         SessionPduParameter::ConnectAcceptItemParameter(connect_accept_parameters),

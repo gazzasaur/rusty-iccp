@@ -45,14 +45,13 @@ pub enum ReasonCode {
 pub struct CospConnectionParameters {
     /// A limit on the reassembled payload. If this is exceeded, an error will be raised on the read operation.
     ///
-    /// Defaults to None. This allows for infinite length payloads or for the server to set a length.
-    pub tsdu_maximum_size: Option<u16>,
-    // FIXME SECURITY Need a reassembled payload size.
+    /// Defaults to 1MB for payload plus a 1024 byte overhead to account for headers. Only applies to inbound data.
+    pub maximum_reassembled_payload_size: usize,
 }
 
 impl Default for CospConnectionParameters {
     fn default() -> Self {
-        Self { tsdu_maximum_size: None }
+        Self { maximum_reassembled_payload_size: 1024*1024 + 1024 }
     }
 }
 

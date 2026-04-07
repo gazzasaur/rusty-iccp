@@ -3,16 +3,12 @@ use std::collections::VecDeque;
 use rusty_cotp::{CotpReader, CotpWriter};
 
 use crate::{
-    CospError, ReasonCode,
-    message::{CospMessage, parameters::TsduMaximumSize, refuse::RefuseMessage},
-    packet::{
+    CospConnectionParameters, CospError, ReasonCode, message::{CospMessage, parameters::TsduMaximumSize, refuse::RefuseMessage}, packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    },
-    service::message::{MAX_PAYLOAD_SIZE, receive_message},
+    }, service::message::{MAX_PAYLOAD_SIZE, receive_message}
 };
 
-// FIXME SPEC Support fragmented refuse payloads, using tsdu
 pub(crate) async fn send_refuse(writer: &mut impl CotpWriter, negotiated_size: TsduMaximumSize, reason_code: Option<&ReasonCode>) -> Result<(), CospError> {
     // As we may need to send multiple refuse payloads, we will precalculate the size of the header without enclosure.
     let optimistic_refuse = serialise_refuse(None, None, None)?;
@@ -82,7 +78,7 @@ pub(crate) fn serialise_refuse(reason_code: Option<&ReasonCode>, is_first: Optio
     SessionPduList::new(vec![SessionPduParameter::Refuse(session_parameters)], vec![]).serialise()
 }
 
-pub(crate) async fn receive_refuse_with_all_user_data(reader: &mut impl CotpReader, refuse_message: RefuseMessage) -> Result<RefuseMessage, CospError> {
+pub(crate) async fn receive_refuse_with_all_user_data(reader: &mut impl CotpReader, refuse_message: RefuseMessage, connection_options: &CospConnectionParameters) -> Result<RefuseMessage, CospError> {
     let mut buffer = VecDeque::new();
     let has_data = match refuse_message.reason_code() {
         Some(ReasonCode::RejectionByCalledSsUserWithData(_)) => true,
@@ -104,6 +100,10 @@ pub(crate) async fn receive_refuse_with_all_user_data(reader: &mut impl CotpRead
         has_more_data = refuse_message.has_more_data();
         if let Some(ReasonCode::RejectionByCalledSsUserWithData(user_data)) = refuse_message.reason_code() {
             buffer.extend(user_data);
+        }
+
+        if buffer.len() > connection_options.maximum_reassembled_payload_size {
+            return Err(CospError::ProtocolError("Message length is exceeds maximum payload size.".into()))
         }
     }
 
