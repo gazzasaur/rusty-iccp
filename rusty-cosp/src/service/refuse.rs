@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use rusty_cotp::{CotpReader, CotpWriter};
-use tracing::warn;
 
 use crate::{
     CospError, ReasonCode, message::{CospMessage, refuse::RefuseMessage}, packet::{
@@ -10,7 +9,7 @@ use crate::{
     }, service::message::{MAX_PAYLOAD_SIZE, receive_message}
 };
 
-// FIXME SPEC Support fragmented refuse payloads
+// FIXME SPEC Support fragmented refuse payloads, using tsdu
 pub(crate) async fn send_refuse(writer: &mut impl CotpWriter, reason_code: Option<&ReasonCode>) -> Result<(), CospError> {
     // As we may need to send multiple refuse payloads, we will precalculate the size of the header without enclosure.
     let optimistic_refuse = serialise_refuse(None, None, None)?;

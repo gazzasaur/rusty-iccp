@@ -142,6 +142,7 @@ impl<R: CospReader> RustyCoppReader<R> {
 impl<R: CospReader> CoppReader for RustyCoppReader<R> {
     async fn recv(&mut self) -> Result<CoppRecvResult, CoppError> {
         match self.cosp_reader.recv().await? {
+            rusty_cosp::CospRecvResult::Finish(_) => todo!(),
             rusty_cosp::CospRecvResult::Closed => return Ok(CoppRecvResult::Closed),
             rusty_cosp::CospRecvResult::Data(items) => Ok(CoppRecvResult::Data(UserData::parse_raw(&items).map_err(|e| CoppError::ProtocolError(e.to_string()))?)),
         }

@@ -6,7 +6,7 @@ use tracing::warn;
 use crate::{
     ReasonCode, api::CospError, packet::{
         constants::{
-            ACCEPT_SI_CODE, CALLED_SESSION_SELECTOR, CALLING_SESSION_SELECTOR, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, REASON_CODE_PARAMETER_CODE, REFUSE_SI_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE
+            ACCEPT_SI_CODE, CALLED_SESSION_SELECTOR, CALLING_SESSION_SELECTOR, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, FINISH_SI_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, REASON_CODE_PARAMETER_CODE, REFUSE_SI_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE
         },
         parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField, encode_length},
     }, serialise_parameter_value
@@ -55,6 +55,7 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, C
             SessionPduParameter::ConnectDataOverflow(sub_parameters) => serialise_composite_parameter(CONNECT_DATA_OVERFLOW_SI_CODE, &sub_parameters)?,
             SessionPduParameter::Accept(sub_parameters) => serialise_composite_parameter(ACCEPT_SI_CODE, &sub_parameters)?,
             SessionPduParameter::Refuse(sub_parameters) => serialise_composite_parameter(REFUSE_SI_CODE, &sub_parameters)?,
+            SessionPduParameter::Finish(sub_parameters) => serialise_composite_parameter(FINISH_SI_CODE, &sub_parameters)?,
             SessionPduParameter::DataTransfer(sub_parameters) => serialise_composite_parameter(DATA_TRANSFER_SI_CODE, &sub_parameters)?,
 
             SessionPduParameter::GiveTokens() => vec![GIVE_TOKENS_SI_CODE, 00],
@@ -113,6 +114,7 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
             CONNECT_SI_CODE => SessionPduParameter::Connect(deserialise_parameters(payload)?.0),
             ACCEPT_SI_CODE => SessionPduParameter::Accept(deserialise_parameters(payload)?.0),
             REFUSE_SI_CODE => SessionPduParameter::Refuse(deserialise_parameters(payload)?.0),
+            FINISH_SI_CODE => SessionPduParameter::Finish(deserialise_parameters(payload)?.0),
             OVERFLOW_ACCEPT_SI_CODE => SessionPduParameter::OverflowAccept(deserialise_parameters(payload)?.0),
             CONNECT_DATA_OVERFLOW_SI_CODE => SessionPduParameter::ConnectDataOverflow(deserialise_parameters(payload)?.0),
 

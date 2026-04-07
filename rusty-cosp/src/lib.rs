@@ -38,11 +38,13 @@ mod tests {
         client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
         server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
         }
 
@@ -60,11 +62,13 @@ mod tests {
         client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
         server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
         }
 
@@ -88,11 +92,13 @@ mod tests {
         client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
         server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
         }
 
@@ -118,11 +124,13 @@ mod tests {
         client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
         server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
         }
 
@@ -152,11 +160,13 @@ mod tests {
         client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
         match server_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
         }
         server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
         match client_reader.recv().await? {
             CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
             CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
         }
 
@@ -325,8 +335,8 @@ mod tests {
         connection_options: CospConnectionParameters,
         accept_data: Option<Vec<u8>>,
     ) -> Result<(impl CospConnection, impl CospConnection), anyhow::Error> {
-        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        // let test_address = "127.0.0.1:10002".parse()?;
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
 
         let connect_information = CotpProtocolInformation::initiator(None, None);
 
@@ -352,5 +362,67 @@ mod tests {
         });
 
         Ok((cosp_client?.0, cosp_server?))
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_support_orderly_shutdown_client() -> Result<(), anyhow::Error> {
+        let (client_connection, server_connection) = create_cosp_connection_pair_with_options(Some(&[5, 6, 7]), CospProtocolInformation::new(None, None), Default::default(), Some(vec![5, 4, 3])).await?;
+
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
+
+        client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
+        match server_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
+        }
+        server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
+        match client_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
+        }
+
+        client_writer.finish(Some(b"Finish Data".to_vec())).await?;
+        match server_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(data) => assert_eq!(data, Some(b"Finish Data".to_vec())),
+            CospRecvResult::Data(_) => assert!(false, "Expected the connection to be open."),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_support_orderly_shutdown_server() -> Result<(), anyhow::Error> {
+        let (client_connection, server_connection) = create_cosp_connection_pair_with_options(Some(&[5, 6, 7]), CospProtocolInformation::new(None, None), Default::default(), Some(vec![5, 4, 3])).await?;
+
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
+
+        client_writer.send(&mut VecDeque::from(vec![[0x61, 0x02, 0x05, 0x00].to_vec()])).await?;
+        match server_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "61020500"),
+        }
+        server_writer.send(&mut VecDeque::from(vec![[1, 2, 3, 4].to_vec()])).await?;
+        match client_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(_) => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Data(data) => assert_eq!(hex::encode(data), "01020304"),
+        }
+
+        server_writer.finish(Some(b"Finish Data".to_vec())).await?;
+        match client_reader.recv().await? {
+            CospRecvResult::Closed => assert!(false, "Expected the connection to be open."),
+            CospRecvResult::Finish(data) => assert_eq!(data, Some(b"Finish Data".to_vec())),
+            CospRecvResult::Data(_) => assert!(false, "Expected the connection to be open."),
+        }
+
+        Ok(())
     }
 }

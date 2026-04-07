@@ -14,6 +14,7 @@ pub(crate) enum SessionPduParameter {
     ConnectDataOverflow(Vec<SessionPduParameter>),
     Accept(Vec<SessionPduParameter>),
     Refuse(Vec<SessionPduParameter>),
+    Finish(Vec<SessionPduParameter>),
     GiveTokens(),
     DataTransfer(Vec<SessionPduParameter>),
 

@@ -4,19 +4,25 @@ use rusty_cotp::{CotpConnection, CotpReader, CotpWriter};
 use rusty_tpkt::ProtocolInformation;
 
 use crate::{
-    CospAcceptor, CospConnection, CospConnectionParameters, CospError, CospInitiator, CospProtocolInformation, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode, message::{CospMessage, parameters::TsduMaximumSize}, packet::{
+    CospAcceptor, CospConnection, CospConnectionParameters, CospError, CospInitiator, CospProtocolInformation, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode,
+    finish::{receive_finish_with_all_user_data, send_finish},
+    message::{CospMessage, parameters::TsduMaximumSize},
+    packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    }, refuse::{receive_refuse_with_all_user_data, send_refuse}, service::{
+    },
+    refuse::{receive_refuse_with_all_user_data, send_refuse},
+    service::{
         accept::{receive_accept_with_all_user_data, send_accept},
         connect::{SendConnectionRequestResult, send_connect_reqeust},
         message::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
         overflow::{receive_connect_data_overflow, receive_overflow_accept, send_connect_data_overflow, send_overflow_accept},
-    }
+    },
 };
 
 pub(crate) mod accept;
 pub(crate) mod connect;
+pub(crate) mod finish;
 pub(crate) mod message;
 pub(crate) mod overflow;
 pub(crate) mod refuse;
@@ -139,7 +145,7 @@ impl<R: CotpReader, W: CotpWriter> CospAcceptor for RustyCospAcceptor<R, W> {
 
         Ok((RustyCospResponder::<R, W>::new(cotp_reader, cotp_writer, maximum_size_to_initiator, self.protocol_information_list), self.user_data))
     }
-    
+
     async fn refuse(self, reason_code: Option<ReasonCode>) -> Result<(), CospError> {
         let mut cotp_writer = self.cotp_writer;
         send_refuse(&mut cotp_writer, reason_code.as_ref()).await
@@ -209,6 +215,11 @@ impl<R: CotpReader> CospReader for RustyCospReader<R> {
             let received_message = CospMessage::from_spdu_list(SessionPduList::deserialise(&data)?)?;
             let data_transfer_message = match received_message {
                 CospMessage::DT(message) => message,
+                CospMessage::FN(message) => {
+                    let finish_message = receive_finish_with_all_user_data(&mut self.cotp_reader, message).await?;
+                    return Ok(CospRecvResult::Finish(finish_message.user_data().cloned()));
+                }
+                // Disconnect
                 _ => todo!(),
             };
 
@@ -268,6 +279,11 @@ impl<W: CotpWriter> CospWriter for RustyCospWriter<W> {
 
         // Perform one more to ensure lower levels are also flushed even if this layer is complete.
         self.cotp_writer.send(&mut self.buffer).await?;
+        Ok(())
+    }
+
+    async fn finish(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+        send_finish(&mut self.cotp_writer, user_data).await?;
         Ok(())
     }
 }
