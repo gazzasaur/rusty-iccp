@@ -16,6 +16,7 @@ pub(crate) enum SessionPduParameter {
     Refuse(Vec<SessionPduParameter>),
     Finish(Vec<SessionPduParameter>),
     Disconnect(Vec<SessionPduParameter>),
+    Abort(Vec<SessionPduParameter>),
     GiveTokens(),
     DataTransfer(Vec<SessionPduParameter>),
 

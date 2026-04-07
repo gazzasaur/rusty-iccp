@@ -4,7 +4,7 @@ use rusty_cotp::{CotpReader, CotpWriter};
 
 use crate::{
     api::CospError,
-    message::{CospMessage, overflow_accept::OverflowAcceptMessage, parameters::TsduMaximumSize},
+    message::{CospMessage, parameters::TsduMaximumSize},
     packet::{
         parameters::{EnclosureField, SessionPduParameter, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
@@ -22,16 +22,6 @@ pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter, initiator
 
     let pdus = SessionPduList::new(vec![SessionPduParameter::OverflowAccept(sub_parameters)], vec![]);
     Ok(writer.send(&mut VecDeque::from(vec![pdus.serialise()?])).await?)
-}
-
-// We do not really need to return anything here. We will inspect the accept payload at the end.
-pub(crate) async fn receive_overflow_accept(reader: &mut impl CotpReader) -> Result<OverflowAcceptMessage, CospError> {
-    let message = receive_message(reader).await?;
-    let overflow_accept_message = match message {
-        CospMessage::OA(accept_message) => accept_message,
-        _ => return Err(CospError::ProtocolError(format!("Expected an Overflow Accept message but got: {}", <CospMessage as Into<&'static str>>::into(message)))),
-    };
-    Ok(overflow_accept_message)
 }
 
 pub(crate) async fn send_connect_data_overflow(writer: &mut impl CotpWriter, max_tsdu_size: TsduMaximumSize, data: &[u8]) -> Result<(), CospError> {
@@ -69,6 +59,7 @@ pub(crate) async fn receive_connect_data_overflow(reader: &mut impl CotpReader) 
         let message = receive_message(reader).await?;
         let cdo_message = match message {
             CospMessage::CDO(overflow_message) => overflow_message,
+            CospMessage::AB(abort_message) => return Err(CospError::Aborted(abort_message.user_data().cloned())),
             _ => return Err(CospError::ProtocolError(format!("Expected a Connect Data Overflow message but got: {}", <CospMessage as Into<&'static str>>::into(message)))),
         };
         if let Some(user_data) = cdo_message.user_data() {

@@ -4,24 +4,32 @@ use rusty_cotp::{CotpConnection, CotpReader, CotpWriter};
 use rusty_tpkt::ProtocolInformation;
 
 use crate::{
-    CospAcceptor, CospConnection, CospConnectionParameters, CospError, CospInitiator, CospProtocolInformation, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode, disconnect::{receive_disconnect_with_all_user_data, send_disconnect}, finish::{receive_finish_with_all_user_data, send_finish}, message::{CospMessage, parameters::TsduMaximumSize}, packet::{
+    CospAcceptor, CospConnection, CospConnectionParameters, CospError, CospInitiator, CospProtocolInformation, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode,
+    abort::{receive_abort_with_all_user_data, send_abort},
+    disconnect::{receive_disconnect_with_all_user_data, send_disconnect},
+    finish::{receive_finish_with_all_user_data, send_finish},
+    message::{CospMessage, accept::AcceptMessage, overflow_accept::OverflowAcceptMessage, parameters::TsduMaximumSize},
+    packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    }, refuse::{receive_refuse_with_all_user_data, send_refuse}, service::{
+    },
+    refuse::{receive_refuse_with_all_user_data, send_refuse},
+    service::{
         accept::{receive_accept_with_all_user_data, send_accept},
         connect::{SendConnectionRequestResult, send_connect_reqeust},
         message::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
-        overflow::{receive_connect_data_overflow, receive_overflow_accept, send_connect_data_overflow, send_overflow_accept},
-    }
+        overflow::{receive_connect_data_overflow, send_connect_data_overflow, send_overflow_accept},
+    },
 };
 
+pub(crate) mod abort;
 pub(crate) mod accept;
 pub(crate) mod connect;
+pub(crate) mod disconnect;
 pub(crate) mod finish;
 pub(crate) mod message;
 pub(crate) mod overflow;
 pub(crate) mod refuse;
-pub(crate) mod disconnect;
 
 pub struct RustyCospInitiator<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
@@ -47,30 +55,36 @@ impl<R: CotpReader, W: CotpWriter> CospInitiator for RustyCospInitiator<R, W> {
 
         let send_connect_result = send_connect_reqeust(&mut cotp_writer, self.options, self.connection_options, user_data.as_deref()).await?;
 
-        let accept_or_refuse_message = match (send_connect_result, user_data) {
-            (SendConnectionRequestResult::Complete, _) => receive_accept_or_refuse_with_all_user_data(&mut cotp_reader).await?,
+        let accept_message = match (send_connect_result, user_data) {
+            (SendConnectionRequestResult::Complete, _) => receive_accept_or_refuse_or_abort_with_all_user_data(&mut cotp_reader).await?,
             (SendConnectionRequestResult::Overflow(sent_data), Some(user_data)) => {
-                let overflow_accept = receive_overflow_accept(&mut cotp_reader).await?;
+                let overflow_accept = receive_overflow_accept_or_refuse_or_abort_with_all_user_data(&mut cotp_reader).await?;
                 send_connect_data_overflow(&mut cotp_writer, *overflow_accept.maximum_size_to_responder(), &user_data[sent_data..]).await?;
-                receive_accept_or_refuse_with_all_user_data(&mut cotp_reader).await?
+                receive_accept_or_refuse_or_abort_with_all_user_data(&mut cotp_reader).await?
             }
             (SendConnectionRequestResult::Overflow(_), None) => return Err(CospError::InternalError("User data was sent even though user data was not provided.".into())),
-        };
-        let accept_message = match accept_or_refuse_message {
-            CospMessage::AC(accept_message) => accept_message,
-            CospMessage::RF(refuse_message) => return Err(CospError::Refused(refuse_message.reason_code().cloned())),
-            _ => return Err(CospError::ProtocolError(format!("Expected COSP Accept or Refuse but got {}", <CospMessage as Into<&'static str>>::into(accept_or_refuse_message)))),
         };
 
         Ok((RustyCospConnection::new(cotp_reader, cotp_writer, *accept_message.maximum_size_to_responder(), self.protocol_information_list), accept_message.user_data().map(|data| data.clone())))
     }
 }
 
-async fn receive_accept_or_refuse_with_all_user_data(cotp_reader: &mut impl CotpReader) -> Result<CospMessage, CospError> {
+async fn receive_accept_or_refuse_or_abort_with_all_user_data(cotp_reader: &mut impl CotpReader) -> Result<AcceptMessage, CospError> {
     let message = receive_message(cotp_reader).await?;
     match message {
-        CospMessage::AC(accept_message) => Ok(CospMessage::AC(receive_accept_with_all_user_data(cotp_reader, accept_message).await?)),
-        CospMessage::RF(refuse_message) => Ok(CospMessage::RF(receive_refuse_with_all_user_data(cotp_reader, refuse_message).await?)),
+        CospMessage::AC(accept_message) => Ok(receive_accept_with_all_user_data(cotp_reader, accept_message).await?),
+        CospMessage::RF(refuse_message) => Err(CospError::Refused(receive_refuse_with_all_user_data(cotp_reader, refuse_message).await?.reason_code().cloned())),
+        CospMessage::AB(abort_message) => Err(CospError::Aborted(receive_abort_with_all_user_data(cotp_reader, abort_message).await?.user_data().cloned())),
+        _ => Err(CospError::InternalError(format!("Expected accept or reject but got {}.", <CospMessage as Into<&'static str>>::into(message)))),
+    }
+}
+
+async fn receive_overflow_accept_or_refuse_or_abort_with_all_user_data(cotp_reader: &mut impl CotpReader) -> Result<OverflowAcceptMessage, CospError> {
+    let message = receive_message(cotp_reader).await?;
+    match message {
+        CospMessage::OA(overflow_accept_message) => Ok(overflow_accept_message),
+        CospMessage::RF(refuse_message) => Err(CospError::Refused(receive_refuse_with_all_user_data(cotp_reader, refuse_message).await?.reason_code().cloned())),
+        CospMessage::AB(abort_message) => Err(CospError::Aborted(receive_abort_with_all_user_data(cotp_reader, abort_message).await?.user_data().cloned())),
         _ => Err(CospError::InternalError(format!("Expected accept or reject but got {}.", <CospMessage as Into<&'static str>>::into(message)))),
     }
 }
@@ -146,6 +160,11 @@ impl<R: CotpReader, W: CotpWriter> CospAcceptor for RustyCospAcceptor<R, W> {
         let mut cotp_writer = self.cotp_writer;
         send_refuse(&mut cotp_writer, reason_code.as_ref()).await
     }
+
+    async fn abort(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+        send_abort(&mut self.cotp_writer, user_data).await?;
+        Ok(())
+    }
 }
 
 pub struct RustyCospResponder<R: CotpReader, W: CotpWriter> {
@@ -168,6 +187,11 @@ impl<R: CotpReader, W: CotpWriter> CospResponder for RustyCospResponder<R, W> {
 
         send_accept(&mut cotp_writer, &self.maximum_size_to_initiator, accept_data).await?;
         Ok(RustyCospConnection::new(cotp_reader, cotp_writer, self.maximum_size_to_initiator, self.protocol_information_list))
+    }
+
+    async fn abort(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+        send_abort(&mut self.cotp_writer, user_data).await?;
+        Ok(())
     }
 }
 
@@ -219,8 +243,11 @@ impl<R: CotpReader> CospReader for RustyCospReader<R> {
                     let disconnect_message = receive_disconnect_with_all_user_data(&mut self.cotp_reader, message).await?;
                     return Ok(CospRecvResult::Disconnect(disconnect_message.user_data().cloned()));
                 }
-                // TODO Abort
-                _ => todo!(),
+                CospMessage::AB(message) => {
+                    let abort_message = receive_abort_with_all_user_data(&mut self.cotp_reader, message).await?;
+                    return Err(CospError::Aborted(abort_message.user_data().cloned()));
+                }
+                message => return Err(CospError::ProtocolError(format!("Expected payload of type Data Transfer, Finish, Disconnect or Abort but found {}", <CospMessage as Into<&'static str>>::into(message)))),
             };
 
             let enclosure = data_transfer_message.enclosure();
@@ -286,9 +313,14 @@ impl<W: CotpWriter> CospWriter for RustyCospWriter<W> {
         send_finish(&mut self.cotp_writer, user_data).await?;
         Ok(())
     }
-    
+
     async fn disconnect(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
         send_disconnect(&mut self.cotp_writer, user_data).await?;
+        Ok(())
+    }
+
+    async fn abort(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+        send_abort(&mut self.cotp_writer, user_data).await?;
         Ok(())
     }
 }

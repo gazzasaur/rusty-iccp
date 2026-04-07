@@ -6,7 +6,7 @@ use tracing::warn;
 use crate::{
     ReasonCode, api::CospError, packet::{
         constants::{
-            ACCEPT_SI_CODE, CALLED_SESSION_SELECTOR, CALLING_SESSION_SELECTOR, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, DISCONNECT_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, FINISH_SI_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, REASON_CODE_PARAMETER_CODE, REFUSE_SI_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE
+            ABORT_SI_CODE, ACCEPT_SI_CODE, CALLED_SESSION_SELECTOR, CALLING_SESSION_SELECTOR, CONNECT_ACCEPT_ITEM_PARAMETER_CODE, CONNECT_DATA_OVERFLOW_SI_CODE, CONNECT_SI_CODE, DATA_OVERFLOW_PARAMETER_CODE, DATA_TRANSFER_SI_CODE, DISCONNECT_SI_CODE, ENCLOSURE_PARAMETER_CODE, EXTENDED_USER_DATA_PARAMETER_CODE, FINISH_SI_CODE, GIVE_TOKENS_SI_CODE, OVERFLOW_ACCEPT_SI_CODE, PROTOCOL_OPTIONS_PARAMETER_CODE, REASON_CODE_PARAMETER_CODE, REFUSE_SI_CODE, SESSION_USER_REQUIREMENTS_PARAMETER_CODE, TSDU_MAXIMUM_SIZE_PARAMETER_CODE, USER_DATA_PARAMETER_CODE, VERSION_NUMBER_PARAMETER_CODE
         },
         parameters::{DataOverflowField, EnclosureField, ProtocolOptionsField, SessionPduParameter, SessionUserRequirementsField, TsduMaximumSizeField, VersionNumberField, encode_length},
     }, serialise_parameter_value
@@ -39,7 +39,7 @@ impl SessionPduList {
     }
 
     pub(crate) fn deserialise(data: &[u8]) -> Result<Self, CospError> {
-        let (session_pdus, user_information_offset) = deserialise_parameters(data)?;
+        let (session_pdus, user_information_offset) = deserialise_parameters(true, data)?;
         let user_information = data[user_information_offset..].to_vec();
         Ok(SessionPduList::new(session_pdus, user_information))
     }
@@ -57,6 +57,7 @@ fn serialise_parameters(parameters: &[SessionPduParameter]) -> Result<Vec<u8>, C
             SessionPduParameter::Refuse(sub_parameters) => serialise_composite_parameter(REFUSE_SI_CODE, &sub_parameters)?,
             SessionPduParameter::Finish(sub_parameters) => serialise_composite_parameter(FINISH_SI_CODE, &sub_parameters)?,
             SessionPduParameter::Disconnect(sub_parameters) => serialise_composite_parameter(DISCONNECT_SI_CODE, &sub_parameters)?,
+            SessionPduParameter::Abort(sub_parameters) => serialise_composite_parameter(ABORT_SI_CODE, &sub_parameters)?,
             SessionPduParameter::DataTransfer(sub_parameters) => serialise_composite_parameter(DATA_TRANSFER_SI_CODE, &sub_parameters)?,
 
             SessionPduParameter::GiveTokens() => vec![GIVE_TOKENS_SI_CODE, 00],
@@ -103,7 +104,7 @@ fn serialise_data_parameter(code: u8, data: &[u8]) -> Result<Vec<u8>, CospError>
     Ok(buffer.drain(..).collect())
 }
 
-fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usize), CospError> {
+fn deserialise_parameters(outer: bool, data: &[u8]) -> Result<(Vec<SessionPduParameter>, usize), CospError> {
     let mut offset = 0;
     let mut parameters = VecDeque::new();
 
@@ -112,20 +113,21 @@ fn deserialise_parameters(data: &[u8]) -> Result<(Vec<SessionPduParameter>, usiz
         offset += consumed_data;
 
         let parameter = match tag {
-            CONNECT_SI_CODE => SessionPduParameter::Connect(deserialise_parameters(payload)?.0),
-            ACCEPT_SI_CODE => SessionPduParameter::Accept(deserialise_parameters(payload)?.0),
-            REFUSE_SI_CODE => SessionPduParameter::Refuse(deserialise_parameters(payload)?.0),
-            FINISH_SI_CODE => SessionPduParameter::Finish(deserialise_parameters(payload)?.0),
-            DISCONNECT_SI_CODE => SessionPduParameter::Disconnect(deserialise_parameters(payload)?.0),
-            OVERFLOW_ACCEPT_SI_CODE => SessionPduParameter::OverflowAccept(deserialise_parameters(payload)?.0),
-            CONNECT_DATA_OVERFLOW_SI_CODE => SessionPduParameter::ConnectDataOverflow(deserialise_parameters(payload)?.0),
+            CONNECT_SI_CODE => SessionPduParameter::Connect(deserialise_parameters(false, payload)?.0),
+            ACCEPT_SI_CODE => SessionPduParameter::Accept(deserialise_parameters(false, payload)?.0),
+            REFUSE_SI_CODE => SessionPduParameter::Refuse(deserialise_parameters(false, payload)?.0),
+            FINISH_SI_CODE => SessionPduParameter::Finish(deserialise_parameters(false, payload)?.0),
+            DISCONNECT_SI_CODE => SessionPduParameter::Disconnect(deserialise_parameters(false, payload)?.0),
+            ABORT_SI_CODE if outer => SessionPduParameter::Abort(deserialise_parameters(false, payload)?.0),
+            OVERFLOW_ACCEPT_SI_CODE => SessionPduParameter::OverflowAccept(deserialise_parameters(false, payload)?.0),
+            CONNECT_DATA_OVERFLOW_SI_CODE => SessionPduParameter::ConnectDataOverflow(deserialise_parameters(false, payload)?.0),
 
             // Category 0 message. Must always be the the first SPDU in a concatenated list. Otherwise it is a Data Transfer. Their SI codes are the same.
             GIVE_TOKENS_SI_CODE if parameters.len() == 0 => SessionPduParameter::GiveTokens(),
             // Category 2 message. Must come after Give Tokens. Their SI codes are the same.
-            DATA_TRANSFER_SI_CODE => SessionPduParameter::DataTransfer(deserialise_parameters(payload)?.0),
+            DATA_TRANSFER_SI_CODE => SessionPduParameter::DataTransfer(deserialise_parameters(false, payload)?.0),
 
-            CONNECT_ACCEPT_ITEM_PARAMETER_CODE => SessionPduParameter::ConnectAcceptItemParameter(deserialise_parameters(payload)?.0),
+            CONNECT_ACCEPT_ITEM_PARAMETER_CODE => SessionPduParameter::ConnectAcceptItemParameter(deserialise_parameters(false, payload)?.0),
 
             PROTOCOL_OPTIONS_PARAMETER_CODE => SessionPduParameter::ProtocolOptionsParameter(parse_protocol_options(payload)?),
             TSDU_MAXIMUM_SIZE_PARAMETER_CODE => SessionPduParameter::TsduMaximumSizeParameter(parse_tsdu_maximum_size(payload)?),

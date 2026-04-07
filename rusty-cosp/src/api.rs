@@ -21,6 +21,9 @@ pub enum CospError {
 
     #[error("COSP Refused")]
     Refused(Option<ReasonCode>),
+
+    #[error("COSP Abort")]
+    Aborted(Option<Vec<u8>>),
 }
 
 #[derive(Clone, Debug, IntoStaticStr, PartialEq, Eq)]
@@ -90,12 +93,12 @@ pub trait CospInitiator: Send {
 pub trait CospAcceptor: Send {
     fn accept(self) -> impl std::future::Future<Output = Result<(impl CospResponder, Option<Vec<u8>>), CospError>> + Send;
     fn refuse(self, reason_code: Option<ReasonCode>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn abort(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }
 
 pub trait CospResponder: Send {
     fn complete_connection(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
-
-    // fn abort(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn abort(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }
 
 pub trait CospConnection: Send {
@@ -113,6 +116,5 @@ pub trait CospWriter: Send {
     fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
     fn finish(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
     fn disconnect(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
-
-    // fn abort(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn abort(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }
