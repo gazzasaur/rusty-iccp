@@ -4,7 +4,7 @@ use rusty_cotp::{CotpReader, CotpWriter};
 
 use crate::{
     CospError,
-    message::{CospMessage, finish::FinishMessage},
+    message::{CospMessage, finish::FinishMessage, parameters::TsduMaximumSize},
     packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
@@ -12,13 +12,18 @@ use crate::{
     service::message::{MAX_PAYLOAD_SIZE, receive_message},
 };
 
-pub(crate) async fn send_finish(writer: &mut impl CotpWriter, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+pub(crate) async fn send_finish(writer: &mut impl CotpWriter, negotiated_size: TsduMaximumSize, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
     // As we may need to send multiple finish payloads, we will precalculate the size of the header without enclosure.
     let optimistic_finish = serialise_finish(None, None, Some(&[]))?;
     // Add an extra 8 bytes for enclosure and headers.
     let optimistic_size = optimistic_finish.len() + user_data.as_ref().map(|data| data.len()).unwrap_or(0) + 8;
 
-    if optimistic_size <= MAX_PAYLOAD_SIZE {
+    let calculated_max_payload_size = match negotiated_size {
+        TsduMaximumSize::Unlimited => MAX_PAYLOAD_SIZE,
+        TsduMaximumSize::Size(x) => x as usize,
+    };
+
+    if optimistic_size <= calculated_max_payload_size {
         let payload_data = serialise_finish(None, None, user_data.as_ref().map(|x| x.as_slice()))?;
         return Ok(writer.send(&mut VecDeque::from(vec![payload_data])).await?);
     }
@@ -27,7 +32,7 @@ pub(crate) async fn send_finish(writer: &mut impl CotpWriter, user_data: Option<
     let mut beginning = true;
     let default_user_data = vec![];
     // The -2 accounts a 16-bit encoded length when the size is >254 bytes.
-    let maximum_data_size = MAX_PAYLOAD_SIZE;
+    let maximum_data_size = calculated_max_payload_size;
     let user_data = match user_data {
         Some(user_data) => user_data,
         None => default_user_data,

@@ -157,12 +157,22 @@ impl<R: CotpReader, W: CotpWriter> CospAcceptor for RustyCospAcceptor<R, W> {
     }
 
     async fn refuse(self, reason_code: Option<ReasonCode>) -> Result<(), CospError> {
+        let maximum_size_to_initiator = match self.cosp_connection_parameters.tsdu_maximum_size {
+            Some(x) => TsduMaximumSize::Size(x),
+            None => TsduMaximumSize::Unlimited,
+        };
+
         let mut cotp_writer = self.cotp_writer;
-        send_refuse(&mut cotp_writer, reason_code.as_ref()).await
+        send_refuse(&mut cotp_writer, maximum_size_to_initiator, reason_code.as_ref()).await
     }
 
     async fn abort(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
-        send_abort(&mut self.cotp_writer, user_data).await?;
+        let maximum_size_to_initiator = match self.cosp_connection_parameters.tsdu_maximum_size {
+            Some(x) => TsduMaximumSize::Size(x),
+            None => TsduMaximumSize::Unlimited,
+        };
+
+        send_abort(&mut self.cotp_writer, maximum_size_to_initiator, user_data).await?;
         Ok(())
     }
 }
@@ -190,7 +200,7 @@ impl<R: CotpReader, W: CotpWriter> CospResponder for RustyCospResponder<R, W> {
     }
 
     async fn abort(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
-        send_abort(&mut self.cotp_writer, user_data).await?;
+        send_abort(&mut self.cotp_writer, self.maximum_size_to_initiator, user_data).await?;
         Ok(())
     }
 }
@@ -310,17 +320,17 @@ impl<W: CotpWriter> CospWriter for RustyCospWriter<W> {
     }
 
     async fn finish(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
-        send_finish(&mut self.cotp_writer, user_data).await?;
+        send_finish(&mut self.cotp_writer, self.remote_max_size, user_data).await?;
         Ok(())
     }
 
     async fn disconnect(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
-        send_disconnect(&mut self.cotp_writer, user_data).await?;
+        send_disconnect(&mut self.cotp_writer, self.remote_max_size, user_data).await?;
         Ok(())
     }
 
     async fn abort(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
-        send_abort(&mut self.cotp_writer, user_data).await?;
+        send_abort(&mut self.cotp_writer, self.remote_max_size, user_data).await?;
         Ok(())
     }
 }
