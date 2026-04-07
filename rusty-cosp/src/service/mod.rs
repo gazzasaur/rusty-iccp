@@ -4,20 +4,15 @@ use rusty_cotp::{CotpConnection, CotpReader, CotpWriter};
 use rusty_tpkt::ProtocolInformation;
 
 use crate::{
-    CospAcceptor, CospConnection, CospConnectionParameters, CospError, CospInitiator, CospProtocolInformation, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode,
-    finish::{receive_finish_with_all_user_data, send_finish},
-    message::{CospMessage, parameters::TsduMaximumSize},
-    packet::{
+    CospAcceptor, CospConnection, CospConnectionParameters, CospError, CospInitiator, CospProtocolInformation, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode, disconnect::{receive_disconnect_with_all_user_data, send_disconnect}, finish::{receive_finish_with_all_user_data, send_finish}, message::{CospMessage, parameters::TsduMaximumSize}, packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    },
-    refuse::{receive_refuse_with_all_user_data, send_refuse},
-    service::{
+    }, refuse::{receive_refuse_with_all_user_data, send_refuse}, service::{
         accept::{receive_accept_with_all_user_data, send_accept},
         connect::{SendConnectionRequestResult, send_connect_reqeust},
         message::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
         overflow::{receive_connect_data_overflow, receive_overflow_accept, send_connect_data_overflow, send_overflow_accept},
-    },
+    }
 };
 
 pub(crate) mod accept;
@@ -26,6 +21,7 @@ pub(crate) mod finish;
 pub(crate) mod message;
 pub(crate) mod overflow;
 pub(crate) mod refuse;
+pub(crate) mod disconnect;
 
 pub struct RustyCospInitiator<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
@@ -219,7 +215,11 @@ impl<R: CotpReader> CospReader for RustyCospReader<R> {
                     let finish_message = receive_finish_with_all_user_data(&mut self.cotp_reader, message).await?;
                     return Ok(CospRecvResult::Finish(finish_message.user_data().cloned()));
                 }
-                // Disconnect
+                CospMessage::DN(message) => {
+                    let disconnect_message = receive_disconnect_with_all_user_data(&mut self.cotp_reader, message).await?;
+                    return Ok(CospRecvResult::Disconnect(disconnect_message.user_data().cloned()));
+                }
+                // TODO Abort
                 _ => todo!(),
             };
 
@@ -284,6 +284,11 @@ impl<W: CotpWriter> CospWriter for RustyCospWriter<W> {
 
     async fn finish(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
         send_finish(&mut self.cotp_writer, user_data).await?;
+        Ok(())
+    }
+    
+    async fn disconnect(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+        send_disconnect(&mut self.cotp_writer, user_data).await?;
         Ok(())
     }
 }

@@ -75,10 +75,12 @@ impl CospProtocolInformation {
 
 impl ProtocolInformation for CospProtocolInformation {}
 
+#[derive(Debug)]
 pub enum CospRecvResult {
     Closed,
     Data(Vec<u8>),
     Finish(Option<Vec<u8>>),
+    Disconnect(Option<Vec<u8>>),
 }
 
 pub trait CospInitiator: Send {
@@ -110,7 +112,7 @@ pub trait CospReader: Send {
 pub trait CospWriter: Send {
     fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
     fn finish(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
-    // fn disconnect(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn disconnect(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 
     // fn abort(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }

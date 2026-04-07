@@ -3,7 +3,7 @@ use tracing::warn;
 
 use crate::{
     api::CospError,
-    message::{accept::AcceptMessage, connect::ConnectMessage, connect_data_overflow::ConnectDataOverflowMessage, data_transfer::DataTransferMessage, finish::FinishMessage, overflow_accept::OverflowAcceptMessage, refuse::RefuseMessage},
+    message::{accept::AcceptMessage, connect::ConnectMessage, connect_data_overflow::ConnectDataOverflowMessage, data_transfer::DataTransferMessage, disconnect::DisconnectMessage, finish::FinishMessage, overflow_accept::OverflowAcceptMessage, refuse::RefuseMessage},
     packet::{parameters::SessionPduParameter, pdu::SessionPduList},
 };
 
@@ -15,6 +15,7 @@ pub(crate) mod overflow_accept;
 pub(crate) mod parameters;
 pub(crate) mod refuse;
 pub(crate) mod finish;
+pub(crate) mod disconnect;
 
 #[derive(IntoStaticStr)]
 pub(crate) enum CospMessage {
@@ -22,6 +23,7 @@ pub(crate) enum CospMessage {
     AC(AcceptMessage),
     RF(RefuseMessage),
     FN(FinishMessage),
+    DN(DisconnectMessage),
     CDO(ConnectDataOverflowMessage),
     OA(OverflowAcceptMessage),
     DT(DataTransferMessage),
@@ -47,6 +49,7 @@ impl CospMessage {
             SessionPduParameter::Accept(parameters) => CospMessage::AC(AcceptMessage::from_parameters(parameters.as_slice())?),
             SessionPduParameter::Refuse(parameters) => CospMessage::RF(RefuseMessage::from_parameters(parameters.as_slice())?),
             SessionPduParameter::Finish(parameters) => CospMessage::FN(FinishMessage::from_parameters(parameters.as_slice())?),
+            SessionPduParameter::Disconnect(parameters) => CospMessage::DN(DisconnectMessage::from_parameters(parameters.as_slice())?),
             SessionPduParameter::ConnectDataOverflow(parameters) => CospMessage::CDO(ConnectDataOverflowMessage::from_parameters(parameters.as_slice())?),
             SessionPduParameter::OverflowAccept(parameters) => CospMessage::OA(OverflowAcceptMessage::from_parameters(parameters.as_slice())?),
             _ => return Err(CospError::ProtocolError(format!("Unsupported SPDU: {}", <&SessionPduParameter as Into<&'static str>>::into(message_parameter)))),

@@ -8,7 +8,7 @@ pub(crate) const GIVE_TOKENS_SI_CODE: u8 = 1;
 // TODO
 pub(crate) const REFUSE_SI_CODE: u8 = 12;
 pub(crate) const FINISH_SI_CODE: u8 = 9;
-// pub(crate) const DISCONNECT_SI_CODE: u8 = 10;
+pub(crate) const DISCONNECT_SI_CODE: u8 = 10;
 // pub(crate) const ABORT_SI_CODE: u8 = 25;
 // pub(crate) const ABORT_ACCEEPT_SI_CODE: u8 = 26;
 
