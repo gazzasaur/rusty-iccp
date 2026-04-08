@@ -106,13 +106,13 @@ pub enum CospRecvResult {
     Disconnect(Option<Vec<u8>>),
 }
 
-/// A trait representing the client.
+/// Initiates a COSP connection.
 pub trait CospInitiator: Send {
     /// Starts signalling a COSP connection. A Refuse error may be received during this phase.
     fn initiate(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CospConnection, Option<Vec<u8>>), CospError>> + Send;
 }
 
-/// Once a connect request has been received, the following actions may be taken.
+/// Manages the initial connection phase of a COSP responder.
 pub trait CospAcceptor: Send {
     /// Accept the incoming request.
     /// In this case, the initiator may send us connection data, typically from a higher layer protocol.
@@ -125,7 +125,7 @@ pub trait CospAcceptor: Send {
     fn abort(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }
 
-/// After a connection is accepted, the initiator may send more data. The responder may reply with response data.
+/// Manages the connection data phase of a COSP responder.
 pub trait CospResponder: Send {
     /// Completes the connection signalling with optional response data. The response data is typically from a higher layer protocol.
     fn complete_connection(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;

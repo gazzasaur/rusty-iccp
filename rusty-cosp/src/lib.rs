@@ -1,4 +1,6 @@
-/// Connection Reuse is not supported.
+
+#![doc = include_str!("../README.md")]
+
 mod api;
 mod message;
 mod packet;

@@ -1,9 +1,9 @@
 [package]
 name = "rusty-cosp"
+version = "1.0.0"
 description = "Implements the Kernel Function of Connection Oriented Session Protocol/ISO 8327-1/IEC 8327-1/ITU-T X.225 standard."
 
 authors = { workspace = true }
-version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 homepage = { workspace = true }

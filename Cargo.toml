@@ -15,7 +15,7 @@ rusty-mms-service = { path = "./rusty-mms-service", version = "0.9.1" }
 rusty-mms = { path = "./rusty-mms", version = "0.9.1" }
 rusty-acse = { path = "./rusty-acse", version = "0.9.1" }
 rusty-copp = { path = "./rusty-copp", version = "0.9.1" }
-rusty-cosp = { path = "./rusty-cosp", version = "0.9.1" }
+rusty-cosp = { path = "./rusty-cosp", version = "1.0.0" }
 rusty-cotp = { path = "./rusty-cotp", version = "1.1.2" }
 rusty-tpkt = { path = "./rusty-tpkt", version = "1.0.0" }
 
