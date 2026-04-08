@@ -31,6 +31,7 @@ pub(crate) mod message;
 pub(crate) mod overflow;
 pub(crate) mod refuse;
 
+/// A concrete implementation of an initiator.
 pub struct RustyCospInitiator<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
     cotp_writer: W,
@@ -40,6 +41,7 @@ pub struct RustyCospInitiator<R: CotpReader, W: CotpWriter> {
 }
 
 impl<R: CotpReader, W: CotpWriter> RustyCospInitiator<R, W> {
+    /// Construct the initiator with options. This does not perform signalling.
     pub async fn new(cotp_connection: impl CotpConnection, options: CospProtocolInformation, connection_options: CospConnectionParameters) -> Result<RustyCospInitiator<impl CotpReader, impl CotpWriter>, CospError> {
         let mut protocol_information_list = cotp_connection.get_protocol_infomation_list().clone();
         let (cotp_reader, cotp_writer) = cotp_connection.split().await?;
@@ -88,6 +90,7 @@ async fn receive_overflow_accept_or_refuse_or_abort_with_all_user_data(cotp_read
     }
 }
 
+/// Concrete implementation of the acceptor.
 pub struct RustyCospAcceptor<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
     cotp_writer: W,
@@ -98,6 +101,7 @@ pub struct RustyCospAcceptor<R: CotpReader, W: CotpWriter> {
 }
 
 impl<R: CotpReader, W: CotpWriter> RustyCospAcceptor<R, W> {
+    /// Creates and acceptor and receives the initial connect payload.
     pub async fn new(cotp_connection: impl CotpConnection, connection_parameters: CospConnectionParameters) -> Result<(RustyCospAcceptor<impl CotpReader, impl CotpWriter>, CospProtocolInformation), CospError> {
         let mut protocol_information_list = cotp_connection.get_protocol_infomation_list().clone();
         let (mut cotp_reader, mut cotp_writer) = cotp_connection.split().await?;
@@ -156,6 +160,8 @@ impl<R: CotpReader, W: CotpWriter> CospAcceptor for RustyCospAcceptor<R, W> {
     }
 }
 
+/// A concrete implementation of the responder.
+/// This allows data to be singalled back to the initiator during the connect phase.
 pub struct RustyCospResponder<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
     cotp_writer: W,
@@ -191,6 +197,7 @@ impl<R: CotpReader, W: CotpWriter> CospResponder for RustyCospResponder<R, W> {
     }
 }
 
+/// A concrete COSP connection.
 pub struct RustyCospConnection<R: CotpReader, W: CotpWriter> {
     cotp_reader: R,
     cotp_writer: W,
@@ -224,6 +231,7 @@ impl<R: CotpReader, W: CotpWriter> CospConnection for RustyCospConnection<R, W> 
     }
 }
 
+/// A concrete COSP reader.
 pub struct RustyCospReader<R: CotpReader> {
     cotp_reader: R,
     buffer: VecDeque<u8>,
@@ -268,6 +276,7 @@ impl<R: CotpReader> CospReader for RustyCospReader<R> {
     }
 }
 
+/// A concrete COSP writer.
 pub struct RustyCospWriter<W: CotpWriter> {
     cotp_writer: W,
     buffer: VecDeque<Vec<u8>>,
