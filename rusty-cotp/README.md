@@ -29,7 +29,7 @@ This library uses async rust and std components. If using this in embedded syste
 Send and Recv operations are cancel safe as long as the caller does not drop their buffer after cancel if it still contains data. It is safe to call Send and Recv anytime after cancellation.
 
 ## Conformance
-This packet implements Class 0 functionality.
+This create implements Class 0 functionality.
 
 This allows most ISO protcols to be operated over this implementation, normally using the 'kernel only' or 'core features' of higher layer protocols. Please refer to the conformance statement of the standard you are using to ensure all the features you require are offered given the comformance of this implementation.
 

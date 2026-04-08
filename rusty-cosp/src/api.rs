@@ -51,7 +51,7 @@ pub struct CospConnectionParameters {
 
 impl Default for CospConnectionParameters {
     fn default() -> Self {
-        Self { maximum_reassembled_payload_size: 1024*1024 + 1024 }
+        Self { maximum_reassembled_payload_size: 1024 * 1024 + 1024 }
     }
 }
 
@@ -77,7 +77,7 @@ impl CospProtocolInformation {
 
 impl ProtocolInformation for CospProtocolInformation {}
 
-#[derive(Debug)]
+#[derive(IntoStaticStr)]
 pub enum CospRecvResult {
     Closed,
     Data(Vec<u8>),

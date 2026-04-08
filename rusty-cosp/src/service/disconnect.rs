@@ -12,7 +12,7 @@ use crate::{
     service::message::{MAX_PAYLOAD_SIZE, receive_message},
 };
 
-pub(crate) async fn send_disconnect(writer: &mut impl CotpWriter, negotiated_size:TsduMaximumSize, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+pub(crate) async fn send_disconnect(writer: &mut impl CotpWriter, negotiated_size: TsduMaximumSize, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
     // As we may need to send multiple disconnect payloads, we will precalculate the size of the header without enclosure.
     let optimistic_disconnect = serialise_disconnect(None, None, Some(&[]))?;
     // Add an extra 8 bytes for enclosure and headers.

@@ -3,10 +3,13 @@ use std::collections::VecDeque;
 use rusty_cotp::{CotpReader, CotpWriter};
 
 use crate::{
-    CospConnectionParameters, CospError, ReasonCode, message::{CospMessage, parameters::TsduMaximumSize, refuse::RefuseMessage}, packet::{
+    CospConnectionParameters, CospError, ReasonCode,
+    message::{CospMessage, parameters::TsduMaximumSize, refuse::RefuseMessage},
+    packet::{
         parameters::{EnclosureField, SessionPduParameter},
         pdu::SessionPduList,
-    }, service::message::{MAX_PAYLOAD_SIZE, receive_message}
+    },
+    service::message::{MAX_PAYLOAD_SIZE, receive_message},
 };
 
 pub(crate) async fn send_refuse(writer: &mut impl CotpWriter, negotiated_size: TsduMaximumSize, reason_code: Option<&ReasonCode>) -> Result<(), CospError> {
@@ -103,7 +106,7 @@ pub(crate) async fn receive_refuse_with_all_user_data(reader: &mut impl CotpRead
         }
 
         if buffer.len() > connection_options.maximum_reassembled_payload_size {
-            return Err(CospError::ProtocolError("Message length is exceeds maximum payload size.".into()))
+            return Err(CospError::ProtocolError("Message length is exceeds maximum payload size.".into()));
         }
     }
 

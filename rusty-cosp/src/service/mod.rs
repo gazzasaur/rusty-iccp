@@ -128,18 +128,11 @@ impl<R: CotpReader, W: CotpWriter> RustyCospAcceptor<R, W> {
             true => Some(user_data.drain(..).collect()),
             false => None,
         };
-        let cosp_connection_information = CospProtocolInformation::new(connect_request.calling_session_selector().map(|x| x.clone()), connect_request.called_session_selector().map(|x| x.clone()));
-        protocol_information_list.push(Box::new(cosp_connection_information.clone()));
+        let cosp_protocol_information = CospProtocolInformation::new(connect_request.calling_session_selector().map(|x| x.clone()), connect_request.called_session_selector().map(|x| x.clone()));
+        protocol_information_list.push(Box::new(cosp_protocol_information.clone()));
         Ok((
-            RustyCospAcceptor {
-                cotp_reader,
-                cotp_writer,
-                user_data,
-                tsdu_maximum_size: *maximum_size_to_initiator,
-                protocol_information_list: protocol_information_list,
-                cosp_connection_parameters: connection_parameters,
-            },
-            cosp_connection_information,
+            RustyCospAcceptor { cotp_reader, cotp_writer, user_data, tsdu_maximum_size: *maximum_size_to_initiator, protocol_information_list: protocol_information_list, cosp_connection_parameters: connection_parameters },
+            cosp_protocol_information,
         ))
     }
 }
@@ -172,7 +165,13 @@ pub struct RustyCospResponder<R: CotpReader, W: CotpWriter> {
 }
 
 impl<R: CotpReader, W: CotpWriter> RustyCospResponder<R, W> {
-    fn new(cotp_reader: impl CotpReader, cotp_writer: impl CotpWriter, maximum_size_to_initiator: TsduMaximumSize, connection_options: CospConnectionParameters, protocol_information_list: Vec<Box<dyn ProtocolInformation>>) -> RustyCospResponder<impl CotpReader, impl CotpWriter> {
+    fn new(
+        cotp_reader: impl CotpReader,
+        cotp_writer: impl CotpWriter,
+        maximum_size_to_initiator: TsduMaximumSize,
+        connection_options: CospConnectionParameters,
+        protocol_information_list: Vec<Box<dyn ProtocolInformation>>,
+    ) -> RustyCospResponder<impl CotpReader, impl CotpWriter> {
         RustyCospResponder { cotp_reader, cotp_writer, maximum_size_to_initiator, connection_options, protocol_information_list }
     }
 }
@@ -201,7 +200,13 @@ pub struct RustyCospConnection<R: CotpReader, W: CotpWriter> {
 }
 
 impl<R: CotpReader, W: CotpWriter> RustyCospConnection<R, W> {
-    fn new(cotp_reader: R, cotp_writer: W, remote_max_size: TsduMaximumSize, connection_options: CospConnectionParameters, protocol_information_list: Vec<Box<dyn ProtocolInformation>>) -> RustyCospConnection<impl CotpReader, impl CotpWriter> {
+    fn new(
+        cotp_reader: R,
+        cotp_writer: W,
+        remote_max_size: TsduMaximumSize,
+        connection_options: CospConnectionParameters,
+        protocol_information_list: Vec<Box<dyn ProtocolInformation>>,
+    ) -> RustyCospConnection<impl CotpReader, impl CotpWriter> {
         RustyCospConnection { cotp_reader, cotp_writer, remote_max_size, connection_options, protocol_information_list }
     }
 }
@@ -212,7 +217,10 @@ impl<R: CotpReader, W: CotpWriter> CospConnection for RustyCospConnection<R, W> 
     }
 
     async fn split(self) -> Result<(impl CospReader, impl CospWriter), CospError> {
-        Ok((RustyCospReader { cotp_reader: self.cotp_reader, buffer: VecDeque::new(), connection_options: self.connection_options }, RustyCospWriter { buffer: VecDeque::new(), cotp_writer: self.cotp_writer, remote_max_size: self.remote_max_size }))
+        Ok((
+            RustyCospReader { cotp_reader: self.cotp_reader, buffer: VecDeque::new(), connection_options: self.connection_options },
+            RustyCospWriter { buffer: VecDeque::new(), cotp_writer: self.cotp_writer, remote_max_size: self.remote_max_size },
+        ))
     }
 }
 

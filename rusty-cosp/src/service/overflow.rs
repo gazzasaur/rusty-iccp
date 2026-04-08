@@ -3,10 +3,14 @@ use std::collections::VecDeque;
 use rusty_cotp::{CotpReader, CotpWriter};
 
 use crate::{
-    CospConnectionParameters, api::CospError, message::{CospMessage, parameters::TsduMaximumSize}, packet::{
+    CospConnectionParameters,
+    api::CospError,
+    message::{CospMessage, parameters::TsduMaximumSize},
+    packet::{
         parameters::{EnclosureField, SessionPduParameter, TsduMaximumSizeField, VersionNumberField},
         pdu::SessionPduList,
-    }, service::message::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message}
+    },
+    service::message::{MAX_PAYLOAD_SIZE, MIN_PAYLOAD_SIZE, receive_message},
 };
 
 pub(crate) async fn send_overflow_accept(writer: &mut impl CotpWriter, initiator_size: &TsduMaximumSize) -> Result<(), CospError> {
@@ -65,7 +69,7 @@ pub(crate) async fn receive_connect_data_overflow(reader: &mut impl CotpReader, 
         has_more_data = cdo_message.has_more_data();
 
         if buffer.len() > connection_options.maximum_reassembled_payload_size {
-            return Err(CospError::ProtocolError("Message length is exceeds maximum payload size.".into()))
+            return Err(CospError::ProtocolError("Message length is exceeds maximum payload size.".into()));
         }
     }
     Ok(buffer.drain(..).collect())
