@@ -1,45 +1,3 @@
-# Rusty COSP
-A pure rust implementation of COSP over COTP.
-
-COSP is a glue protocol between the ISO standard protocols and byte streams (TCP/Serial links). This implementation covers kernel functionality of COSP which limits its use to lossless connections like TCP.
-
-This standard is known by:
-* COSP
-* X.225
-* ISO/IEC 8327-1
-
-This package is intended to be used in conjunction with a higher level protocol. For example:
-* [rusty-mms-service](https://crates.io/crates/rusty-mms-service)
-
-## Using this Library
-
-#### Static Dispatch
-
-This library uses static dispatch. This protocol is a very small slice in a large protocol stack. It is called very often. Static dispatch removes vtable lookups reducing call overhead. Static dispatch also allows the types to be resolved at compile time, giving the compiler greater scope to perform optimisations. This also makes it ideal for use in embedded devices.
-
-The trade of is that static dispatch may be more difficult to work with in complex applications. The rusty-mms-service provides one example of going from a static dispatch to a dynamic dispatch environment without degrading performance.
-
-#### Async and STD
-
-This library uses async rust and std components. If using this in embedded systems, FreeRTOS may be required to provide and adaption layer between embedded hardware and this library.
-
-#### Cancel Safety
-
-Send and Recv operations are cancel safe as long as the caller does not drop their buffer after cancel if it still contains data. It is safe to call Send and Recv anytime after cancellation.
-
-## Conformance
-This crate implements kernel functionality.
-
-This allows most ISO protcols to be operated over this implementation, normally using the 'kernel only' or 'core features' of higher layer protocols. Please refer to the conformance statement of the standard you are using to ensure all the features you require are offered given the comformance of this implementation.
-
-## References
-* [X.225](https://www.itu.int/rec/T-REC-X.225/)
-
-## Examples
-
-Examples may be found in the [examples](https://github.com/gazzasaur/rusty-iccp/blob/main/rusty-cosp/examples) directory. Basic useage is shown below.
-
-```
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
@@ -162,4 +120,3 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
 
     Ok(())
 }
-```

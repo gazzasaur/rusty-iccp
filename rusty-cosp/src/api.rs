@@ -23,6 +23,8 @@ pub enum CospError {
     #[error("COSP Error: {}", .0)]
     InternalError(String),
 
+    // FIXME API These should be explicit results.
+
     /// Indicated a connection was refused. The connection should be dropped.
     /// This should only be received by the initiator during the initiate phase.
     #[error("COSP Refused")]
