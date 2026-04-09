@@ -128,6 +128,7 @@ impl VariableSpecification {
 
 pub struct MmsRequestInformation {
     pub local_detail_calling: Option<i32>,
+
     pub proposed_max_serv_outstanding_calling: i16,
     pub proposed_max_serv_outstanding_called: i16,
     pub proposed_data_structure_nesting_level: Option<i8>,
@@ -516,8 +517,8 @@ pub struct RustyMmsResponder<T: OsiSingleValueAcseResponder, R: OsiSingleValueAc
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsResponder for RustyMmsResponder<T, R, W> {
     async fn accept(self) -> Result<impl MmsConnection, MmsError> {
         let repsonse = InitiateResponsePdu::new(
-            None,
             // TODO This should be configurable on the server.
+            self.mms_request_information.local_detail_calling,
             self.mms_request_information.proposed_max_serv_outstanding_calling,
             self.mms_request_information.proposed_max_serv_outstanding_called,
             self.mms_request_information.proposed_data_structure_nesting_level,

@@ -1,15 +1,14 @@
 pub mod error;
 
-use std::{result, sync::Arc};
 
 use async_trait::async_trait;
 
 use error::*;
 use num_bigint::BigInt;
-use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsData, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsScope, MmsVariableAccessSpecification, VariableSpecification};
+use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
 use rusty_mms_service::{
     MmsInitiatorService,
-    data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope, NameList},
+    data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope},
 };
 
 #[async_trait]
@@ -68,7 +67,7 @@ pub enum IccpScope {
 
 #[async_trait]
 pub trait IccpServer: Send + Sync + Clone {
-    // fn fetch_transfer_report
+    // fn send_transfer_report
 }
 
 pub struct RustyIccpClient {

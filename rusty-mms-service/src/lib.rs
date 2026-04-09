@@ -102,6 +102,8 @@ impl Default for MmsServiceConnectionIdentityParameters {
 }
 
 pub struct MmsServiceConnectionParameters {
+    local_detail_calling: Option<i32>,
+    
     pub called: MmsServiceConnectionIdentityParameters,
     pub calling: MmsServiceConnectionIdentityParameters,
 
@@ -115,6 +117,8 @@ pub struct MmsServiceConnectionParameters {
 impl Default for MmsServiceConnectionParameters {
     fn default() -> Self {
         Self {
+            local_detail_calling: None,
+
             calling: Default::default(),
             called: Default::default(),
 
@@ -177,6 +181,7 @@ impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'stat
         let acse_initiator = RustyOsiSingleValueAcseInitiatorIsoStack::<R, W>::new(copp_initiator, acse_connection_info);
 
         let mms_connection_info = MmsRequestInformation {
+            local_detail_calling: parameters.local_detail_calling,
             proposed_max_serv_outstanding_calling: parameters.proposed_max_serv_outstanding_calling,
             proposed_max_serv_outstanding_called: parameters.proposed_max_serv_outstanding_called,
             proposed_data_structure_nesting_level: parameters.proposed_data_structure_nesting_level,
