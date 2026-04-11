@@ -72,14 +72,10 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
             copp_information,
         ))
     }
-
-    // pub fn with_context(&mut self, resultant_contexts: Option<PresentationContextResultType>) {
-    //     self.resultant_contexts = resultant_contexts;
-    // }
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppListener for RustyCoppListener<T, R, W> {
-    async fn responder(self) -> Result<(impl CoppResponder, Option<UserData>), CoppError> {
+    async fn accept(self) -> Result<(impl CoppResponder, Option<UserData>), CoppError> {
         Ok((RustyCoppResponder::<T, R, W>::new(self.cosp_responder, self.connection_information), self.user_data))
     }
 }
@@ -98,7 +94,7 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppResponder<T, R, W>
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppResponder for RustyCoppResponder<T, R, W> {
-    async fn accept(self, accept_data: Option<UserData>) -> Result<impl CoppConnection, CoppError> {
+    async fn complete_connection(self, accept_data: Option<UserData>) -> Result<impl CoppConnection, CoppError> {
         let contexts = PresentationContextResultType::ContextDefinitionList(vec![
             PresentationContextResult { result: PresentationContextResultCause::Acceptance, transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?), provider_reason: None },
             PresentationContextResult { result: PresentationContextResultCause::Acceptance, transfer_syntax_name: Some(Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?), provider_reason: None },

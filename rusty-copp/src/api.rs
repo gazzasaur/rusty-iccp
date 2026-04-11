@@ -17,8 +17,27 @@ pub enum CoppError {
     #[error("COPP IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),
 
-    #[error("COPP Error: {}", .0)]
-    InternalError(String),
+    /// Indicated a connection was refused. The connection should be dropped.
+    /// This should only be received by the initiator during the initiate phase.
+    #[error("COPP Refused")]
+    Refused(Option<UserData>),
+
+    /// Indicated a connection was aborted. The connection should be dropped.
+    /// This may occur during any read operation.
+    #[error("COPP Abort")]
+    Aborted(Option<UserData>),
+}
+
+#[derive(Debug)]
+pub enum ProviderReason {
+    ReasonNotSpecified = 0,
+    TemporaryCongestion = 1,
+    LocalLimitExceeded = 2,
+    CalledPresentationAddressUnknown = 3,
+    ProtocolVersionNotSupported = 4,
+    DefaultContextNotSupported = 5,
+    UserDataNotReadable = 6,
+    NoPsapAvailable = 7,
 }
 
 // TODO Support Default Context. This library is targeted towards ACSE/MMS which does not require the default context.
@@ -109,11 +128,11 @@ pub trait CoppInitiator: Send {
 }
 
 pub trait CoppListener: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<UserData>), CoppError>> + Send;
+    fn accept(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<UserData>), CoppError>> + Send;
 }
 
 pub trait CoppResponder: Send {
-    fn accept(self, accept_data: Option<UserData>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
+    fn complete_connection(self, accept_data: Option<UserData>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
 }
 
 pub trait CoppConnection: Send {

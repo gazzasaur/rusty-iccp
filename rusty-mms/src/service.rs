@@ -620,6 +620,8 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
                 MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request)?.to_vec(),
                 MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
                 MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
+                MmsMessage::ConcludeRequest { request } => todo!(),
+                MmsMessage::ConcludeResponse { request } => todo!(),
             }
             .map_err(to_mms_error("Failed to serialise message"))?;
             self.buffer.push_back(data);

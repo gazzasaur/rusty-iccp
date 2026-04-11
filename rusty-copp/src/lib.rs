@@ -115,9 +115,9 @@ mod tests {
             let (copp_listener, _) =
                 RustyCoppListener::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener)
                     .await?;
-            let (copp_responder, connect_user_data) = copp_listener.responder().await?;
+            let (copp_responder, connect_user_data) = copp_listener.accept().await?;
 
-            Ok((copp_responder.accept(accept_data.clone()).await?, connect_user_data))
+            Ok((copp_responder.complete_connection(accept_data.clone()).await?, connect_user_data))
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);

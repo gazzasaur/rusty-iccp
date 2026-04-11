@@ -83,7 +83,7 @@ pub struct RustyOsiSingleValueAcseListener<T: CoppResponder, R: CoppReader, W: C
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseListener<T, R, W> {
     pub async fn new(copp_listener: impl CoppListener) -> Result<(RustyOsiSingleValueAcseListener<impl CoppResponder, impl CoppReader, impl CoppWriter>, AcseRequestInformation), AcseError> {
-        let (copp_responder, copp_options) = copp_listener.responder().await?;
+        let (copp_responder, copp_options) = copp_listener.accept().await?;
         let copp_presentation_data_list = match copp_options {
             Some(UserData::FullyEncoded(x)) => x,
             None => return Err(AcseError::ProtocolError("COPP did not provide and data in the initiate payload".into())),
@@ -141,7 +141,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseResponder
         let acse_data = self.response.serialise(&Some(user_data))?;
         let copp_connection = self
             .copp_responder
-            .accept(Some(UserData::FullyEncoded(vec![PresentationDataValueList { transfer_syntax_name: None, presentation_context_identifier: vec![1], presentation_data_values: PresentationDataValues::SingleAsn1Type(acse_data) }])))
+            .complete_connection(Some(UserData::FullyEncoded(vec![PresentationDataValueList { transfer_syntax_name: None, presentation_context_identifier: vec![1], presentation_data_values: PresentationDataValues::SingleAsn1Type(acse_data) }])))
             .await?;
         let (copp_reader, copp_writer) = copp_connection.split().await?;
         Ok(RustyAcseConnection { copp_reader, copp_writer })
