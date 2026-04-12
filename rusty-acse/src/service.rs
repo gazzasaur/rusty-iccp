@@ -35,12 +35,12 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
                 PresentationContextType::ContextDefinitionList(vec![
                     // ACSE
                     PresentationContext {
-                        indentifier: vec![1],
+                        identifier: vec![1],
                         abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
                         transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
                     },
                     // Requested BER Encoded Protocol
-                    PresentationContext { indentifier: vec![3], abstract_syntax_name: abstract_syntax_name, transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?] },
+                    PresentationContext { identifier: vec![3], abstract_syntax_name: abstract_syntax_name, transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?] },
                 ]),
                 Some(UserData::FullyEncoded(vec![PresentationDataValueList {
                     transfer_syntax_name: None,
@@ -83,7 +83,7 @@ pub struct RustyOsiSingleValueAcseListener<T: CoppResponder, R: CoppReader, W: C
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseListener<T, R, W> {
     pub async fn new(copp_listener: impl CoppListener) -> Result<(RustyOsiSingleValueAcseListener<impl CoppResponder, impl CoppReader, impl CoppWriter>, AcseRequestInformation), AcseError> {
-        let (copp_responder, copp_options) = copp_listener.accept().await?;
+        let (copp_responder, _, copp_options) = copp_listener.accept().await?;
         let copp_presentation_data_list = match copp_options {
             Some(UserData::FullyEncoded(x)) => x,
             None => return Err(AcseError::ProtocolError("COPP did not provide and data in the initiate payload".into())),

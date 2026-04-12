@@ -6,7 +6,7 @@ use der_parser::{
     error::BerError,
 };
 
-use crate::{PresentationContext, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType};
+use crate::{PresentationContext, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType};
 
 #[derive(Debug)]
 pub(crate) enum PresentationMode {
@@ -104,9 +104,26 @@ pub(crate) fn process_presentation_context<'a>(npm_objects: Vec<Any<'a>>) -> Res
         };
     }
     Ok(PresentationContext {
-        indentifier: id.ok_or_else(|| BerError::BerValueError)?,
+        identifier: id.ok_or_else(|| BerError::BerValueError)?,
         abstract_syntax_name: abstract_syntax_name.ok_or_else(|| BerError::BerValueError)?,
         transfer_syntax_name_list: transfer_syntax_name_list.ok_or_else(|| BerError::BerValueError)?,
+    })
+}
+
+pub(crate) fn process_presentation_context_identifier<'a>(npm_objects: Vec<Any<'a>>) -> Result<PresentationContextIdentifier, BerError> {
+    let mut id = None;
+    let mut transfer_syntax_name = None;
+
+    for npm_object in npm_objects {
+        match npm_object.header.raw_tag() {
+            Some(&[2]) => id = process_integer(npm_object)?,
+            Some(&[6]) => transfer_syntax_name = process_oid(npm_object)?,
+            _ => (),
+        };
+    }
+    Ok(PresentationContextIdentifier {
+        identifier: id.ok_or_else(|| BerError::BerValueError)?,
+        transfer_syntax_name: transfer_syntax_name.ok_or_else(|| BerError::BerValueError)?,
     })
 }
 
@@ -139,6 +156,18 @@ pub(crate) fn process_presentation_context_list<'a>(data: &'a [u8]) -> Result<Pr
         context_definition_list.push(process_presentation_context(process_constructed_data(context_item.data)?)?);
     }
     Ok(PresentationContextType::ContextDefinitionList(context_definition_list))
+}
+
+pub(crate) fn process_presentation_context_identifier_list<'a>(data: &'a [u8]) -> Result<Vec<PresentationContextIdentifier>, BerError> {
+    let mut context_definition_list = vec![];
+    for context_item in process_constructed_data(data)? {
+        context_item.header.assert_constructed()?;
+        context_item.header.assert_tag(Tag::Sequence)?;
+        context_item.header.assert_class(Class::Universal)?;
+
+        context_definition_list.push(process_presentation_context_identifier(process_constructed_data(context_item.data)?)?);
+    }
+    Ok(context_definition_list)
 }
 
 pub(crate) fn process_presentation_context_result_list<'a>(data: &'a [u8]) -> Result<PresentationContextResultType, BerError> {

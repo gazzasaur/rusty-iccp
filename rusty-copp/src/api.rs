@@ -17,6 +17,10 @@ pub enum CoppError {
     #[error("COPP IO Error: {:?}", .0)]
     IoError(#[from] std::io::Error),
 
+    /// Usually indicates a bug or an unhandled error condition.
+    #[error("COPP Error: {}", .0)]
+    InternalError(String),
+
     /// Indicated a connection was refused. The connection should be dropped.
     /// This should only be received by the initiator during the initiate phase.
     #[error("COPP Refused")]
@@ -40,6 +44,46 @@ pub enum ProviderReason {
     NoPsapAvailable = 7,
 }
 
+pub enum EventIdentifierValue {
+    CpPpdu = 0,
+    CpaPpdu = 1,
+    CprPpdu = 2,
+    AruPpdu = 3,
+    ArpPpdu = 4,
+    AcPpdu = 5,
+    AcaPpdu = 6,
+    TdPpdu = 7,
+    TtdPpdu = 8,
+    TePpdu = 9,
+    TcPpdu = 10,
+    TccPpdu = 11,
+    RsPpdu = 12,
+    RsaPpdu = 13,
+    SessionReleaseIndication = 14,
+    SessionReleaseConfirm = 15,
+    SessionTokenGiveIndication = 16,
+    SessionTokenPleaseIndication = 17,
+    SessionControlGiveIndication = 18,
+    SessionSyncMinorIndication = 19,
+    SessionSyncMinorConfirm = 20,
+    SessionSyncMajorIndication = 21,
+    SessionSyncMajorConfirm = 22,
+    SessionProviderExceptionReportIndication = 23,
+    SessionUserExceptionReportIndication = 24,
+    SessionActivityStartIndication = 25,
+    SessionActivityResumeIndication = 26,
+    SessionActivityInterruptIndication = 27,
+    SessionActivityInterruptConfirm = 28,
+    SessionActivityDiscardIndication = 29,
+    SessionActivityDiscardConfirm = 30,
+    SessionActivityEndIndication = 31,
+    SessionActivityEndConfirm = 32,
+}
+pub enum EventIdentifier {
+    Value(EventIdentifierValue),
+    Unknown(Vec<u8>),
+}
+
 // TODO Support Default Context. This library is targeted towards ACSE/MMS which does not require the default context.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextType {
@@ -55,8 +99,14 @@ pub enum PresentationContextResultType {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+pub struct PresentationContextIdentifier {
+    pub identifier: Vec<u8>, // ASN1 Integer
+    pub transfer_syntax_name: Oid<'static>,
+}
+
+#[derive(PartialEq, Clone, Debug)]
 pub struct PresentationContext {
-    pub indentifier: Vec<u8>, // ASN1 Integer
+    pub identifier: Vec<u8>, // ASN1 Integer
     pub abstract_syntax_name: Oid<'static>,
     pub transfer_syntax_name_list: Vec<Oid<'static>>,
 }
@@ -128,11 +178,17 @@ pub trait CoppInitiator: Send {
 }
 
 pub trait CoppListener: Send {
-    fn accept(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<UserData>), CoppError>> + Send;
+    fn accept(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, PresentationContextType, Option<UserData>), CoppError>> + Send;
+
+    /// Not cancel safe
+    fn abort_user(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }
 
 pub trait CoppResponder: Send {
     fn complete_connection(self, accept_data: Option<UserData>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
+
+    // fn refuse(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, Option<UserData>), CoppError>> + Send;
+    // fn abort_user(self, presentation_contexts: Vec<PresentationContextIdentifier>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }
 
 pub trait CoppConnection: Send {
@@ -145,4 +201,6 @@ pub trait CoppReader: Send {
 
 pub trait CoppWriter: Send {
     fn send(&mut self, user_data: &mut VecDeque<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+
+    fn abort_user(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }

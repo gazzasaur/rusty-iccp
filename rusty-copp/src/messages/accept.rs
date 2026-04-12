@@ -49,6 +49,7 @@ impl AcceptMessage {
                 }
                 Some(&[162]) => {
                     // This is technically a sequence. But we are going to be relaxed. The standard also says to ignore unknown tags, which can complicate processing. So we treat this as a set.
+
                     for npm_object in process_constructed_data(object.data)? {
                         match npm_object.header.raw_tag() {
                             Some(&[128]) => accept_message.protocol = process_protocol(npm_object)?,

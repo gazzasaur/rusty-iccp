@@ -12,6 +12,8 @@ use tracing::warn;
 
 use crate::parsers::{process_constructed_data, process_integer_content, process_mms_bitstring_content, process_mms_boolean_content, process_mms_string};
 use crate::pdu::common::expect_value;
+use crate::pdu::concluderequest::{conclude_request_to_ber, parse_conclude_request};
+use crate::pdu::concluderesponse::{conclude_response_to_ber, parse_conclude_response};
 use crate::pdu::confirmedrequest::{confirmed_request_to_ber, parse_confirmed_request};
 use crate::pdu::confirmedresponse::{confirmed_response_to_ber, parse_confirmed_response};
 use crate::pdu::initiaterequest::{InitRequestResponseDetails, InitiateRequestPdu};
@@ -591,6 +593,8 @@ impl<R: OsiSingleValueAcseReader> MmsReader for RustyMmsReader<R> {
                 AcseRecvResult::Data(data) => {
                     let (_, message) = parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS message"))?;
                     match message.header.raw_tag() {
+                        Some([139]) => return Ok(MmsRecvResult::Message(parse_conclude_request(&message)?)),
+                        Some([140]) => return Ok(MmsRecvResult::Message(parse_conclude_response(&message)?)),
                         Some([160]) => return Ok(MmsRecvResult::Message(parse_confirmed_request(message)?)),
                         Some([161]) => return Ok(MmsRecvResult::Message(parse_confirmed_response(message)?)),
                         Some([163]) => return Ok(MmsRecvResult::Message(parse_unconfirmed(message)?)),
@@ -617,11 +621,11 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
     async fn send(&mut self, messages: &mut VecDeque<MmsMessage>) -> Result<(), MmsError> {
         while let Some(message) = messages.pop_front() {
             let data = match message {
+                MmsMessage::ConcludeRequest { request: _ } => conclude_request_to_ber().to_vec(),
+                MmsMessage::ConcludeResponse { request: _ } => conclude_response_to_ber().to_vec(),
+                MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
                 MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request)?.to_vec(),
                 MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
-                MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
-                MmsMessage::ConcludeRequest { request } => todo!(),
-                MmsMessage::ConcludeResponse { request } => todo!(),
             }
             .map_err(to_mms_error("Failed to serialise message"))?;
             self.buffer.push_back(data);

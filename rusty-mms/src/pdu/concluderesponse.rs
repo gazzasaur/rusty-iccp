@@ -4,10 +4,10 @@ use der_parser::{
     der::{Class, Header, Tag},
 };
 
-use crate::{MmsConcludeResponse, MmsConfirmedresponse, MmsError};
+use crate::{MmsConcludeResponse, MmsError, MmsMessage};
 
-pub(crate) fn parse_conclude_response(_: &Any<'_>) -> Result<MmsConcludeResponse, MmsError> {
-    Ok(MmsConcludeResponse)
+pub(crate) fn parse_conclude_response(_: &Any<'_>) -> Result<MmsMessage, MmsError> {
+    Ok(MmsMessage::ConcludeResponse { request: MmsConcludeResponse {} })
 }
 
 pub(crate) fn conclude_response_to_ber<'a>() -> BerObject<'a> {

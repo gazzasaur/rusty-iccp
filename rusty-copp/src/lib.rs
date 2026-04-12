@@ -34,13 +34,13 @@ mod tests {
         let presentation_contexts = vec![
             // ACSE
             PresentationContext {
-                indentifier: vec![1],
+                identifier: vec![1],
                 abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
                 transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
             },
             // MMS
             PresentationContext {
-                indentifier: vec![3],
+                identifier: vec![3],
                 abstract_syntax_name: Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
                 transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
             },
@@ -115,7 +115,7 @@ mod tests {
             let (copp_listener, _) =
                 RustyCoppListener::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener)
                     .await?;
-            let (copp_responder, connect_user_data) = copp_listener.accept().await?;
+            let (copp_responder, _, connect_user_data) = copp_listener.accept().await?;
 
             Ok((copp_responder.complete_connection(accept_data.clone()).await?, connect_user_data))
         };

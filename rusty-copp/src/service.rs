@@ -1,12 +1,12 @@
 use std::{collections::VecDeque, marker::PhantomData};
 
 use der_parser::Oid;
-use rusty_cosp::{CospAcceptor, CospConnection, CospInitiator, CospReader, CospResponder, CospWriter};
+use rusty_cosp::{CospAcceptor, CospConnection, CospError, CospInitiator, CospReader, CospRecvResult, CospResponder, CospWriter};
 
 use crate::{
-    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType,
-    PresentationContextType, UserData,
-    messages::{accept::AcceptMessage, connect::ConnectMessage},
+    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause,
+    PresentationContextResultType, PresentationContextType, UserData,
+    messages::{abortuser::AbortUserMessage, accept::AcceptMessage, connect::ConnectMessage},
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
@@ -29,7 +29,12 @@ impl<T: CospInitiator, R: CospReader, W: CospWriter> CoppInitiator for RustyCopp
         let connect_message = ConnectMessage::new(None, self.options.calling_presentation_selector, self.options.called_presentation_selector, presentation_contexts, user_data);
         let data = connect_message.serialise()?;
 
-        let (cosp_connection, accept_data) = cosp_initiator.initiate(Some(data)).await?;
+        let (cosp_connection, accept_data) = match cosp_initiator.initiate(Some(data)).await {
+            Ok(x) => x,
+            Err(CospError::Refused(_user_data)) => todo!(),
+            Err(CospError::Aborted(_user_data)) => todo!(),
+            Err(e) => Err(e)?,
+        };
         let accept_message = match accept_data {
             Some(data) => AcceptMessage::parse(data)?,
             None => return Err(CoppError::ProtocolError("No accept message data was received fromt he remote host.".to_string())),
@@ -45,6 +50,7 @@ pub struct RustyCoppListener<T: CospResponder, R: CospReader, W: CospWriter> {
     user_data: Option<UserData>,
     cosp_reader: PhantomData<R>,
     cosp_writer: PhantomData<W>,
+    presentation_context: PresentationContextType,
     connection_information: CoppConnectionInformation,
 }
 
@@ -58,6 +64,7 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
         };
 
         let presentation_user_data = connect_message.user_data_mut().take();
+        let presentation_context = connect_message.context_definition_list();
         let copp_information = CoppConnectionInformation { calling_presentation_selector: connect_message.calling_presentation_selector().cloned(), called_presentation_selector: connect_message.called_presentation_selector().cloned() };
 
         Ok((
@@ -67,6 +74,7 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
                 cosp_writer: PhantomData::<W>,
                 user_data: presentation_user_data,
                 connection_information: copp_information.clone(),
+                presentation_context: presentation_context.clone(),
                 // resultant_contexts: None,
             },
             copp_information,
@@ -75,8 +83,13 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> 
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> CoppListener for RustyCoppListener<T, R, W> {
-    async fn accept(self) -> Result<(impl CoppResponder, Option<UserData>), CoppError> {
-        Ok((RustyCoppResponder::<T, R, W>::new(self.cosp_responder, self.connection_information), self.user_data))
+    async fn accept(self) -> Result<(impl CoppResponder, PresentationContextType, Option<UserData>), CoppError> {
+        Ok((RustyCoppResponder::<T, R, W>::new(self.cosp_responder, self.connection_information), self.presentation_context, self.user_data))
+    }
+
+    async fn abort_user(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
+        self.cosp_responder.abort(Some(AbortUserMessage::new(presentation_contexts, user_data).serialise()?)).await?;
+        Ok(())
     }
 }
 
@@ -137,11 +150,18 @@ impl<R: CospReader> RustyCoppReader<R> {
 
 impl<R: CospReader> CoppReader for RustyCoppReader<R> {
     async fn recv(&mut self) -> Result<CoppRecvResult, CoppError> {
-        match self.cosp_reader.recv().await? {
-            rusty_cosp::CospRecvResult::Finish(_) => todo!(),
-            rusty_cosp::CospRecvResult::Disconnect(_) => todo!(),
-            rusty_cosp::CospRecvResult::Closed => return Ok(CoppRecvResult::Closed),
-            rusty_cosp::CospRecvResult::Data(items) => Ok(CoppRecvResult::Data(UserData::parse_raw(&items).map_err(|e| CoppError::ProtocolError(e.to_string()))?)),
+        let message = match self.cosp_reader.recv().await {
+            Ok(x) => x,
+            Err(CospError::Refused(_user_data)) => todo!(),
+            Err(CospError::Aborted(_user_data)) => todo!(),
+            Result::Err(e) => Err(e)?,
+        };
+
+        match message {
+            CospRecvResult::Finish(_) => todo!(),
+            CospRecvResult::Disconnect(_) => todo!(),
+            CospRecvResult::Closed => return Ok(CoppRecvResult::Closed),
+            CospRecvResult::Data(items) => Ok(CoppRecvResult::Data(UserData::parse_raw(&items).map_err(|e| CoppError::ProtocolError(e.to_string()))?)),
         }
     }
 }
@@ -169,6 +189,11 @@ impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
 
         // Perform one more to ensure lower levels are also flushed even if this layer is complete.
         self.cosp_writer.send(&mut self.buffer).await?;
+        Ok(())
+    }
+
+    async fn abort_user(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
+        self.cosp_writer.abort(Some(AbortUserMessage::new(presentation_contexts, user_data).serialise()?)).await?;
         Ok(())
     }
 }

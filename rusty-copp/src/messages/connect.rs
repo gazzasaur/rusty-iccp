@@ -31,6 +31,10 @@ impl ConnectMessage {
         self.called_presentation_selector.as_ref()
     }
 
+    pub(crate) fn context_definition_list(&self) -> &PresentationContextType {
+        &self.context_definition_list
+    }
+
     pub(crate) fn user_data_mut(&mut self) -> &mut Option<UserData> {
         &mut self.user_data
     }
@@ -142,7 +146,7 @@ impl ConnectMessage {
                                         .iter()
                                         .map(|context| {
                                             der_parser::ber::BerObject::from_seq(vec![
-                                                der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::Integer(context.indentifier.as_slice())),
+                                                der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::Integer(context.identifier.as_slice())),
                                                 der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(context.abstract_syntax_name.clone())),
                                                 der_parser::ber::BerObject::from_seq(
                                                     context.transfer_syntax_name_list.iter().map(|transfer| der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(transfer.clone()))).collect(),
@@ -193,12 +197,12 @@ mod tests {
             Some(vec![0x04]),
             PresentationContextType::ContextDefinitionList(vec![
                 PresentationContext {
-                    indentifier: vec![1],
+                    identifier: vec![1],
                     abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
                     transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
                 },
                 PresentationContext {
-                    indentifier: vec![1],
+                    identifier: vec![1],
                     abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
                     transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
                 },
