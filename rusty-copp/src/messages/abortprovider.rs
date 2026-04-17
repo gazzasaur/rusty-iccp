@@ -3,23 +3,22 @@ use der_parser::
 ;
 
 use crate::{
-    CoppError, PresentationContextIdentifier, UserData,
-    error::protocol_error,
-    messages::parsers::{process_constructed_data, process_presentation_context_identifier_list},
+    CoppError, EventIdentifier, PresentationContextIdentifier, ProviderReason, UserData, error::protocol_error, messages::parsers::{process_constructed_data, process_presentation_context_identifier_list}
 };
 
 #[derive(Debug)]
-pub(crate) struct AbortUserMessage {
-    presentation_contexts: Option<Vec<PresentationContextIdentifier>>,
-    user_data: Option<UserData>,
+pub(crate) struct AbortProviderMessage {
+    provider_reason: Option<ProviderReason>,
+    event_identifier: Option<EventIdentifier>,
 }
 
-impl AbortUserMessage {
+impl AbortProviderMessage {
     pub(crate) fn new(presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Self {
-        Self { presentation_contexts, user_data }
+        todo!()
+        // Self { presentation_contexts, user_data }
     }
 
-    pub(crate) fn parse(data: Vec<u8>) -> Result<AbortUserMessage, CoppError> {
+    pub(crate) fn parse(data: Vec<u8>) -> Result<AbortProviderMessage, CoppError> {
         let mut user_data = None;
         let mut context_definition_list = None;
 
@@ -39,6 +38,7 @@ impl AbortUserMessage {
                             _ => (),
                         };
                     }
+
                     (&[] as &[u8], 0)
                 }
                 _ => (&[] as &[u8], 0),
@@ -47,7 +47,7 @@ impl AbortUserMessage {
         })(&data)
         .map_err(|e| protocol_error("sd", e))?;
 
-        Ok(AbortUserMessage { presentation_contexts: context_definition_list, user_data })
+        Ok(AbortProviderMessage { presentation_contexts: context_definition_list, user_data })
     }
 
     pub(crate) fn serialise(&self) -> Result<Vec<u8>, CoppError> {

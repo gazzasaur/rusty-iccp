@@ -1,12 +1,10 @@
 use std::{collections::VecDeque, marker::PhantomData};
 
 use der_parser::Oid;
-use rusty_cosp::{CospAcceptor, CospConnection, CospError, CospInitiator, CospReader, CospRecvResult, CospResponder, CospWriter};
+use rusty_cosp::{CospAcceptor, CospConnection, CospError, CospInitiator, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode};
 
 use crate::{
-    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause,
-    PresentationContextResultType, PresentationContextType, UserData,
-    messages::{abortuser::AbortUserMessage, accept::AcceptMessage, connect::ConnectMessage},
+    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, EventIdentifier, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType, UserData, messages::{abortuser::AbortUserMessage, accept::AcceptMessage, connect::ConnectMessage, reject::RejectMessage, user_data}
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
@@ -152,8 +150,16 @@ impl<R: CospReader> CoppReader for RustyCoppReader<R> {
     async fn recv(&mut self) -> Result<CoppRecvResult, CoppError> {
         let message = match self.cosp_reader.recv().await {
             Ok(x) => x,
-            Err(CospError::Refused(_user_data)) => todo!(),
-            Err(CospError::Aborted(_user_data)) => todo!(),
+            Err(CospError::Refused(_)) => return Err(CoppError::ProtocolError("Refused message received after the connection was established.".into())),
+            Err(CospError::Aborted(None)) => return Err(CoppError::ProviderAborted(None, None)),
+            Err(CospError::Aborted(Some(user_data))) => {
+                match user_data.get(0) {
+                    Some(160) => return Err(AbortUserMessage::parse(user_data)?.to_error()),
+                    Some(30) => todo!(), // Arp PDU
+                    Some(x) => return Err(CoppError::ProtocolError(format!("COPP abort expected does not match a supported header: {x}"))),
+                    None => return Err(CoppError::ProtocolError("COPP abort expected but no data was received.".into())),
+                }
+            },
             Result::Err(e) => Err(e)?,
         };
 

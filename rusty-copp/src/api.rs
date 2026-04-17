@@ -28,8 +28,13 @@ pub enum CoppError {
 
     /// Indicated a connection was aborted. The connection should be dropped.
     /// This may occur during any read operation.
-    #[error("COPP Abort")]
-    Aborted(Option<UserData>),
+    #[error("COPP User Abort")]
+    UserAborted(Option<Vec<PresentationContextIdentifier>>, Option<Vec<u8>>),
+
+    /// Indicated a connection was aborted. The connection should be dropped.
+    /// This may occur during any read operation.
+    #[error("COPP Provider Abort")]
+    ProviderAborted(Option<ProviderReason>, Option<EventIdentifier>),
 }
 
 #[derive(Debug)]
@@ -44,6 +49,7 @@ pub enum ProviderReason {
     NoPsapAvailable = 7,
 }
 
+#[derive(Debug)]
 pub enum EventIdentifierValue {
     CpPpdu = 0,
     CpaPpdu = 1,
@@ -79,6 +85,8 @@ pub enum EventIdentifierValue {
     SessionActivityEndIndication = 31,
     SessionActivityEndConfirm = 32,
 }
+
+#[derive(Debug)]
 pub enum EventIdentifier {
     Value(EventIdentifierValue),
     Unknown(Vec<u8>),
