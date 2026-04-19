@@ -4,7 +4,9 @@ use der_parser::{
 };
 
 use crate::{
-    CoppError, PresentationContextResultType, ProviderReason, UserData, error::protocol_error, messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol}
+    CoppError, PresentationContextResultType, ProviderReason, UserData,
+    error::protocol_error,
+    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol},
 };
 
 #[derive(Debug)]
@@ -18,18 +20,30 @@ pub(crate) struct RejectMessage {
 }
 
 impl RejectMessage {
-    pub(crate) fn new(protocol: Option<Protocol>, responding_presentation_selector: Option<Vec<u8>>, context_definition_result_list: PresentationContextResultType, provider_reason: Option<ProviderReason>, user_data: Option<UserData>) -> Self {
+    pub(crate) fn new(
+        protocol: Option<Protocol>,
+        responding_presentation_selector: Option<Vec<u8>>,
+        context_definition_result_list: PresentationContextResultType,
+        provider_reason: Option<ProviderReason>,
+        user_data: Option<UserData>,
+    ) -> Self {
         Self { protocol, presentation_mode: Some(PresentationMode::Normal), responding_presentation_selector, context_definition_result_list, provider_reason, user_data }
     }
 
-    pub(crate) fn user_data(self) -> Option<UserData> {
-        self.user_data
+    pub(crate) fn to_error(self) -> CoppError {
+        CoppError::Refused(self.provider_reason, self.context_definition_result_list, self.user_data)
     }
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<RejectMessage, CoppError> {
         let mut context_definition_list = None;
-        let mut accept_message =
-            RejectMessage { protocol: None, presentation_mode: None, responding_presentation_selector: None, context_definition_result_list: PresentationContextResultType::ContextDefinitionList(vec![]), provider_reason: None, user_data: None };
+        let mut accept_message = RejectMessage {
+            protocol: None,
+            presentation_mode: None,
+            responding_presentation_selector: None,
+            context_definition_result_list: PresentationContextResultType::ContextDefinitionList(vec![]),
+            provider_reason: None,
+            user_data: None,
+        };
 
         // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
         der_parser::ber::parse_ber_set_of_v(|data| {
@@ -71,100 +85,86 @@ impl RejectMessage {
         Ok(accept_message)
     }
 
-    // TODO Support for default context
     pub(crate) fn serialise(&self) -> Result<Vec<u8>, CoppError> {
         if matches!(self.presentation_mode, Some(PresentationMode::X410)) || matches!(self.presentation_mode, Some(PresentationMode::Unknown)) {
             return Err(CoppError::InternalError(format!("Unsupported mode: {:?}", self.presentation_mode)));
         }
+        let provider_reason: Option<Vec<u8>> = match &self.provider_reason {
+            Some(value) => Some(value.into()),
+            None => None,
+        };
         let user_data = match &self.user_data {
             Some(user_data) => Some(user_data.to_ber()),
             None => None,
         };
 
-        Ok(der_parser::ber::BerObject::from_set(vec![
-            // Version defaults to 1, omitting.
-            // Normal Mode
-            der_parser::ber::BerObject::from_header_and_content(
-                Header::new(Class::ContextSpecific, true, Tag::from(0), der_parser::ber::Length::Definite(0)),
-                der_parser::ber::BerObjectContent::Set(vec![der_parser::ber::BerObject::from_header_and_content(
-                    Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
-                    der_parser::ber::BerObjectContent::Integer(&[1]),
-                )]),
-            ),
-            // Normal Mode Parameters
-            der_parser::ber::BerObject::from_header_and_content(
-                Header::new(Class::ContextSpecific, true, Tag::from(2), der_parser::ber::Length::Definite(0)),
-                der_parser::ber::BerObjectContent::Sequence(
-                    vec![
-                        // Protocol
-                        match self.protocol.as_ref() {
-                            Some(&Protocol::Version1) => Some(der_parser::ber::BerObject::from_header_and_content(
-                                Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
-                                der_parser::ber::BerObjectContent::BitString(6, BitStringObject { data: &[1] }),
-                            )),
-                            Some(Protocol::Unknown(x)) => return Err(CoppError::InternalError(format!("Unknown protocol version: {:?}", x))),
-                            None => None,
-                        },
-                        // Calling Presentation Selector
-                        match self.responding_presentation_selector.as_ref() {
-                            Some(x) => Some(der_parser::ber::BerObject::from_header_and_content(
-                                Header::new(Class::ContextSpecific, false, Tag::from(3), der_parser::ber::Length::Definite(0)),
-                                der_parser::ber::BerObjectContent::OctetString(x.as_slice()),
-                            )),
-                            None => None,
-                        },
-                        // Context Definition List
-                        match &self.context_definition_result_list {
-                            PresentationContextResultType::ContextDefinitionList(contexts) => Some(der_parser::ber::BerObject::from_header_and_content(
-                                Header::new(Class::ContextSpecific, true, Tag::from(5), der_parser::ber::Length::Definite(0)),
-                                der_parser::ber::BerObjectContent::Sequence(
-                                    contexts
-                                        .iter()
-                                        .map(|context| {
-                                            der_parser::ber::BerObject::from_seq(
-                                                vec![
-                                                    Some(der_parser::ber::BerObject::from_header_and_content(
-                                                        Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
-                                                        der_parser::ber::BerObjectContent::Integer(context.result.clone().into()),
-                                                    )),
-                                                    match &context.transfer_syntax_name {
-                                                        Some(transfer_syntax_name) => Some(der_parser::ber::BerObject::from_header_and_content(
-                                                            Header::new(Class::ContextSpecific, false, Tag::from(1), der_parser::ber::Length::Definite(0)),
-                                                            der_parser::ber::BerObjectContent::OID(transfer_syntax_name.clone()),
-                                                        )),
-                                                        None => None,
-                                                    },
-                                                    match &context.provider_reason {
-                                                        Some(provider_reason) => Some(der_parser::ber::BerObject::from_header_and_content(
-                                                            Header::new(Class::ContextSpecific, false, Tag::from(2), der_parser::ber::Length::Definite(0)),
-                                                            der_parser::ber::BerObjectContent::Integer(provider_reason.clone().into()),
-                                                        )),
-                                                        None => None,
-                                                    },
-                                                ]
-                                                .into_iter()
-                                                .filter_map(|f| f)
-                                                .collect(),
-                                            )
-                                        })
+        Ok(der_parser::ber::BerObject::from_seq(
+            vec![
+                // Protocol
+                match self.protocol.as_ref() {
+                    Some(&Protocol::Version1) => Some(der_parser::ber::BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
+                        der_parser::ber::BerObjectContent::BitString(6, BitStringObject { data: &[1] }),
+                    )),
+                    Some(Protocol::Unknown(x)) => return Err(CoppError::InternalError(format!("Unknown protocol version: {:?}", x))),
+                    None => None,
+                },
+                // Calling Presentation Selector
+                match self.responding_presentation_selector.as_ref() {
+                    Some(x) => {
+                        Some(der_parser::ber::BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(3), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::OctetString(x.as_slice())))
+                    }
+                    None => None,
+                },
+                // Context Definition List
+                match &self.context_definition_result_list {
+                    PresentationContextResultType::ContextDefinitionList(contexts) => Some(der_parser::ber::BerObject::from_header_and_content(
+                        Header::new(Class::ContextSpecific, true, Tag::from(5), der_parser::ber::Length::Definite(0)),
+                        der_parser::ber::BerObjectContent::Sequence(
+                            contexts
+                                .iter()
+                                .map(|context| {
+                                    der_parser::ber::BerObject::from_seq(
+                                        vec![
+                                            Some(der_parser::ber::BerObject::from_header_and_content(
+                                                Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
+                                                der_parser::ber::BerObjectContent::Integer(context.result.clone().into()),
+                                            )),
+                                            match &context.transfer_syntax_name {
+                                                Some(transfer_syntax_name) => Some(der_parser::ber::BerObject::from_header_and_content(
+                                                    Header::new(Class::ContextSpecific, false, Tag::from(1), der_parser::ber::Length::Definite(0)),
+                                                    der_parser::ber::BerObjectContent::OID(transfer_syntax_name.clone()),
+                                                )),
+                                                None => None,
+                                            },
+                                            match &context.provider_reason {
+                                                Some(provider_reason) => Some(der_parser::ber::BerObject::from_header_and_content(
+                                                    Header::new(Class::ContextSpecific, false, Tag::from(2), der_parser::ber::Length::Definite(0)),
+                                                    der_parser::ber::BerObjectContent::Integer(provider_reason.clone().into()),
+                                                )),
+                                                None => None,
+                                            },
+                                        ]
+                                        .into_iter()
+                                        .filter_map(|f| f)
                                         .collect(),
-                                ),
-                            )),
-                        },
-                        // Presentation Requirements
-                        Some(der_parser::ber::BerObject::from_header_and_content(
-                            Header::new(Class::ContextSpecific, false, Tag::from(8), der_parser::ber::Length::Definite(0)),
-                            der_parser::ber::BerObjectContent::BitString(6, BitStringObject { data: &[0] }),
-                        )),
-                        // User Data
-                        user_data,
-                    ]
-                    .into_iter()
-                    .filter_map(|i| i)
-                    .collect(),
-                ),
-            ),
-        ])
+                                    )
+                                })
+                                .collect(),
+                        ),
+                    )),
+                },
+                // Presentation Requirements
+                provider_reason
+                    .as_ref()
+                    .map(|x| der_parser::ber::BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(10), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::Integer(x.as_slice()))),
+                // User Data
+                user_data,
+            ]
+            .into_iter()
+            .filter_map(|i| i)
+            .collect(),
+        )
         .to_vec()
         .map_err(|e| CoppError::InternalError(e.to_string()))?)
     }

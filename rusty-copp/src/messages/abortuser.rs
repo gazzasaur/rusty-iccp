@@ -1,11 +1,9 @@
-use der_parser::
-    der::{Class, Header, Tag}
-;
+use der_parser::der::{Class, Header, Tag};
 
 use crate::{
     CoppError, PresentationContextIdentifier, UserData,
     error::protocol_error,
-    messages::parsers::{process_constructed_data, process_presentation_context_identifier_list},
+    messages::parsers::process_presentation_context_identifier_list,
 };
 
 #[derive(Debug)]
@@ -27,27 +25,20 @@ impl AbortUserMessage {
         der_parser::ber::parse_ber_set_of_v(|data| {
             let (abort_message_remainder, object) = der_parser::ber::parse_ber_any(data)?;
 
-            let (_, abort_message_parameter) = match object.header.raw_tag() {
-                Some(&[160]) => {
-                    // This is technically a sequence. But we are going to be relaxed. The standard also says to ignore unknown tags, which can complicate processing. So we treat this as a set.
-                    for npm_object in process_constructed_data(object.data)? {
-                        match npm_object.header.raw_tag() {
-                            Some(&[160]) => {
-                                context_definition_list = Some(process_presentation_context_identifier_list(npm_object.data)?);
-                            }
-                            Some(&[97]) => user_data = Some(UserData::parse(npm_object)?),
-                            _ => (),
-                        };
-                    }
-                    (&[] as &[u8], 0)
-                }
-                _ => (&[] as &[u8], 0),
+            match object.header.raw_tag() {
+                Some(&[160]) => context_definition_list = Some(process_presentation_context_identifier_list(object.data)?),
+                Some(&[97]) => user_data = Some(UserData::parse(object)?),
+                _ => (),
             };
-            Ok((abort_message_remainder, abort_message_parameter))
+            Ok((abort_message_remainder, 0))
         })(&data)
         .map_err(|e| protocol_error("sd", e))?;
 
         Ok(AbortUserMessage { presentation_contexts: context_definition_list, user_data })
+    }
+
+    pub(crate) fn to_error(self) -> CoppError {
+        CoppError::UserAborted(self.presentation_contexts, self.user_data)
     }
 
     pub(crate) fn serialise(&self) -> Result<Vec<u8>, CoppError> {

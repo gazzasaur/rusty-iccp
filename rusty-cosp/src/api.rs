@@ -130,6 +130,9 @@ pub trait CospResponder: Send {
     /// Completes the connection signalling with optional response data. The response data is typically from a higher layer protocol.
     fn complete_connection(self, accept_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<impl CospConnection, CospError>> + Send;
 
+    /// Refuse the incoming request with a reason.
+    fn refuse(self, reason_code: Option<ReasonCode>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+
     /// Abort the connection.
     fn abort(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }

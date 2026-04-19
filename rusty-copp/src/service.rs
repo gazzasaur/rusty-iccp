@@ -4,7 +4,7 @@ use der_parser::Oid;
 use rusty_cosp::{CospAcceptor, CospConnection, CospError, CospInitiator, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode};
 
 use crate::{
-    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, EventIdentifier, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType, UserData, messages::{abortuser::AbortUserMessage, accept::AcceptMessage, connect::ConnectMessage, reject::RejectMessage, user_data}
+    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, EventIdentifier, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType, ProviderReason, UserData, messages::{abortprovider::AbortProviderMessage, abortuser::AbortUserMessage, accept::AcceptMessage, connect::ConnectMessage, reject::RejectMessage}
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
@@ -84,9 +84,20 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> CoppListener for RustyCoppL
     async fn accept(self) -> Result<(impl CoppResponder, PresentationContextType, Option<UserData>), CoppError> {
         Ok((RustyCoppResponder::<T, R, W>::new(self.cosp_responder, self.connection_information), self.presentation_context, self.user_data))
     }
+    
+    async fn reject(self, context_definition_result_list: PresentationContextResultType, provider_reason: Option<ProviderReason>, user_data: Option<UserData>) -> Result<(), CoppError> {
+        let responder = self.connection_information.called_presentation_selector;
+        self.cosp_responder.refuse(Some(ReasonCode::RejectionByCalledSsUserWithData(RejectMessage::new(None, responder, context_definition_result_list, provider_reason, user_data).serialise()?))).await?;
+        Ok(())
+    }
 
-    async fn abort_user(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
+    async fn user_abort(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
         self.cosp_responder.abort(Some(AbortUserMessage::new(presentation_contexts, user_data).serialise()?)).await?;
+        Ok(())
+    }
+    
+    async fn provider_abort(self, provider_reason: Option<ProviderReason>, event_identifier: Option<EventIdentifier>) -> Result<(), CoppError> {
+        self.cosp_responder.abort(Some(AbortProviderMessage::new(provider_reason, event_identifier).serialise()?)).await?;
         Ok(())
     }
 }
@@ -116,6 +127,22 @@ impl<T: CospResponder, R: CospReader, W: CospWriter> CoppResponder for RustyCopp
         let accept_message_data = Some(accept_message.serialise()?);
         let (cosp_reader, cosp_writer) = responder.complete_connection(accept_message_data).await?.split().await?;
         Ok(RustyCoppConnection::new(cosp_reader, cosp_writer))
+    }
+    
+    async fn reject(self, context_definition_result_list: PresentationContextResultType, provider_reason: Option<ProviderReason>, user_data: Option<UserData>) -> Result<(), CoppError> {
+        let responder = self.connection_information.called_presentation_selector;
+        self.cosp_responder.refuse(Some(ReasonCode::RejectionByCalledSsUserWithData(RejectMessage::new(None, responder, context_definition_result_list, provider_reason, user_data).serialise()?))).await?;
+        Ok(())
+    }
+
+    async fn user_abort(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
+        self.cosp_responder.abort(Some(AbortUserMessage::new(presentation_contexts, user_data).serialise()?)).await?;
+        Ok(())
+    }
+    
+    async fn provider_abort(self, provider_reason: Option<ProviderReason>, event_identifier: Option<EventIdentifier>) -> Result<(), CoppError> {
+        self.cosp_responder.abort(Some(AbortProviderMessage::new(provider_reason, event_identifier).serialise()?)).await?;
+        Ok(())
     }
 }
 
@@ -150,12 +177,13 @@ impl<R: CospReader> CoppReader for RustyCoppReader<R> {
     async fn recv(&mut self) -> Result<CoppRecvResult, CoppError> {
         let message = match self.cosp_reader.recv().await {
             Ok(x) => x,
-            Err(CospError::Refused(_)) => return Err(CoppError::ProtocolError("Refused message received after the connection was established.".into())),
+            Err(CospError::Refused(None)) => return Err(CoppError::ProtocolError("Refused message received after the connection was established.".into())),
+            Err(CospError::Refused(Some(ReasonCode::RejectionByCalledSsUserWithData(user_data)))) => return Err(RejectMessage::parse(user_data)?.to_error()),
             Err(CospError::Aborted(None)) => return Err(CoppError::ProviderAborted(None, None)),
             Err(CospError::Aborted(Some(user_data))) => {
                 match user_data.get(0) {
                     Some(160) => return Err(AbortUserMessage::parse(user_data)?.to_error()),
-                    Some(30) => todo!(), // Arp PDU
+                    Some(30) => return Err(AbortProviderMessage::parse(user_data)?.to_error()),
                     Some(x) => return Err(CoppError::ProtocolError(format!("COPP abort expected does not match a supported header: {x}"))),
                     None => return Err(CoppError::ProtocolError("COPP abort expected but no data was received.".into())),
                 }

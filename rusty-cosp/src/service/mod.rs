@@ -190,6 +190,11 @@ impl<R: CotpReader, W: CotpWriter> CospResponder for RustyCospResponder<R, W> {
         Ok(RustyCospConnection::new(cotp_reader, cotp_writer, self.maximum_size_to_initiator, self.connection_options, self.protocol_information_list))
     }
 
+    async fn refuse(self, reason_code: Option<ReasonCode>) -> Result<(), CospError> {
+        let mut cotp_writer = self.cotp_writer;
+        send_refuse(&mut cotp_writer, self.maximum_size_to_initiator, reason_code.as_ref()).await
+    }
+
     async fn abort(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
         send_abort(&mut self.cotp_writer, self.maximum_size_to_initiator, user_data).await?;
         Ok(())
