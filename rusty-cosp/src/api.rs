@@ -23,6 +23,11 @@ pub enum CospError {
     #[error("COSP Error: {}", .0)]
     InternalError(String),
 
+    /// Indicated a connection was refused. The connection should be dropped.
+    /// This should only be received by the initiator during the initiate phase.
+    #[error("COSP Refused")]
+    Refused(Option<ReasonCode>),
+
     /// Indicated a connection was aborted. The connection should be dropped.
     /// This may occur during any read operation.
     #[error("COSP Abort")]
@@ -85,23 +90,26 @@ impl CospProtocolInformation {
 
 impl ProtocolInformation for CospProtocolInformation {}
 
-/// Possible expected values for the initiate operation.
+/// Possible values from the read operation.
 #[derive(IntoStaticStr)]
-pub enum CospInitiateResult<T: CospConnection> {
+pub enum CospRecvResult {
+    /// Indicates the underlying connection was closed.
+    Closed,
+
+    /// Indicates data was received.
+    Data(Vec<u8>),
+
+    /// Indicates the remote side intends to close the connection. A disconnect should be sent in response before dropping the reader and writer.
+    Finish(Option<Vec<u8>>),
+
     /// Indicates the remote side accepts the finish indication. The reader and writer may now be dropped.
-    Accepted { connection: T, user_data: Option<Vec<u8>> },
-
-    /// Indicated a connection was refused. The connection should be dropped.
-    Refused(Option<ReasonCode>),
-
-    /// Indicates an unexpected error has occurred outside the stndard state machine.
-    Error(CospError)
+    Disconnect(Option<Vec<u8>>),
 }
 
 /// Initiates a COSP connection.
 pub trait CospInitiator: Send {
     /// Starts signalling a COSP connection. A Refuse error may be received during this phase.
-    fn initiate(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = CospInitiateResult<impl CospConnection>> + Send;
+    fn initiate(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(impl CospConnection, Option<Vec<u8>>), CospError>> + Send;
 }
 
 /// Manages the initial connection phase of a COSP responder.
@@ -136,22 +144,6 @@ pub trait CospConnection: Send {
 
     /// Splits a connection into reader and writer components. This must be done before the connection is used.
     fn split(self) -> impl std::future::Future<Output = Result<(impl CospReader, impl CospWriter), CospError>> + Send;
-}
-
-/// Possible values from the read operation.
-#[derive(IntoStaticStr)]
-pub enum CospRecvResult {
-    /// Indicates the underlying connection was closed.
-    Closed,
-
-    /// Indicates data was received.
-    Data(Vec<u8>),
-
-    /// Indicates the remote side intends to close the connection. A disconnect should be sent in response before dropping the reader and writer.
-    Finish(Option<Vec<u8>>),
-
-    /// Indicates the remote side accepts the finish indication. The reader and writer may now be dropped.
-    Disconnect(Option<Vec<u8>>),
 }
 
 /// A trait representing the read half of a connection.

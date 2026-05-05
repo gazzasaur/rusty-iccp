@@ -194,9 +194,9 @@ mod tests {
 
         cosp_server?;
         match cosp_client {
-            CospInitiateResult::Accepted { connection: _, user_data: _ } => assert!(false, "Test Failed"),
-            CospInitiateResult::Refused(reason_code) => assert_eq!(reason_code, None),
-            CospInitiateResult::Error(_) => assert!(false, "Test Failed"),
+            Err(CospError::Refused(reason_code)) => assert_eq!(reason_code, None),
+            Ok(_) => assert!(false, "Test Failed"),
+            Err(_) => assert!(false, "Test Failed"),
         }
 
         Ok(())
