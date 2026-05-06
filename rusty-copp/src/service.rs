@@ -29,7 +29,7 @@ impl<T: CospInitiator, R: CospReader, W: CospWriter> CoppInitiator for RustyCopp
 
         let (cosp_connection, accept_data) = match cosp_initiator.initiate(Some(data)).await {
             Ok(x) => x,
-            Err(CospError::Refused(_user_data)) => todo!(),
+            Err(CospError::Refused(Some(ReasonCode::RejectionByCalledSsUserWithData(user_data)))) => return Err(RejectMessage::parse(user_data)?.to_error()),
             Err(CospError::Aborted(_user_data)) => todo!(),
             Err(e) => Err(e)?,
         };

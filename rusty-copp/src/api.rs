@@ -21,10 +21,10 @@ pub enum CoppError {
     #[error("COPP Error: {}", .0)]
     InternalError(String),
 
-    /// Indicated a connection was refused. The connection should be dropped.
+    /// Indicated a connection was rejected. The connection should be dropped.
     /// This should only be received by the initiator during the initiate phase.
-    #[error("COPP Refused")]
-    Refused(Option<ProviderReason>, PresentationContextResultType, Option<UserData>),
+    #[error("COPP Rejected")]
+    Rejected(Option<ProviderReason>, PresentationContextResultType, Option<UserData>),
 
     /// Indicated a connection was aborted. The connection should be dropped.
     /// This may occur during any read operation.
@@ -37,7 +37,7 @@ pub enum CoppError {
     ProviderAborted(Option<ProviderReason>, Option<EventIdentifier>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ProviderReasonValue {
     ReasonNotSpecified = 0,
     TemporaryCongestion = 1,
@@ -49,7 +49,7 @@ pub enum ProviderReasonValue {
     NoPsapAvailable = 7,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ProviderReason {
     Value(ProviderReasonValue),
     Unknown(Vec<u8>),

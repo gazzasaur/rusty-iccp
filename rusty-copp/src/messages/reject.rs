@@ -1,12 +1,12 @@
 use der_parser::{
-    ber::{BitStringObject, parse_ber_tagged_implicit_g},
+    ber::BitStringObject,
     der::{Class, Header, Tag},
 };
 
 use crate::{
     CoppError, PresentationContextResultType, ProviderReason, UserData,
     error::protocol_error,
-    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol},
+    messages::parsers::{PresentationMode, Protocol, process_octetstring, process_presentation_context_result_list, process_protocol},
 };
 
 #[derive(Debug)]
@@ -31,12 +31,12 @@ impl RejectMessage {
     }
 
     pub(crate) fn to_error(self) -> CoppError {
-        CoppError::Refused(self.provider_reason, self.context_definition_result_list, self.user_data)
+        CoppError::Rejected(self.provider_reason, self.context_definition_result_list, self.user_data)
     }
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<RejectMessage, CoppError> {
         let mut context_definition_list = None;
-        let mut accept_message = RejectMessage {
+        let mut reject_message = RejectMessage {
             protocol: None,
             presentation_mode: None,
             responding_presentation_selector: None,
@@ -46,43 +46,33 @@ impl RejectMessage {
         };
 
         // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
-        der_parser::ber::parse_ber_set_of_v(|data| {
-            let (accept_message_remainder, object) = der_parser::ber::parse_ber_any(data)?;
+        der_parser::ber::parse_ber_sequence_of_v(|data| {
+            let (reject_message_remainder, object) = der_parser::ber::parse_ber_any(data)?;
 
-            let (_, accept_message_parameter) = match object.header.raw_tag() {
-                Some(&[160]) => {
-                    let (_, presentation_mode) = parse_ber_tagged_implicit_g(Tag::from(0), |rem, header, size| {
-                        let (_, value) = der_parser::ber::parse_ber_content(Tag::Integer)(rem, &header, size)?;
-                        header.assert_class(Class::ContextSpecific)?;
-                        header.assert_primitive()?;
-                        Ok((&[], PresentationMode::from(value.as_slice()?)))
-                    })(object.data)?;
-                    accept_message.presentation_mode = Some(presentation_mode);
+            let (_, reject_message_parameter) = match object.header.raw_tag() {
+                Some(&[128]) => {
+                    reject_message.protocol = process_protocol(object)?;
                     (&[] as &[u8], 0)
-                }
-                Some(&[162]) => {
-                    // This is technically a sequence. But we are going to be relaxed. The standard also says to ignore unknown tags, which can complicate processing. So we treat this as a set.
-                    for npm_object in process_constructed_data(object.data)? {
-                        match npm_object.header.raw_tag() {
-                            Some(&[128]) => accept_message.protocol = process_protocol(npm_object)?,
-                            Some(&[131]) => accept_message.responding_presentation_selector = process_octetstring(npm_object)?,
-                            Some(&[165]) => {
-                                context_definition_list = Some(process_presentation_context_result_list(npm_object.data)?);
-                            }
-                            Some(&[97]) => accept_message.user_data = Some(UserData::parse(npm_object)?),
-                            _ => (),
-                        };
-                    }
-
+                },
+                Some(&[131]) => {
+                    reject_message.responding_presentation_selector = process_octetstring(object)?;
                     (&[] as &[u8], 0)
-                }
+                },
+                Some(&[165]) => {
+                    context_definition_list = Some(process_presentation_context_result_list(object.data)?);
+                    (&[] as &[u8], 0)
+                },
+                Some(&[97]) => {
+                    reject_message.user_data = Some(UserData::parse(object)?);
+                    (&[] as &[u8], 0)
+                },
                 _ => (&[] as &[u8], 0),
             };
-            Ok((accept_message_remainder, accept_message_parameter))
+            Ok((reject_message_remainder, reject_message_parameter))
         })(&data)
         .map_err(|e| protocol_error("sd", e))?;
 
-        Ok(accept_message)
+        Ok(reject_message)
     }
 
     pub(crate) fn serialise(&self) -> Result<Vec<u8>, CoppError> {
@@ -180,7 +170,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    async fn it_should_parse_accept() -> Result<(), anyhow::Error> {
+    async fn it_should_parse_reject() -> Result<(), anyhow::Error> {
         let subject = RejectMessage::new(
             Some(Protocol::Version1),
             Some(vec![0x04]),
