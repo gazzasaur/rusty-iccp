@@ -152,7 +152,7 @@ mod tests {
                         transfer_syntax_name: Some(Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
                         provider_reason: Some(PresentationContextResultProviderReason::AbstrctSyntaxNotSupported),
                     }]),
-                    None,
+                    Some(ProviderReason::Value(ProviderReasonValue::CalledPresentationAddressUnknown)),
                     None,
                 )
                 .await?;

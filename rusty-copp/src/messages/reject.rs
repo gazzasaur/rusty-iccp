@@ -6,7 +6,7 @@ use der_parser::{
 use crate::{
     CoppError, PresentationContextResultType, ProviderReason, UserData,
     error::protocol_error,
-    messages::parsers::{PresentationMode, Protocol, process_octetstring, process_presentation_context_result_list, process_protocol},
+    messages::parsers::{PresentationMode, Protocol, process_integer, process_octetstring, process_presentation_context_result_list, process_protocol},
 };
 
 #[derive(Debug)]
@@ -60,6 +60,10 @@ impl RejectMessage {
                 },
                 Some(&[165]) => {
                     context_definition_list = Some(process_presentation_context_result_list(object.data)?);
+                    (&[] as &[u8], 0)
+                },
+                Some(&[138]) => {
+                    reject_message.provider_reason = Some(ProviderReason::from(process_integer(object).map_err()?));
                     (&[] as &[u8], 0)
                 },
                 Some(&[97]) => {
@@ -144,7 +148,7 @@ impl RejectMessage {
                         ),
                     )),
                 },
-                // Presentation Requirements
+                // Provider Reason
                 provider_reason
                     .as_ref()
                     .map(|x| der_parser::ber::BerObject::from_header_and_content(Header::new(Class::ContextSpecific, false, Tag::from(10), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::Integer(x.as_slice()))),
