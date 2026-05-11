@@ -63,7 +63,7 @@ impl RejectMessage {
                     (&[] as &[u8], 0)
                 },
                 Some(&[138]) => {
-                    reject_message.provider_reason = Some(ProviderReason::from(process_integer(object).map_err()?));
+                    reject_message.provider_reason = Some(ProviderReason::from(object.data));
                     (&[] as &[u8], 0)
                 },
                 Some(&[97]) => {
