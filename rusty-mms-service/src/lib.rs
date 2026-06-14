@@ -41,7 +41,7 @@ use crate::{
     },
     datapump::{MmsServiceDataPump, MmsServiceDataPumpReaderType},
     error::{MmsServiceError, to_mms_error},
-    message::MmsServiceMessage,
+    message::{IdentifyMmsServiceMessage, IdentifyMmsServiceMessageNew, MmsServiceMessage, MmsServiceMessageNew},
 };
 
 pub mod data;
@@ -189,30 +189,72 @@ struct RustyTcpMmsServiceClient<R: MmsReader, W: MmsWriter> {
 
 impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceClient<R, W> {
     async fn fetch_confirmed_message(&mut self, invocation_id: Vec<u8>) -> Result<MmsConfirmedResponse, MmsServiceError> {
+        let mut notify_registration = self.notify.notified();
         Ok(loop {
-            let reader = self.reader.lock();
-
-            let value = reader.await.recv().await?;
-            match value {
-                rusty_mms::MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id: response_invocation_id, response }) => {
-                    if invocation_id == response_invocation_id {
-                        break response;
-                    } else {
-                        self.mail_box.lock().await.insert(response_invocation_id, response);
+            select! {
+                _ = notify_registration => {
+                    notify_registration = self.notify.notified();
+                    match self.mail_box.lock().await.remove(&invocation_id) {
+                        Some(x) => break x,
+                        None => (),
                     }
                 }
-                rusty_mms::MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service }) => {
-                    let _ = self.info_report_sender.send(unconfirmed_service); // Ignore send errors here. Something has gone wrong but should be detected elsewhere.
-                    ()
-                }
-                rusty_mms::MmsRecvResult::Message(_) => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())), // TODO Message queue.
-                rusty_mms::MmsRecvResult::Closed => return Err(MmsServiceError::ProtocolError("Connection Closed".into())),
-            }
+                mut reader = self.reader.lock() => {
+                    notify_registration = self.notify.notified();
+                    match self.mail_box.lock().await.remove(&invocation_id) {
+                        Some(x) => break x,
+                        None => (),
+                    }
 
-            match self.mail_box.lock().await.remove(&invocation_id) {
-                Some(x) => break x,
-                None => (),
-            }
+                    match reader.recv().await? {
+                        rusty_mms::MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id: response_invocation_id, response }) => {
+                            if invocation_id == response_invocation_id {
+                                break response;
+                            } else {
+                                self.mail_box.lock().await.insert(response_invocation_id, response);
+                                self.notify.notify_waiters();
+                            }
+                        }
+                        rusty_mms::MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service }) => {
+                            let _ = self.info_report_sender.send(unconfirmed_service); // Ignore send errors here. Something has gone wrong but should be detected elsewhere.
+                            ()
+                        }
+                        rusty_mms::MmsRecvResult::Message(_) => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())), // TODO Message queue.
+                        rusty_mms::MmsRecvResult::Closed => return Err(MmsServiceError::ProtocolError("Connection Closed".into())),
+                    }
+                }
+            };
+
+            // notify_registration = self.notify.notified();
+
+            // let reader = self.reader.lock();
+
+            // match self.mail_box.lock().await.remove(&invocation_id) {
+            //     Some(x) => break x,
+            //     None => (),
+            // }
+
+            // let value = reader.await.recv().await?;
+            // match value {
+            //     rusty_mms::MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id: response_invocation_id, response }) => {
+            //         if invocation_id == response_invocation_id {
+            //             break response;
+            //         } else {
+            //             self.mail_box.lock().await.insert(response_invocation_id, response);
+            //         }
+            //     }
+            //     rusty_mms::MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service }) => {
+            //         let _ = self.info_report_sender.send(unconfirmed_service); // Ignore send errors here. Something has gone wrong but should be detected elsewhere.
+            //         ()
+            //     }
+            //     rusty_mms::MmsRecvResult::Message(_) => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())), // TODO Message queue.
+            //     rusty_mms::MmsRecvResult::Closed => return Err(MmsServiceError::ProtocolError("Connection Closed".into())),
+            // }
+
+            // match self.mail_box.lock().await.remove(&invocation_id) {
+            //     Some(x) => break x,
+            //     None => (),
+            // }
         })
     }
 }
@@ -458,6 +500,84 @@ pub async fn create_mms_service_client(host: SocketAddr, parameters: MmsServiceC
         info_report_sender: sender,
         info_report_receiver: Arc::new(Mutex::new(receiver)),
     }))
+}
+
+#[async_trait]
+pub trait RustyMmsServiceServer: Send + Sync {
+    fn clone(&self) -> Box<dyn RustyMmsServiceServer>;
+
+    async fn receive_message(&mut self) -> Result<MmsServiceMessageNew, MmsServiceError>;
+    // async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError>;
+}
+
+struct RustyTcpMmsServiceServer<R: MmsReader, W: MmsWriter> {
+    reader: Arc<Mutex<R>>,
+    writer: Arc<Mutex<W>>,
+}
+
+impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceServer<R, W> {}
+
+#[async_trait]
+impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for RustyTcpMmsServiceServer<R, W> {
+    fn clone(&self) -> Box<dyn RustyMmsServiceServer> {
+        Box::new(RustyTcpMmsServiceServer { reader: self.reader.clone(), writer: self.writer.clone() })
+    }
+
+    async fn receive_message(&mut self) -> Result<MmsServiceMessageNew, MmsServiceError> {
+        let mms_message: MmsMessage = match self.reader.lock().await.recv().await? {
+            rusty_mms::MmsRecvResult::Closed => return Err(MmsServiceError::ProtocolError("Connection closed".into())),
+            rusty_mms::MmsRecvResult::Message(mms_message) => mms_message,
+        };
+        let (invocation_id, _request) = match mms_message {
+            MmsMessage::ConfirmedRequest { invocation_id, request } => (invocation_id, request),
+            _ => todo!(),
+        };
+
+        let writer = self.writer.clone();
+        Ok(MmsServiceMessageNew::Identify(IdentifyMmsServiceMessageNew::new(
+            BigInt::from_signed_bytes_be(&invocation_id).try_into().unwrap(),
+            Box::new(move |msg: MmsMessage| {
+                let callback_writer = writer.clone();
+                Box::pin(async move {
+                    let mut output_writer = callback_writer.lock().await;
+                    output_writer.send(&mut VecDeque::from(vec![msg])).await.unwrap();
+                })
+            }),
+        )))
+    }
+}
+
+pub async fn create_mms_service_server(parameters: MmsServiceConnectionParameters) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
+    let tpkt_connection = RustyTpktServerConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::listen("0.0.0.0:20000".parse().unwrap()).await.unwrap().create_connection().await.unwrap();
+
+    let (cotp_listener, cotp_connection_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await.map_err(to_mms_error("Failed to create COTP Server"))?;
+    let cotp_connection = cotp_listener.accept(cotp_connection_info).await.map_err(to_mms_error(""))?;
+
+    let (cosp_listener, _) = RustyCospAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, CospConnectionParameters::default()).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
+
+    // TODO: Need to expose this.
+    let _copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };
+    let (copp_responder, _) = RustyCoppListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_listener).await.map_err(to_mms_error(""))?;
+
+    let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_responder).await.map_err(to_mms_error(""))?;
+    acse_listener.set_response(Some(AcseResponseInformation {
+        application_context_name: Oid::from(&[1, 0, 9506, 2, 3]).map_err(to_mms_error(""))?,
+        associate_result: AssociateResult::Accepted,
+        associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
+        responding_ap_title: acse_request_info.called_ap_title,
+        responding_ae_qualifier: acse_request_info.called_ae_qualifier,
+        responding_ap_invocation_identifier: acse_request_info.called_ap_invocation_identifier,
+        responding_ae_invocation_identifier: acse_request_info.called_ae_invocation_identifier,
+        implementation_information: None,
+    }));
+
+    let mms_listener = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await.map_err(to_mms_error(""))?;
+    let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
+    let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
+
+    let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
+
+    Ok(Box::new(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) }))
 }
 
 pub struct RustyMmsServiceFactory<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> {
@@ -800,8 +920,9 @@ mod tests {
         VariableAccessAttributes,
     };
     use crate::error::to_mms_error;
+    use crate::message::MmsServiceMessageNew;
     use crate::{MmsInitiatorService, datapump::process_bindings};
-    use crate::{MmsResponderService, RustyTcpMmsServiceClient, create_mms_service_client};
+    use crate::{MmsResponderService, RustyTcpMmsServiceClient, create_mms_service_client, create_mms_service_server};
     use std::{
         sync::{Arc, atomic::AtomicBool},
         time::Duration,
@@ -824,27 +945,17 @@ mod tests {
         let port: u16 = random_range(20000..20001);
         let address = format!("127.0.0.1:{}", port).parse().map_err(to_mms_error("Test Failed"))?;
 
-        let running = Arc::new(AtomicBool::new(true));
-        let bindings = Arc::new(Mutex::new(Vec::new()));
-        tokio::task::spawn(process_bindings(running.clone(), bindings.clone()));
-
-        let data_pump = Arc::new(MmsServiceDataPump::new(running.clone(), bindings.clone()));
-
         let (client_results, server_results) = join!(
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
             },
-            async {
-                let mut tpkt_server_factory = RustyTpktServerConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::listen(address).await?;
-                let mut server_factory = RustyMmsServiceFactory::new(data_pump.clone());
-                server_factory.create_server_connection(&mut tpkt_server_factory, MmsServiceConnectionParameters::default()).await
-            }
+            async { create_mms_service_server(MmsServiceConnectionParameters::default()).await }
         );
 
-        let mut client = client_results?;
-        let mut server = server_results?;
+        let client = client_results?;
+        let server = server_results?;
 
         let mut client1 = client.clone();
         let client_task1 = tokio::task::spawn(async move {
@@ -881,25 +992,90 @@ mod tests {
             }
             Ok::<(), MmsServiceError>(())
         });
-        let server_task = tokio::task::spawn(async move {
+
+        let mut server1 = server.clone();
+        let server_task1 = tokio::task::spawn(async move {
             for _ in 1..10000 {
-                let value = match server.receive_message().await {
+                let value = match server1.receive_message().await {
                     Ok(x) => x,
                     Err(_) => {
                         break;
                     }
                 };
-                if let MmsServiceMessage::Identify(message) = value {
+                if let MmsServiceMessageNew::Identify(message) = value {
                     message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
                 }
             }
         });
+        let mut server2 = server.clone();
+        let server_task2 = tokio::task::spawn(async move {
+            for _ in 1..10000 {
+                let value = match server2.receive_message().await {
+                    Ok(x) => x,
+                    Err(_) => {
+                        break;
+                    }
+                };
+                if let MmsServiceMessageNew::Identify(message) = value {
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                }
+            }
+        });
+        let mut server3 = server.clone();
+        let server_task3 = tokio::task::spawn(async move {
+            for _ in 1..10000 {
+                let value = match server3.receive_message().await {
+                    Ok(x) => x,
+                    Err(_) => {
+                        break;
+                    }
+                };
+                if let MmsServiceMessageNew::Identify(message) = value {
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                }
+            }
+        });
+        let mut server4 = server.clone();
+        let server_task4 = tokio::task::spawn(async move {
+            for _ in 1..10000 {
+                let value = match server4.receive_message().await {
+                    Ok(x) => x,
+                    Err(_) => {
+                        break;
+                    }
+                };
+                if let MmsServiceMessageNew::Identify(message) = value {
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                }
+            }
+        });
+        let mut server5 = server.clone();
+        let server_task5 = tokio::task::spawn(async move {
+            for _ in 1..10000 {
+                let value = match server5.receive_message().await {
+                    Ok(x) => x,
+                    Err(_) => {
+                        break;
+                    }
+                };
+                if let MmsServiceMessageNew::Identify(message) = value {
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                }
+            }
+        });
+        drop(server);
 
-        let (client_task_result1, client_task_result2, client_task_result3, server_task_result) = join!(client_task1, client_task2, client_task3, server_task);
+        let (client_task_result1, client_task_result2, client_task_result3, client_task_result4, client_task_result5, server_task_result1, server_task_result2, server_task_result3, server_task_result4, server_task_result5) = join!(client_task1, client_task2, client_task3, client_task4, client_task5, server_task1, server_task2, server_task3, server_task4, server_task5);
         client_task_result1??;
         client_task_result2??;
         client_task_result3??;
-        server_task_result?;
+        client_task_result4??;
+        client_task_result5??;
+        server_task_result1?;
+        server_task_result2?;
+        server_task_result3?;
+        server_task_result4?;
+        server_task_result5?;
 
         Ok(())
     }

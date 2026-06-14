@@ -1,4 +1,9 @@
-use num_bigint::BigInt;
+use std::fmt;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use futures::future::BoxFuture;
+use num_bigint::{BigInt, BigUint};
 use rusty_mms::{ListOfVariablesItem, MmsAccessResult, MmsData, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -30,19 +35,32 @@ impl IdentifyMmsServiceMessage {
     }
 }
 
-#[derive(Debug)]
-pub struct IdentifyMmsServiceMessageNew<F> {
-    pub invocation_id: u32,
-    sender: F,
+#[async_trait]
+pub trait ServiceCallback {
+    async fn respond(self, message: MmsMessage) -> Result<(), MmsServiceError>;
 }
-impl<F: AsyncFn() -> Result<(), MmsServiceError>> IdentifyMmsServiceMessageNew<F> {
-    pub(crate) fn new(invocation_id: u32, sender: F) -> Self {
-        Self { invocation_id, sender }
+pub struct IdentifyMmsServiceMessageNew {
+    pub invocation_id: u32,
+    callback: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>,
+}
+impl fmt::Debug for IdentifyMmsServiceMessageNew {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IdentifyMmsServiceMessageNew").field("invocation_id", &self.invocation_id).finish()
+    }
+}
+impl IdentifyMmsServiceMessageNew {
+    pub(crate) fn new(invocation_id: u32, callback: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>) -> Self {
+        Self { invocation_id, callback }
     }
 
     pub async fn respond(self, identity: Identity) -> Result<(), MmsServiceError> {
-        let sender = self.sender;
-        sender().await
+        let invocation_id = BigInt::from(self.invocation_id).to_signed_bytes_be();
+        (self.callback)(MmsMessage::ConfirmedResponse {
+            invocation_id,
+            response: rusty_mms::MmsConfirmedResponse::Identify { vendor_name: identity.vendor_name, model_name: identity.model_name, revision: identity.revision, abstract_syntaxes: identity.abstract_syntaxes },
+        })
+        .await;
+        Ok(())
     }
 }
 
@@ -282,6 +300,6 @@ pub enum MmsServiceMessage {
 }
 
 #[derive(Debug)]
-pub enum MmsServiceMessageNew<F: AsyncFn() -> Result<(), MmsServiceError>> {
-    Identify(IdentifyMmsServiceMessageNew<F>),
+pub enum MmsServiceMessageNew {
+    Identify(IdentifyMmsServiceMessageNew),
 }
