@@ -31,6 +31,22 @@ impl IdentifyMmsServiceMessage {
 }
 
 #[derive(Debug)]
+pub struct IdentifyMmsServiceMessageNew<F> {
+    pub invocation_id: u32,
+    sender: F,
+}
+impl<F: AsyncFn() -> Result<(), MmsServiceError>> IdentifyMmsServiceMessageNew<F> {
+    pub(crate) fn new(invocation_id: u32, sender: F) -> Self {
+        Self { invocation_id, sender }
+    }
+
+    pub async fn respond(self, identity: Identity) -> Result<(), MmsServiceError> {
+        let sender = self.sender;
+        sender().await
+    }
+}
+
+#[derive(Debug)]
 pub struct GetNameListMmsServiceMessage {
     invocation_id: u32,
     object_class: MmsObjectClass,
@@ -263,4 +279,9 @@ pub enum MmsServiceMessage {
     Write(WriteMmsServiceMessage),
 
     InformationReport(InformationReportMmsServiceMessage),
+}
+
+#[derive(Debug)]
+pub enum MmsServiceMessageNew<F: AsyncFn() -> Result<(), MmsServiceError>> {
+    Identify(IdentifyMmsServiceMessageNew<F>),
 }

@@ -7,8 +7,7 @@ use error::*;
 use num_bigint::BigInt;
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
 use rusty_mms_service::{
-    MmsInitiatorService,
-    data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope},
+    MmsInitiatorService, RustyMmsServiceClient, data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope}
 };
 
 #[async_trait]
@@ -71,11 +70,11 @@ pub trait IccpServer: Send + Sync + Clone {
 }
 
 pub struct RustyIccpClient {
-    mms_client: Box<dyn MmsInitiatorService>,
+    mms_client: Box<dyn RustyMmsServiceClient>,
 }
 
 impl RustyIccpClient {
-    pub fn new(mms_client: Box<dyn MmsInitiatorService>) -> Self {
+    pub fn new(mms_client: Box<dyn RustyMmsServiceClient>) -> Self {
         RustyIccpClient { mms_client }
     }
 
