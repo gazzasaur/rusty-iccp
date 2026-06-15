@@ -547,8 +547,8 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
     }
 }
 
-pub async fn create_mms_service_server(parameters: MmsServiceConnectionParameters) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
-    let tpkt_connection = RustyTpktServerConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::listen("0.0.0.0:20000".parse().unwrap()).await.unwrap().create_connection().await.unwrap();
+pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
+    let tpkt_connection = RustyTpktServerConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::listen(address).await.unwrap().create_connection().await.unwrap();
 
     let (cotp_listener, cotp_connection_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await.map_err(to_mms_error("Failed to create COTP Server"))?;
     let cotp_connection = cotp_listener.accept(cotp_connection_info).await.map_err(to_mms_error(""))?;
@@ -951,7 +951,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server("0.0.0.0:20000".parse().map_err(|e| MmsServiceError::ProtocolError(format!("{:?}", e)))?, MmsServiceConnectionParameters::default()).await }
         );
 
         let client = client_results?;
