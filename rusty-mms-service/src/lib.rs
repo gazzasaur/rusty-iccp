@@ -6,7 +6,7 @@ use rusty_acse::{
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
-use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
+use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{
     collections::{HashMap, VecDeque},
     marker::PhantomData,
@@ -23,7 +23,6 @@ use tokio::{
         mpsc::{self, UnboundedReceiver, UnboundedSender},
     },
 };
-use tracing::error;
 
 use dyn_clone::DynClone;
 
@@ -40,7 +39,7 @@ use crate::{
         convert_low_level_data_to_high_level_data, convert_low_level_data_types_to_high_level_data_types,
     },
     error::{MmsServiceError, to_mms_error},
-    message::{GetNameListMmsServiceMessage, IdentifyMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage},
+    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage, IdentifyMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage},
 };
 
 pub mod data;
@@ -530,9 +529,32 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
                     Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
                 }),
             )),
-            MmsConfirmedRequest::Write { variable_access_specification, list_of_data } => todo!(),
-            MmsConfirmedRequest::GetVariableAccessAttributes { object_name } => todo!(),
-            MmsConfirmedRequest::DefineNamedVariableList { variable_list_name, list_of_variables } => todo!(),
+            MmsConfirmedRequest::Write { variable_access_specification, list_of_data } => MmsServiceMessage::Write(WriteMmsServiceMessage::new(
+                invocation_id,
+                variable_access_specification,
+                list_of_data,
+                Box::new(move |msg: MmsMessage| {
+                    let callback_writer = writer.clone();
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                }),
+            )?),
+            MmsConfirmedRequest::GetVariableAccessAttributes { object_name } => MmsServiceMessage::GetVariableAccessAttributes(GetVariableAccessAttributesMmsServiceMessage::new(
+                invocation_id,
+                object_name,
+                Box::new(move |msg: MmsMessage| {
+                    let callback_writer = writer.clone();
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                }),
+            )),
+            MmsConfirmedRequest::DefineNamedVariableList { variable_list_name, list_of_variables } => MmsServiceMessage::DefineNamedVariableList(DefineNamedVariableListMmsServiceMessage::new(
+                invocation_id,
+                variable_list_name,
+                list_of_variables,
+                Box::new(move |msg: MmsMessage| {
+                    let callback_writer = writer.clone();
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                }),
+            )),
             MmsConfirmedRequest::GetNamedVariableListAttributes { object_name } => todo!(),
             MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name } => todo!(),
         })
@@ -652,28 +674,25 @@ impl MmsResponderService for RustyMmsResponderService {
 
 #[cfg(test)]
 mod tests {
-    use crate::MmsInitiatorService;
     use crate::data::{
         MmsServiceAccessResult, MmsServiceData, MmsServiceDataFloat, MmsServiceDeleteObjectScope, MmsServiceTypeDescription, MmsServiceTypeDescriptionComponent, MmsServiceTypeSpecification, NameList, NamedVariableListAttributes,
         VariableAccessAttributes,
     };
     use crate::error::to_mms_error;
-    use crate::{MmsResponderService, create_mms_service_client, create_mms_service_server};
-    use std::{
-        sync::{Arc, atomic::AtomicBool},
-        time::Duration,
-    };
+    use crate::{create_mms_service_client, create_mms_service_server};
+    use std::
+        time::Duration
+    ;
 
     use anyhow::anyhow;
     use der_parser::Oid;
     use num_bigint::{BigInt, BigUint};
     use rand::random_range;
     use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, VariableSpecification};
-    use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter};
-    use tokio::{join, sync::Mutex};
+    use tokio::join;
     use tracing_test::traced_test;
 
-    use crate::{Identity, MmsServiceConnectionParameters, RustyTpktClientConnectionFactory, RustyTpktServerConnectionFactory, error::MmsServiceError, message::MmsServiceMessage};
+    use crate::{Identity, MmsServiceConnectionParameters, error::MmsServiceError, message::MmsServiceMessage};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[traced_test]

@@ -7,7 +7,7 @@ use error::*;
 use num_bigint::BigInt;
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
 use rusty_mms_service::{
-    MmsInitiatorService, RustyMmsServiceClient, data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope}
+    RustyMmsServiceClient, data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope}
 };
 
 #[async_trait]
