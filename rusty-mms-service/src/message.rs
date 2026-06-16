@@ -14,49 +14,23 @@ use crate::data::{
 use crate::error::to_mms_error;
 use crate::{data::Identity, error::MmsServiceError};
 
-#[derive(Debug)]
 pub struct IdentifyMmsServiceMessage {
     pub invocation_id: u32,
-    pub sender: UnboundedSender<MmsMessage>,
+    response: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>,
+}
+impl fmt::Debug for IdentifyMmsServiceMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IdentifyMmsServiceMessage").field("invocation_id", &self.invocation_id).finish()
+    }
 }
 impl IdentifyMmsServiceMessage {
-    pub(crate) fn new(invocation_id: u32, sender: UnboundedSender<MmsMessage>) -> Self {
-        Self { invocation_id, sender }
+    pub(crate) fn new(invocation_id: u32, response: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>) -> Self {
+        Self { invocation_id, response }
     }
 
     pub async fn respond(self, identity: Identity) -> Result<(), MmsServiceError> {
-        let sender = self.sender;
-        sender
-            .send(MmsMessage::ConfirmedResponse {
-                invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::Identify { vendor_name: identity.vendor_name, model_name: identity.model_name, revision: identity.revision, abstract_syntaxes: identity.abstract_syntaxes },
-            })
-            .map_err(to_mms_error("The receive channel has been closed"))
-    }
-}
-
-#[async_trait]
-pub trait ServiceCallback {
-    async fn respond(self, message: MmsMessage) -> Result<(), MmsServiceError>;
-}
-pub struct IdentifyMmsServiceMessageNew {
-    pub invocation_id: u32,
-    callback: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>,
-}
-impl fmt::Debug for IdentifyMmsServiceMessageNew {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IdentifyMmsServiceMessageNew").field("invocation_id", &self.invocation_id).finish()
-    }
-}
-impl IdentifyMmsServiceMessageNew {
-    pub(crate) fn new(invocation_id: u32, callback: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>) -> Self {
-        Self { invocation_id, callback }
-    }
-
-    pub async fn respond(self, identity: Identity) -> Result<(), MmsServiceError> {
-        let invocation_id = BigInt::from(self.invocation_id).to_signed_bytes_be();
-        (self.callback)(MmsMessage::ConfirmedResponse {
-            invocation_id,
+        (self.response)(MmsMessage::ConfirmedResponse {
+            invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be(),
             response: rusty_mms::MmsConfirmedResponse::Identify { vendor_name: identity.vendor_name, model_name: identity.model_name, revision: identity.revision, abstract_syntaxes: identity.abstract_syntaxes },
         })
         .await;
@@ -64,17 +38,21 @@ impl IdentifyMmsServiceMessageNew {
     }
 }
 
-#[derive(Debug)]
 pub struct GetNameListMmsServiceMessage {
     invocation_id: u32,
     object_class: MmsObjectClass,
     object_scope: MmsObjectScope,
     continue_after: Option<String>,
-    sender: UnboundedSender<MmsMessage>,
+    response: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>,
+}
+impl fmt::Debug for GetNameListMmsServiceMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GetNameListMmsServiceMessage").field("invocation_id", &self.invocation_id).field("object_class", &self.object_class).field("object_scope", &self.object_scope).field("continue_after", &self.continue_after).finish()
+    }
 }
 impl GetNameListMmsServiceMessage {
-    pub(crate) fn new(invocation_id: u32, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>, sender: UnboundedSender<MmsMessage>) -> Self {
-        Self { invocation_id, object_class, object_scope, continue_after, sender }
+    pub(crate) fn new(invocation_id: u32, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>, response: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>) -> Self {
+        Self { invocation_id, object_class, object_scope, continue_after, response }
     }
 
     pub fn object_class(&self) -> &MmsObjectClass {
@@ -91,10 +69,8 @@ impl GetNameListMmsServiceMessage {
 
     pub async fn respond(self, list_of_identifiers: Vec<String>, more_follows: bool) -> Result<(), MmsServiceError> {
         let more_follows = if more_follows { None } else { Some(false) };
-        let sender = self.sender;
-        sender
-            .send(MmsMessage::ConfirmedResponse { invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(), response: rusty_mms::MmsConfirmedResponse::GetNameList { list_of_identifiers, more_follows } })
-            .map_err(to_mms_error("The receive channel has been closed"))
+        (self.response)(MmsMessage::ConfirmedResponse { invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(), response: rusty_mms::MmsConfirmedResponse::GetNameList { list_of_identifiers, more_follows } }).await;
+        Ok(())
     }
 }
 
@@ -204,22 +180,25 @@ impl DeleteNamedVariableListMmsServiceMessage {
     }
 }
 
-#[derive(Debug)]
 pub struct ReadMmsServiceMessage {
     invocation_id: u32,
     specification_with_result: bool,
     specification: MmsVariableAccessSpecification,
-
-    sender: UnboundedSender<MmsMessage>,
+    response: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>,
+}
+impl fmt::Debug for ReadMmsServiceMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReadMmsServiceMessage").field("invocation_id", &self.invocation_id).field("specification_with_result", &self.specification_with_result).field("specification", &self.specification).finish()
+    }
 }
 impl ReadMmsServiceMessage {
-    pub(crate) fn new(invocation_id: u32, specification: MmsVariableAccessSpecification, specification_with_result: Option<bool>, sender: UnboundedSender<MmsMessage>) -> Self {
+    pub(crate) fn new(invocation_id: u32, specification: MmsVariableAccessSpecification, specification_with_result: Option<bool>, response: Box<dyn Fn(MmsMessage) -> BoxFuture<'static, ()> + Send + Sync>) -> Self {
         Self {
             invocation_id,
             // TODO HIGH What is the default behaviour for this?
             specification_with_result: specification_with_result.unwrap_or(true),
             specification,
-            sender,
+            response,
         }
     }
 
@@ -228,25 +207,22 @@ impl ReadMmsServiceMessage {
     }
 
     pub async fn respond(self, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError> {
-        let sender = self.sender;
-
         let variable_access_specification = if self.specification_with_result { Some(self.specification) } else { None };
-
-        sender
-            .send(MmsMessage::ConfirmedResponse {
-                invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(),
-                response: rusty_mms::MmsConfirmedResponse::Read {
-                    variable_access_specification,
-                    access_results: access_results
-                        .into_iter()
-                        .map(|x| match x {
-                            MmsServiceAccessResult::Success(mms_service_data) => Ok(MmsAccessResult::Success(convert_high_level_data_to_low_level_data(&mms_service_data)?)),
-                            MmsServiceAccessResult::Failure(mms_access_error) => Ok(MmsAccessResult::Failure(mms_access_error)),
-                        })
-                        .collect::<Result<Vec<MmsAccessResult>, MmsServiceError>>()?,
-                },
-            })
-            .map_err(to_mms_error("The receive channel has been closed"))
+        (self.response)(MmsMessage::ConfirmedResponse {
+            invocation_id: BigInt::from(self.invocation_id).to_signed_bytes_be().to_vec(),
+            response: rusty_mms::MmsConfirmedResponse::Read {
+                variable_access_specification,
+                access_results: access_results
+                    .into_iter()
+                    .map(|x| match x {
+                        MmsServiceAccessResult::Success(mms_service_data) => Ok(MmsAccessResult::Success(convert_high_level_data_to_low_level_data(&mms_service_data)?)),
+                        MmsServiceAccessResult::Failure(mms_access_error) => Ok(MmsAccessResult::Failure(mms_access_error)),
+                    })
+                    .collect::<Result<Vec<MmsAccessResult>, MmsServiceError>>()?,
+            },
+        })
+        .await;
+        Ok(())
     }
 }
 
@@ -297,9 +273,4 @@ pub enum MmsServiceMessage {
     Write(WriteMmsServiceMessage),
 
     InformationReport(InformationReportMmsServiceMessage),
-}
-
-#[derive(Debug)]
-pub enum MmsServiceMessageNew {
-    Identify(IdentifyMmsServiceMessageNew),
 }
