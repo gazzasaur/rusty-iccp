@@ -6,7 +6,7 @@ use der_parser::{
 use crate::{
     CoppError, PresentationContextResultType, ProviderReason, UserData,
     error::protocol_error,
-    messages::parsers::{PresentationMode, Protocol, process_integer, process_octetstring, process_presentation_context_result_list, process_protocol},
+    messages::parsers::{PresentationMode, Protocol, process_octetstring, process_presentation_context_result_list, process_protocol},
 };
 
 #[derive(Debug)]

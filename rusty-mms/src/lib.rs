@@ -146,7 +146,7 @@ mod tests {
         let read_request = match request {
             MmsRecvResult::Message(message) => match message {
                 MmsMessage::ConfirmedRequest { invocation_id, request } => match (invocation_id, request) {
-                    (id, MmsConfirmedRequest::Read { specification_with_result, variable_access_specification }) if id == &[1] => variable_access_specification,
+                    (id, MmsConfirmedRequest::Read { specification_with_result: _, variable_access_specification }) if id == &[1] => variable_access_specification,
                     _ => panic!(),
                 },
                 _ => panic!(),

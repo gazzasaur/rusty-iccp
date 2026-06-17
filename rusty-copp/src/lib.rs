@@ -129,8 +129,8 @@ mod tests {
                 .await;
             match check_value {
                 Ok(_) => assert!(false),
-                Err(CoppError::Rejected(reason, contexts, user_data)) => {
-                    assert_eq!(reason, Some(ProviderReason::Value(ProviderReasonValue::ReasonNotSpecified)));
+                Err(CoppError::Rejected(reason, _, _)) => {
+                    assert_eq!(reason, Some(ProviderReason::Value(ProviderReasonValue::CalledPresentationAddressUnknown)));
                 },
                 Err(_) => assert!(false),
             };

@@ -39,7 +39,10 @@ use crate::{
         convert_low_level_data_to_high_level_data, convert_low_level_data_types_to_high_level_data_types,
     },
     error::{MmsServiceError, to_mms_error},
-    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage, IdentifyMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage},
+    message::{
+        DefineNamedVariableListMmsServiceMessage, DeleteNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, GetNamedVariableListAttributesMmsServiceMessage, GetVariableAccessAttributesMmsServiceMessage,
+        IdentifyMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage,
+    },
 };
 
 pub mod data;
@@ -496,11 +499,18 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
         };
         let (invocation_id, request) = match mms_message {
             MmsMessage::ConfirmedRequest { invocation_id, request } => (invocation_id, request),
+            MmsMessage::Unconfirmed { unconfirmed_service: MmsUnconfirmedService::InformationReport { variable_access_specification, access_results } } => {
+                let access_results = access_results.into_iter().map(|access_result| match access_result {
+                    MmsAccessResult::Success(mms_data) => Ok(MmsServiceAccessResult::Success(convert_low_level_data_to_high_level_data(&mms_data)?)),
+                    MmsAccessResult::Failure(mms_access_error) => Ok(MmsServiceAccessResult::Failure(mms_access_error)),
+                }).collect::<Result<Vec<MmsServiceAccessResult>, MmsError>>()?;
+                return Ok(MmsServiceMessage::InformationReport(InformationReportMmsServiceMessage { variable_access_specification, access_results }));
+            }
             _ => todo!(),
         };
 
         let writer = self.writer.clone();
-        let invocation_id: u32 = BigInt::from_signed_bytes_be(invocation_id.as_slice()).try_into().map_err(|e| MmsServiceError::ProtocolError(format!("Invalid Invication Id: {:?}", invocation_id)))?;
+        let invocation_id: u32 = BigInt::from_signed_bytes_be(invocation_id.as_slice()).try_into().map_err(|_| MmsServiceError::ProtocolError(format!("Invalid Invication Id: {:?}", invocation_id)))?;
 
         Ok(match request {
             MmsConfirmedRequest::GetNameList { object_class, object_scope, continue_after } => MmsServiceMessage::GetNameList(GetNameListMmsServiceMessage::new(
@@ -510,14 +520,14 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
                 continue_after,
                 Box::new(move |msg: MmsMessage| {
                     let callback_writer = writer.clone();
-                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await })
                 }),
             )),
             MmsConfirmedRequest::Identify => MmsServiceMessage::Identify(IdentifyMmsServiceMessage::new(
                 invocation_id,
                 Box::new(move |msg: MmsMessage| {
                     let callback_writer = writer.clone();
-                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await })
                 }),
             )),
             MmsConfirmedRequest::Read { specification_with_result, variable_access_specification } => MmsServiceMessage::Read(ReadMmsServiceMessage::new(
@@ -526,7 +536,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
                 specification_with_result,
                 Box::new(move |msg: MmsMessage| {
                     let callback_writer = writer.clone();
-                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await })
                 }),
             )),
             MmsConfirmedRequest::Write { variable_access_specification, list_of_data } => MmsServiceMessage::Write(WriteMmsServiceMessage::new(
@@ -535,7 +545,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
                 list_of_data,
                 Box::new(move |msg: MmsMessage| {
                     let callback_writer = writer.clone();
-                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await })
                 }),
             )?),
             MmsConfirmedRequest::GetVariableAccessAttributes { object_name } => MmsServiceMessage::GetVariableAccessAttributes(GetVariableAccessAttributesMmsServiceMessage::new(
@@ -543,7 +553,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
                 object_name,
                 Box::new(move |msg: MmsMessage| {
                     let callback_writer = writer.clone();
-                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await })
                 }),
             )),
             MmsConfirmedRequest::DefineNamedVariableList { variable_list_name, list_of_variables } => MmsServiceMessage::DefineNamedVariableList(DefineNamedVariableListMmsServiceMessage::new(
@@ -552,11 +562,42 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
                 list_of_variables,
                 Box::new(move |msg: MmsMessage| {
                     let callback_writer = writer.clone();
-                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await.unwrap() })
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await })
                 }),
             )),
-            MmsConfirmedRequest::GetNamedVariableListAttributes { object_name } => todo!(),
-            MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name } => todo!(),
+            MmsConfirmedRequest::GetNamedVariableListAttributes { object_name } => MmsServiceMessage::GetNamedVariableListAttributes(GetNamedVariableListAttributesMmsServiceMessage::new(
+                invocation_id,
+                object_name,
+                Box::new(move |msg: MmsMessage| {
+                    let callback_writer = writer.clone();
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await })
+                }),
+            )),
+            MmsConfirmedRequest::DeleteNamedVariableList { scope_of_delete, list_of_variable_list_names, domain_name } => MmsServiceMessage::DeleteNamedVariableList(DeleteNamedVariableListMmsServiceMessage::new(
+                invocation_id,
+                match (scope_of_delete, list_of_variable_list_names, domain_name) {
+                    (Some(MmsScope::Vmd), None, None) => MmsServiceDeleteObjectScope::Vmd,
+                    (Some(MmsScope::AaSpecific), None, None) => MmsServiceDeleteObjectScope::AaSpecific,
+                    (Some(MmsScope::Domain), None, Some(domain_name)) => MmsServiceDeleteObjectScope::Domain(domain_name),
+                    (Some(MmsScope::Specific), Some(items), None) => MmsServiceDeleteObjectScope::Specific(items),
+                    (None, Some(items), None) => MmsServiceDeleteObjectScope::Specific(items),
+                    // Sad cases
+                    (Some(MmsScope::Vmd), Some(_), _) => return Err(MmsServiceError::ProtocolError("VMD scoped deletes cannot specify a variable to delete.".into())),
+                    (Some(MmsScope::Vmd), _, Some(_)) => return Err(MmsServiceError::ProtocolError("VMD scoped deletes cannot specify a domain to delete.".into())),
+                    (Some(MmsScope::AaSpecific), Some(_), _) => return Err(MmsServiceError::ProtocolError("AA scoped deletes cannot specify a variable to delete.".into())),
+                    (Some(MmsScope::AaSpecific), _, Some(_)) => return Err(MmsServiceError::ProtocolError("AA scoped deletes cannot specify a domain to delete.".into())),
+                    (Some(MmsScope::Domain), Some(_), _) => return Err(MmsServiceError::ProtocolError("Domain scoped deletes cannot specify a variable to delete.".into())),
+                    (Some(MmsScope::Domain), _, None) => return Err(MmsServiceError::ProtocolError("Domain scoped deletes must specify a domain to delete.".into())),
+                    (Some(MmsScope::Specific), None, _) => return Err(MmsServiceError::ProtocolError("Specific scoped deletes must specify a list of variables.".into())),
+                    (Some(MmsScope::Specific), Some(_), Some(_)) => return Err(MmsServiceError::ProtocolError("Specific scoped deletes cannot specify a domain to delete.".into())),
+                    (None, None, _) => return Err(MmsServiceError::ProtocolError("Specific scoped deletes must specify a list of variables.".into())),
+                    (None, Some(_), Some(_)) => return Err(MmsServiceError::ProtocolError("Specific scoped deletes cannot specify a domain to delete.".into())),
+                },
+                Box::new(move |msg: MmsMessage| {
+                    let callback_writer = writer.clone();
+                    Box::pin(async move { callback_writer.lock().await.send(&mut VecDeque::from(vec![msg])).await })
+                }),
+            )),
         })
     }
 
@@ -644,12 +685,6 @@ pub struct RustyMmsResponderService {
     receiver_queue: Arc<Mutex<mpsc::UnboundedReceiver<MmsServiceMessage>>>,
 }
 
-impl RustyMmsResponderService {
-    pub(crate) fn new(sender_queue: mpsc::UnboundedSender<MmsMessage>, receiver_queue: mpsc::UnboundedReceiver<MmsServiceMessage>) -> Self {
-        Self { sender_queue, receiver_queue: Arc::new(Mutex::new(receiver_queue)) }
-    }
-}
-
 #[async_trait]
 impl MmsResponderService for RustyMmsResponderService {
     async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError> {
@@ -680,9 +715,7 @@ mod tests {
     };
     use crate::error::to_mms_error;
     use crate::{create_mms_service_client, create_mms_service_server};
-    use std::
-        time::Duration
-    ;
+    use std::time::Duration;
 
     use anyhow::anyhow;
     use der_parser::Oid;
@@ -699,7 +732,6 @@ mod tests {
     async fn test_a_large_number_of_operations() -> Result<(), anyhow::Error> {
         let port: u16 = random_range(20000..30000);
         let address = format!("127.0.0.1:{port}").parse().map_err(to_mms_error("Test Failed"))?;
-
 
         let (client_results, server_results) = join!(
             async {
