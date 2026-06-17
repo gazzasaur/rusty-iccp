@@ -4,20 +4,20 @@ members = [ "rusty-acse", "rusty-copp", "rusty-cosp", "rusty-cotp", "rusty-iccp"
 
 [workspace.package]
 authors = ["Graeme Farquharson"]
-version = "0.9.1"
+version = "0.9.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/gazzasaur/rusty-iccp"
 repository = "https://github.com/gazzasaur/rusty-iccp"
 
 [workspace.dependencies]
-rusty-mms-service = { path = "./rusty-mms-service", version = "0.9.1" }
-rusty-mms = { path = "./rusty-mms", version = "0.9.1" }
-rusty-acse = { path = "./rusty-acse", version = "0.9.1" }
-rusty-copp = { path = "./rusty-copp", version = "0.9.1" }
-rusty-cosp = { path = "./rusty-cosp", version = "1.0.0" }
-rusty-cotp = { path = "./rusty-cotp", version = "1.1.2" }
-rusty-tpkt = { path = "./rusty-tpkt", version = "1.0.0" }
+rusty-mms-service = { path = "./rusty-mms-service", version = "0.9.2" }
+rusty-mms = { path = "./rusty-mms", version = "0.9.2" }
+rusty-acse = { path = "./rusty-acse", version = "0.9.2" }
+rusty-copp = { path = "./rusty-copp", version = "0.9.2" }
+rusty-cosp = { path = "./rusty-cosp", version = "1.2.0" }
+rusty-cotp = { path = "./rusty-cotp", version = "1.2.0" }
+rusty-tpkt = { path = "./rusty-tpkt", version = "1.2.0" }
 
 rand = "0.9"
 bytes = "1.10"

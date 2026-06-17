@@ -1,6 +1,6 @@
 [package]
 name = "rusty-tpkt"
-version = "1.0.0"
+version = "1.2.0"
 description = "Implements the TPKT standard to encapsulate ISO protocols for TCP transport."
 
 authors = { workspace = true }
