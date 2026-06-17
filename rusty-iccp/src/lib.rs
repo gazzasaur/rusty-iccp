@@ -1,13 +1,13 @@
 pub mod error;
 
-
 use async_trait::async_trait;
 
 use error::*;
 use num_bigint::BigInt;
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
 use rusty_mms_service::{
-    RustyMmsServiceClient, data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope}
+    RustyMmsServiceClient,
+    data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope},
 };
 
 #[async_trait]

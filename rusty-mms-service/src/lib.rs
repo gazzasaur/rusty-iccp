@@ -498,10 +498,13 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
         let (invocation_id, request) = match mms_message {
             MmsMessage::ConfirmedRequest { invocation_id, request } => (invocation_id, request),
             MmsMessage::Unconfirmed { unconfirmed_service: MmsUnconfirmedService::InformationReport { variable_access_specification, access_results } } => {
-                let access_results = access_results.into_iter().map(|access_result| match access_result {
-                    MmsAccessResult::Success(mms_data) => Ok(MmsServiceAccessResult::Success(convert_low_level_data_to_high_level_data(&mms_data)?)),
-                    MmsAccessResult::Failure(mms_access_error) => Ok(MmsServiceAccessResult::Failure(mms_access_error)),
-                }).collect::<Result<Vec<MmsServiceAccessResult>, MmsError>>()?;
+                let access_results = access_results
+                    .into_iter()
+                    .map(|access_result| match access_result {
+                        MmsAccessResult::Success(mms_data) => Ok(MmsServiceAccessResult::Success(convert_low_level_data_to_high_level_data(&mms_data)?)),
+                        MmsAccessResult::Failure(mms_access_error) => Ok(MmsServiceAccessResult::Failure(mms_access_error)),
+                    })
+                    .collect::<Result<Vec<MmsServiceAccessResult>, MmsError>>()?;
                 return Ok(MmsServiceMessage::InformationReport(InformationReportMmsServiceMessage { variable_access_specification, access_results }));
             }
             _ => todo!(),

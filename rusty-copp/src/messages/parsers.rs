@@ -121,10 +121,7 @@ pub(crate) fn process_presentation_context_identifier<'a>(npm_objects: Vec<Any<'
             _ => (),
         };
     }
-    Ok(PresentationContextIdentifier {
-        identifier: id.ok_or_else(|| BerError::BerValueError)?,
-        transfer_syntax_name: transfer_syntax_name.ok_or_else(|| BerError::BerValueError)?,
-    })
+    Ok(PresentationContextIdentifier { identifier: id.ok_or_else(|| BerError::BerValueError)?, transfer_syntax_name: transfer_syntax_name.ok_or_else(|| BerError::BerValueError)? })
 }
 
 pub(crate) fn process_presentation_result_context<'a>(npm_objects: Vec<Any<'a>>) -> Result<PresentationContextResult, BerError> {

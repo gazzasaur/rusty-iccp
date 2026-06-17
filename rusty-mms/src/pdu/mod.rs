@@ -1,4 +1,6 @@
 pub(crate) mod common;
+pub(crate) mod concluderequest;
+pub(crate) mod concluderesponse;
 pub(crate) mod confirmedrequest;
 pub(crate) mod confirmedresponse;
 pub(crate) mod definenamedvariablelistrequest;
@@ -21,5 +23,3 @@ pub(crate) mod readresponse;
 pub(crate) mod unconfirmed;
 pub(crate) mod writerequest;
 pub(crate) mod writeresponse;
-pub(crate) mod concluderequest;
-pub(crate) mod concluderesponse;

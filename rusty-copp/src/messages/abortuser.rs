@@ -1,10 +1,6 @@
 use der_parser::der::{Class, Header, Tag};
 
-use crate::{
-    CoppError, PresentationContextIdentifier, UserData,
-    error::protocol_error,
-    messages::parsers::process_presentation_context_identifier_list,
-};
+use crate::{CoppError, PresentationContextIdentifier, UserData, error::protocol_error, messages::parsers::process_presentation_context_identifier_list};
 
 #[derive(Debug)]
 pub(crate) struct AbortUserMessage {

@@ -53,23 +53,23 @@ impl RejectMessage {
                 Some(&[128]) => {
                     reject_message.protocol = process_protocol(object)?;
                     (&[] as &[u8], 0)
-                },
+                }
                 Some(&[131]) => {
                     reject_message.responding_presentation_selector = process_octetstring(object)?;
                     (&[] as &[u8], 0)
-                },
+                }
                 Some(&[165]) => {
                     context_definition_list = Some(process_presentation_context_result_list(object.data)?);
                     (&[] as &[u8], 0)
-                },
+                }
                 Some(&[138]) => {
                     reject_message.provider_reason = Some(ProviderReason::from(object.data));
                     (&[] as &[u8], 0)
-                },
+                }
                 Some(&[97]) => {
                     reject_message.user_data = Some(UserData::parse(object)?);
                     (&[] as &[u8], 0)
-                },
+                }
                 _ => (&[] as &[u8], 0),
             };
             Ok((reject_message_remainder, reject_message_parameter))

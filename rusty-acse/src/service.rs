@@ -141,7 +141,11 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseResponder
         let acse_data = self.response.serialise(&Some(user_data))?;
         let copp_connection = self
             .copp_responder
-            .complete_connection(Some(UserData::FullyEncoded(vec![PresentationDataValueList { transfer_syntax_name: None, presentation_context_identifier: vec![1], presentation_data_values: PresentationDataValues::SingleAsn1Type(acse_data) }])))
+            .complete_connection(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
+                transfer_syntax_name: None,
+                presentation_context_identifier: vec![1],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(acse_data),
+            }])))
             .await?;
         let (copp_reader, copp_writer) = copp_connection.split().await?;
         Ok(RustyAcseConnection { copp_reader, copp_writer })

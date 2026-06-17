@@ -1,11 +1,6 @@
-use der_parser::{
-    der::{Class, Header, Tag},
-};
+use der_parser::der::{Class, Header, Tag};
 
-use crate::{
-    CoppError, EventIdentifier, ProviderReason, error::protocol_error,
-    messages::parsers::process_integer,
-};
+use crate::{CoppError, EventIdentifier, ProviderReason, error::protocol_error, messages::parsers::process_integer};
 
 #[derive(Debug)]
 pub(crate) struct AbortProviderMessage {

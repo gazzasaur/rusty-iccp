@@ -131,7 +131,7 @@ mod tests {
                 Ok(_) => assert!(false),
                 Err(CoppError::Rejected(reason, _, _)) => {
                     assert_eq!(reason, Some(ProviderReason::Value(ProviderReasonValue::CalledPresentationAddressUnknown)));
-                },
+                }
                 Err(_) => assert!(false),
             };
             Ok(())
