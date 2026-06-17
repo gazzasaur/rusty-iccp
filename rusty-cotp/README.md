@@ -40,7 +40,6 @@ This allows most ISO protcols to be operated over this implementation, normally 
 ## Examples
 
 Examples may be found in the [examples](https://github.com/gazzasaur/rusty-iccp/blob/main/rusty-cotp/examples) directory. Basic useage is shown below.
-
 ```
 use std::{collections::VecDeque, net::SocketAddr, time::Duration};
 

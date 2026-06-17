@@ -24,8 +24,6 @@ use tokio::{
     },
 };
 
-use dyn_clone::DynClone;
-
 use rusty_mms::{
     ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsReader, MmsRequestInformation,
     MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
@@ -649,7 +647,7 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
 }
 
 #[async_trait]
-pub trait MmsInitiatorService: Send + Sync + DynClone {
+pub trait MmsInitiatorService: Send + Sync {
     async fn identify(&mut self) -> Result<Identity, MmsServiceError>;
 
     async fn get_name_list(&mut self, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>) -> Result<NameList, MmsServiceError>;
@@ -669,15 +667,11 @@ pub trait MmsInitiatorService: Send + Sync + DynClone {
     async fn receive_information_report(&mut self) -> Result<InformationReportMmsServiceMessage, MmsServiceError>;
 }
 
-dyn_clone::clone_trait_object!(MmsInitiatorService);
-
 #[async_trait]
-pub trait MmsResponderService: Send + Sync + DynClone {
+pub trait MmsResponderService: Send + Sync {
     async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError>;
     async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError>;
 }
-
-dyn_clone::clone_trait_object!(MmsResponderService);
 
 #[derive(Clone)]
 pub struct RustyMmsResponderService {
