@@ -9,7 +9,6 @@ use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcc
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{
     collections::{HashMap, VecDeque, hash_map::Entry::Occupied, hash_map::Entry::Vacant},
-    marker::PhantomData,
     net::SocketAddr,
     sync::{
         Arc,
@@ -29,7 +28,7 @@ use rusty_mms::{
     MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
     parameters::{ParameterSupportOption, ServiceSupportOption},
 };
-use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection, TpktReader, TpktWriter};
+use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, };
 
 use crate::{
     data::{
@@ -46,52 +45,6 @@ use crate::{
 pub mod data;
 pub mod error;
 pub mod message;
-
-pub trait TpktClientConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
-    fn create_connection<'a>(&mut self) -> impl std::future::Future<Output = Result<impl TpktConnection + 'a, MmsServiceError>> + Send;
-}
-
-pub struct RustyTpktClientConnectionFactory<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> {
-    address: SocketAddr,
-    _tpkt_connection: PhantomData<T>,
-    _tpkt_reader: PhantomData<R>,
-    _tpkt_writer: PhantomData<W>,
-}
-
-impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> RustyTpktClientConnectionFactory<T, R, W> {
-    pub fn new(address: SocketAddr) -> RustyTpktClientConnectionFactory<T, R, W> {
-        RustyTpktClientConnectionFactory { address, _tpkt_connection: PhantomData, _tpkt_reader: PhantomData, _tpkt_writer: PhantomData }
-    }
-}
-
-impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> TpktClientConnectionFactory<T, R, W> for RustyTpktClientConnectionFactory<T, R, W> {
-    async fn create_connection<'a>(&mut self) -> Result<impl TpktConnection + 'a, MmsServiceError> {
-        TcpTpktConnection::connect(self.address).await.map_err(to_mms_error(""))
-    }
-}
-
-pub trait TpktServerConnectionFactory<T: TpktConnection, R: TpktReader, W: TpktWriter> {
-    fn create_connection<'a>(&mut self) -> impl std::future::Future<Output = Result<impl TpktConnection + 'a, MmsServiceError>> + Send;
-}
-
-pub struct RustyTpktServerConnectionFactory<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> {
-    server: TcpTpktServer,
-    _tpkt_reader: PhantomData<R>,
-    _tpkt_writer: PhantomData<W>,
-    _tpkt_connection: PhantomData<T>,
-}
-
-impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> RustyTpktServerConnectionFactory<T, R, W> {
-    pub async fn listen(address: SocketAddr) -> Result<RustyTpktServerConnectionFactory<T, R, W>, MmsServiceError> {
-        Ok(RustyTpktServerConnectionFactory { server: TcpTpktServer::listen(address).await.map_err(to_mms_error(""))?, _tpkt_reader: PhantomData, _tpkt_writer: PhantomData, _tpkt_connection: PhantomData })
-    }
-}
-
-impl<T: TpktConnection + 'static, R: TpktReader + 'static, W: TpktWriter + 'static> TpktServerConnectionFactory<T, R, W> for RustyTpktServerConnectionFactory<T, R, W> {
-    async fn create_connection<'a>(&mut self) -> Result<impl TpktConnection + 'a, MmsServiceError> {
-        Ok(self.server.accept().await.map_err(to_mms_error("failed to accept connection"))?)
-    }
-}
 
 pub struct MmsServiceConnectionIdentityParameters {
     pub tsap_id: Option<Vec<u8>>,
@@ -665,7 +618,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
 }
 
 pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
-    let tpkt_connection = RustyTpktServerConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::listen(address).await.unwrap().create_connection().await.unwrap();
+    let tpkt_connection = TcpTpktServer::listen(address).await?.accept().await?;
 
     let (cotp_listener, cotp_connection_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await.map_err(to_mms_error("Failed to create COTP Server"))?;
     let cotp_connection = cotp_listener.accept(cotp_connection_info).await.map_err(to_mms_error(""))?;
@@ -695,61 +648,6 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
     let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
 
     Ok(Box::new(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) }))
-}
-
-#[async_trait]
-pub trait MmsInitiatorService: Send + Sync {
-    async fn identify(&mut self) -> Result<Identity, MmsServiceError>;
-
-    async fn get_name_list(&mut self, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>) -> Result<NameList, MmsServiceError>;
-    async fn get_variable_access_attributes(&mut self, object_name: MmsObjectName) -> Result<VariableAccessAttributes, MmsServiceError>;
-
-    async fn define_named_variable_list(&mut self, variable_list_name: MmsObjectName, list_of_variables: Vec<ListOfVariablesItem>) -> Result<(), MmsServiceError>;
-    async fn get_named_variable_list_attributes(&mut self, variable_list_name: MmsObjectName) -> Result<NamedVariableListAttributes, MmsServiceError>;
-    async fn delete_named_variable_list(&mut self, scope_of_delete: MmsServiceDeleteObjectScope) -> Result<(i32 /* Number Matched */, i32 /* Number Deleted */), MmsServiceError>;
-
-    /// Reads data from an MMS Server.
-    ///
-    /// This does not expose the specification with result flag. If this is required, cut a ticket and I will add a read_with_specification method.
-    async fn read(&mut self, specification: MmsVariableAccessSpecification) -> Result<Vec<MmsServiceAccessResult>, MmsServiceError>;
-    async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<Vec<MmsWriteResult>, MmsServiceError>;
-
-    async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError>;
-    async fn receive_information_report(&mut self) -> Result<InformationReportMmsServiceMessage, MmsServiceError>;
-}
-
-#[async_trait]
-pub trait MmsResponderService: Send + Sync {
-    async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError>;
-    async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError>;
-}
-
-#[derive(Clone)]
-pub struct RustyMmsResponderService {
-    sender_queue: mpsc::UnboundedSender<MmsMessage>,
-    receiver_queue: Arc<Mutex<mpsc::UnboundedReceiver<MmsServiceMessage>>>,
-}
-
-#[async_trait]
-impl MmsResponderService for RustyMmsResponderService {
-    async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError> {
-        match self.receiver_queue.lock().await.recv().await {
-            Some(x) => Ok(x),
-            None => Err(MmsServiceError::ProtocolError("Connection closed while waiting for packet.".into())),
-        }
-    }
-
-    async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError> {
-        let access_results = access_results
-            .into_iter()
-            .map(|x| match x {
-                MmsServiceAccessResult::Success(mms_data) => Ok(MmsAccessResult::Success(convert_high_level_data_to_low_level_data(&mms_data)?)),
-                MmsServiceAccessResult::Failure(mms_access_error) => Ok(MmsAccessResult::Failure(mms_access_error)),
-            })
-            .collect::<Result<Vec<MmsAccessResult>, MmsServiceError>>()?;
-        self.sender_queue.send(MmsMessage::Unconfirmed { unconfirmed_service: rusty_mms::MmsUnconfirmedService::InformationReport { variable_access_specification, access_results } }).map_err(to_mms_error("Failed to send message."))?;
-        Ok(())
-    }
 }
 
 #[cfg(test)]
