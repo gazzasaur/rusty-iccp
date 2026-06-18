@@ -39,19 +39,70 @@ pub trait IccpClient: Send + Sync {
     // fn fetch_transfer_report
 }
 
-pub enum QualityFlag {
-    Bit0,
-    Bit1,
-    Bit2,
-    Bit3,
-    Bit4,
-    Bit5,
-    Bit6,
-    Bit7,
+// This can be encoded as a State or Discrete. Discrete should be used of there are more than 4 states.
+pub enum StateValue {
+    Between, // Between, Invalid
+    Tripped, // Tripped, Off, Auto, Normal, Local, Raise, Not Ready, Offline
+    Closed, // Closed, On, Manual, Alarm, Remote, Lower, Ready, Available
+    Invalid, // Invalid
+}
+
+pub enum ExpectedStateValue {
+    Between, // Between, Invalid
+    Tripped, // Tripped, Off, Auto, Normal, Local, Raise, Not Ready, Offline
+    Closed, // Closed, On, Manual, Alarm, Remote, Lower, Ready, Available
+    Invalid, // Invalid
+}
+
+pub enum ValidityValue {
+    Valid,
+    Held,
+    Suspect,
+    NotValid
+}
+
+pub enum CurrentSourceValue {
+    Telemetered,
+    Calculated,
+    Entered,
+    Estimated
+}
+
+pub enum NormalSourceValue {
+    Telemetered,
+    Calculated,
+    Entered,
+    Estimated
+}
+
+pub enum NormalValue {
+    Normal,
+    Abnormal,
+}
+
+pub enum TimeStampQualityValue {
+    Valid,
+    Invalid,
+}
+
+pub enum TagValue {
+    NoTag,
+    OpenAndCloseInhibit,
+    CloseOnlyInhibit,
 }
 
 pub enum IccpData {
-    RealQ(f32, Vec<QualityFlag>),
+    Real(f32),
+    Discrete(i32),
+    State(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue),
+    StateSupplemental(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue, TagValue, ExpectedStateValue),
+
+    RealQ(f32, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue),
+    StateQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue),
+    DiscreteQ(i32, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue),
+    StateSupplementalQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue, TagValue, ExpectedStateValue),
+
+    // TODO The rest of them. No COV support
 }
 
 pub enum IccpAccessResult {
@@ -193,7 +244,7 @@ impl RustyIccpClient {
 fn convert_mms_service_data_to_iccp_data(mms_data: MmsServiceData) -> Result<IccpData, IccpError> {
     match mms_data {
         MmsServiceData::Structure(struct_data) => match struct_data.as_slice() {
-            [MmsServiceData::FloatingPoint(value), MmsServiceData::BitString(_)] => Ok(IccpData::RealQ(value.to_f32()?, vec![])),
+            [MmsServiceData::FloatingPoint(value), MmsServiceData::BitString(_)] => Ok(IccpData::RealQ(value.to_f32()?, ValidityValue::Valid, CurrentSourceValue::Telemetered, NormalValue::Normal, TimeStampQualityValue::Valid)),
             x => Err(IccpError::ProtocolError(format!("Unknown MMS Structure Data: {x:?}"))),
         },
         x => Err(IccpError::ProtocolError(format!("Unknown MMS Data: {x:?}"))),
