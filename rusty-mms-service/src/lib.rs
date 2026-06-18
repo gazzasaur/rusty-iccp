@@ -8,7 +8,7 @@ use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCop
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, VecDeque, hash_map::Entry::Occupied, hash_map::Entry::Vacant},
     marker::PhantomData,
     net::SocketAddr,
     sync::{
@@ -174,11 +174,33 @@ pub trait RustyMmsServiceClient: Send + Sync {
     async fn receive_information_report(&mut self) -> Result<InformationReportMmsServiceMessage, MmsServiceError>;
 }
 
+// Cleans up after iteself if the job has been cancelled.
+struct RsponseReservation {
+    invocation_id: Vec<u8>,
+    mail_box: Arc<Mutex<HashMap<Vec<u8>, Option<MmsConfirmedResponse>>>>,
+}
+
+impl RsponseReservation {
+    fn new(invocation_id: Vec<u8>, mail_box: Arc<Mutex<HashMap<Vec<u8>, Option<MmsConfirmedResponse>>>>) -> Self {
+        Self { invocation_id, mail_box }
+    }
+}
+
+impl Drop for RsponseReservation {
+    fn drop(&mut self) {
+        let invocation_id = self.invocation_id.clone();
+        let mail_box = self.mail_box.clone();
+        tokio::task::spawn(async move {
+            mail_box.lock().await.remove(&invocation_id);
+        });
+    }
+}
+
 struct RustyTcpMmsServiceClient<R: MmsReader, W: MmsWriter> {
     reader: Arc<Mutex<R>>,
     writer: Arc<Mutex<W>>,
     invocation_id: Arc<AtomicI32>,
-    mail_box: Arc<Mutex<HashMap<Vec<u8>, MmsConfirmedResponse>>>,
+    mail_box: Arc<Mutex<HashMap<Vec<u8>, Option<MmsConfirmedResponse>>>>,
 
     notify: Arc<Notify>,
     info_report_sender: UnboundedSender<MmsUnconfirmedService>,
@@ -188,20 +210,46 @@ struct RustyTcpMmsServiceClient<R: MmsReader, W: MmsWriter> {
 impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceClient<R, W> {
     async fn fetch_confirmed_message(&mut self, invocation_id: Vec<u8>) -> Result<MmsConfirmedResponse, MmsServiceError> {
         let mut notify_registration = self.notify.notified();
+
+        // Will remove any interest in the result if the call is cancelled.
+        let _reservation = match self.mail_box.lock().await.entry(invocation_id.clone()) {
+            Vacant(x) => {
+                x.insert_entry(None);
+                RsponseReservation::new(invocation_id.clone(), self.mail_box.clone())
+            }
+            Occupied(_) => return Err(MmsServiceError::InternalError(format!("Duplicate invocation id detected: {:?}", invocation_id))),
+        };
+
         Ok(loop {
             select! {
                 _ = notify_registration => {
                     notify_registration = self.notify.notified();
-                    match self.mail_box.lock().await.remove(&invocation_id) {
-                        Some(x) => break x,
-                        None => (),
+                    match self.mail_box.lock().await.entry(invocation_id.clone()) {
+                        Occupied(mut x) => match x.get_mut().take() {
+                            Some(response) => {
+                                x.remove();
+                                return Ok(response);
+                            },
+                            None => (),
+                        },
+                        // Entry cancelled
+                        // TODO IF INVOCATION ID == THIS THEN ERR
+                        Vacant(_) => (),
                     }
                 }
                 mut reader = self.reader.lock() => {
                     notify_registration = self.notify.notified();
-                    match self.mail_box.lock().await.remove(&invocation_id) {
-                        Some(x) => break x,
-                        None => (),
+                    match self.mail_box.lock().await.entry(invocation_id.clone()) {
+                        Occupied(mut x) => match x.get_mut().take() {
+                            Some(response) => {
+                                x.remove();
+                                return Ok(response);
+                            },
+                            None => (),
+                        },
+                        // Entry cancelled
+                        // TODO IF INVOCATION ID == THIS THEN ERR
+                        Vacant(_) => (),
                     }
 
                     match reader.recv().await? {
@@ -209,7 +257,7 @@ impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceClient<R, W> {
                             if invocation_id == response_invocation_id {
                                 break response;
                             } else {
-                                self.mail_box.lock().await.insert(response_invocation_id, response);
+                                self.mail_box.lock().await.insert(response_invocation_id.clone(), Some(response));
                                 self.notify.notify_waiters();
                             }
                         }
@@ -376,7 +424,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
                 value = reader.recv() => {
                     match value? {
                         rusty_mms::MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id: response_invocation_id, response }) => {
-                            self.mail_box.lock().await.insert(response_invocation_id, response);
+                            self.mail_box.lock().await.insert(response_invocation_id, Some(response));
                         }
                         rusty_mms::MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service: MmsUnconfirmedService::InformationReport { variable_access_specification, access_results } }) => {
                             break InformationReportMmsServiceMessage {
