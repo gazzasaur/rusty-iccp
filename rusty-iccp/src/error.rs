@@ -17,7 +17,3 @@ pub enum IccpError {
     #[error("ICCP Error: {}", .0)]
     InternalError(String),
 }
-
-pub(crate) fn to_iccp_error<T: Debug>(message: &str) -> impl FnOnce(T) -> IccpError {
-    move |error| IccpError::ProtocolError(format!("{}: {:?}", message, error))
-}

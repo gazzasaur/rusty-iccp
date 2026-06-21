@@ -8,12 +8,10 @@ use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCop
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{
-    collections::{HashMap, VecDeque, hash_map::Entry::Occupied, hash_map::Entry::Vacant},
-    net::SocketAddr,
-    sync::{
+    collections::{HashMap, VecDeque, hash_map::Entry::{Occupied, Vacant}}, net::SocketAddr, ops::Deref, sync::{
         Arc,
         atomic::{AtomicI32, Ordering},
-    },
+    }
 };
 use tokio::{
     select,
@@ -476,6 +474,11 @@ pub trait RustyMmsServiceServer: Send + Sync {
 
     async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError>;
     async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError>;
+}
+impl Clone for Box<dyn RustyMmsServiceServer> {
+    fn clone(&self) -> Self {
+        self.deref().clone()
+    }
 }
 
 struct RustyTcpMmsServiceServer<R: MmsReader, W: MmsWriter> {
