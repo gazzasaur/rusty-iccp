@@ -6,11 +6,15 @@ use error::*;
 use num_bigint::BigInt;
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
 use rusty_mms_service::{
-    RustyMmsServiceClient, RustyMmsServiceServer, data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope}, message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage}
+    RustyMmsServiceClient, RustyMmsServiceServer,
+    data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope},
+    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage},
 };
 
 #[async_trait]
 pub trait IccpClient: Send + Sync {
+    async fn clone(&self) -> Box<dyn IccpClient>;
+
     // --- Completed ---
     async fn get_data_values(&mut self, names: Vec<String>) -> Result<Vec<IccpAccessResult>, IccpError>;
     async fn get_data_set_names(&mut self, scope: IccpScope) -> Result<Vec<String>, IccpError>;
@@ -117,16 +121,19 @@ pub enum IccpAccessResult {
     Failure(MmsAccessError),
 }
 
+#[derive(Debug)]
 pub enum IccpScope {
     Vcc,
     Icc(String), // Domain
 }
 
+#[derive(Debug)]
 pub enum IccpScopedIdentifier {
     Vcc(String),         // Value
     Icc(String, String), // Domain, Value
 }
 
+#[derive(Debug)]
 pub enum IccpOperation {
     MmsOperation(MmsServiceMessage), // Pass through unhandled MMS operations so servers can process messages like identify and conclude
 
@@ -134,6 +141,7 @@ pub enum IccpOperation {
     GetDataSetNames(GetDataSetNamesOperation),
 }
 
+#[derive(Debug)]
 pub struct CreateDataSetOperation {
     data_set_domain: String,
     data_set_name: String,
@@ -145,11 +153,11 @@ impl CreateDataSetOperation {
     pub fn data_set_domain(&self) -> &str {
         &self.data_set_domain
     }
-    
+
     pub fn data_set_name(&self) -> &str {
         &self.data_set_name
     }
-    
+
     pub fn data_set_items(&self) -> &[IccpScopedIdentifier] {
         &self.data_set_items
     }
@@ -159,6 +167,7 @@ impl CreateDataSetOperation {
     }
 }
 
+#[derive(Debug)]
 pub struct GetDataSetNamesOperation {
     scope: IccpScope,
     message: GetNameListMmsServiceMessage,
@@ -169,8 +178,8 @@ impl GetDataSetNamesOperation {
         &self.scope
     }
 
-    pub async fn respond(self) -> Result<(), IccpError> {
-        Ok(self.message.respond().await?)
+    pub async fn respond(self, identifiers: Vec<String>, more_follows: bool) -> Result<(), IccpError> {
+        Ok(self.message.respond(identifiers, more_follows).await?)
     }
 }
 
@@ -184,6 +193,12 @@ pub struct RustyIccpServer {
     mms_server: Box<dyn RustyMmsServiceServer>,
 }
 
+impl RustyIccpServer {
+    pub fn new(mms_server: Box<dyn RustyMmsServiceServer>) -> Self {
+        Self { mms_server }
+    }
+}
+
 #[async_trait]
 impl IccpServer for RustyIccpServer {
     async fn receive_operation(&mut self) -> Result<IccpOperation, IccpError> {
@@ -194,10 +209,14 @@ impl IccpServer for RustyIccpServer {
                     MmsObjectName::DomainSpecific(domain, name) => (domain.into(), name.into()),
                     x => return Err(IccpError::ProtocolError(format!("Data Sets can only be created in the ICC scope but was: {x:?}"))),
                 };
-                let data_set_items = message.list_of_variables().iter().map(|x| match &x.variable_specification {
-                    VariableSpecification::Name(mms_object_name) => mms_object_name.try_into(),
-                    VariableSpecification::Invalidated => Err(IccpError::ProtocolError(format!("Invalidated variable specified in create data set request: {data_set_domain}:{data_set_name}"))),
-                }).collect::<Result<Vec<IccpScopedIdentifier>, IccpError>>()?;
+                let data_set_items = message
+                    .list_of_variables()
+                    .iter()
+                    .map(|x| match &x.variable_specification {
+                        VariableSpecification::Name(mms_object_name) => mms_object_name.try_into(),
+                        VariableSpecification::Invalidated => Err(IccpError::ProtocolError(format!("Invalidated variable specified in create data set request: {data_set_domain}:{data_set_name}"))),
+                    })
+                    .collect::<Result<Vec<IccpScopedIdentifier>, IccpError>>()?;
 
                 return Ok(IccpOperation::CreateDataSet(CreateDataSetOperation { data_set_domain, data_set_name, data_set_items, message }));
             }
@@ -207,15 +226,15 @@ impl IccpServer for RustyIccpServer {
                     MmsObjectScope::Domain(x) => IccpScope::Icc(x.into()),
                     x => return Err(IccpError::ProtocolError(format!("Can only list data sets for VCC and ICC but got {x:?}"))),
                 };
-                return Ok(IccpOperation::MmsOperation(()))
-            },
+                return Ok(IccpOperation::GetDataSetNames(GetDataSetNamesOperation { scope, message }));
+            }
             MmsServiceMessage::GetVariableAccessAttributes(message) => todo!(),
             MmsServiceMessage::GetNamedVariableListAttributes(message) => todo!(),
             MmsServiceMessage::DeleteNamedVariableList(message) => todo!(),
             MmsServiceMessage::Read(message) => todo!(),
             MmsServiceMessage::Write(message) => todo!(),
             MmsServiceMessage::InformationReport(message) => todo!(),
-            message => Ok(IccpOperation::MmsOperation(message))
+            message => Ok(IccpOperation::MmsOperation(message)),
         }
     }
 }
@@ -236,14 +255,35 @@ pub struct RustyIccpClient {
     mms_client: Box<dyn RustyMmsServiceClient>,
 }
 
+pub struct IccpConnectionParameters {
+    version: (u32, u32),
+    bilateral_table: String,
+    supported_features: String,
+}
+
 impl RustyIccpClient {
     pub fn new(mms_client: Box<dyn RustyMmsServiceClient>) -> Self {
         RustyIccpClient { mms_client }
+    }
+
+    /**
+     * Reads the ICCP Version, Bilateral Table Name and Supported Features.
+     */
+    pub async fn get_iccp_connection_parameters(&mut self, domain: String) -> Result<(), IccpError> {
+        let mms_read_result = self.mms_client.read(MmsVariableAccessSpecification::ListOfVariables(vec![ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific(domain, "BilateralTable".into())) }])).await?;
+        if (mms_read_result.len() != 3) {
+            
+        }
+        Ok(())
     }
 }
 
 #[async_trait]
 impl IccpClient for RustyIccpClient {
+    async fn clone(&self) -> Box<dyn IccpClient> {
+        Box::new(RustyIccpClient { mms_client: self.mms_client.clone() })
+    }
+
     async fn get_data_values(&mut self, names: Vec<String>) -> Result<Vec<IccpAccessResult>, IccpError> {
         let spec = names.into_iter().map(|x| ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific(x)) }).collect();
         let results = self.mms_client.read(rusty_mms::MmsVariableAccessSpecification::ListOfVariables(spec)).await?;
@@ -363,5 +403,48 @@ fn convert_mms_service_data_to_iccp_data(mms_data: MmsServiceData) -> Result<Icc
             x => Err(IccpError::ProtocolError(format!("Unknown MMS Structure Data: {x:?}"))),
         },
         x => Err(IccpError::ProtocolError(format!("Unknown MMS Data: {x:?}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use der_parser::Oid;
+    use rand::random_range;
+    use rusty_mms_service::{MmsServiceConnectionParameters, create_mms_service_client, create_mms_service_server, data::Identity, message::MmsServiceMessage};
+    use tokio::{self, join};
+
+    use crate::{IccpClient, IccpServer, RustyIccpClient, RustyIccpServer, error::IccpError};
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_identify_operation() -> Result<(), anyhow::Error> {
+        let port: u16 = random_range(20000..30000);
+        let address = format!("127.0.0.1:{}", port).parse().map_err(|e| IccpError::InternalError(format!("Test Failed: {e}")))?;
+
+        let (client_results, server_results) = join!(
+            async {
+                // Allow the server to start listening first.
+                tokio::time::sleep(Duration::from_millis(1)).await;
+                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+            },
+            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+        );
+
+        let client = client_results?;
+        let mut server = server_results?;
+
+        let iccp_client = RustyIccpClient::new(client.clone());
+        let mut iccp_server = RustyIccpServer::new(server.clone());
+
+        let mut op_iccp_client = iccp_client.clone().await;
+        let client_future = tokio::task::spawn(async move { op_iccp_client.create_data_set("MyDomain".into(), "DataSetName".into(), vec!["Variable1".into(), "Variable2".into()]).await });
+        let received_value = iccp_server.receive_operation().await?;
+        match received_value {
+            crate::IccpOperation::CreateDataSet(message) => message.respond().await?,
+            x => assert!(false, "Unexpected message: {x:?}"),
+        }
+        client_future.await??;
+
+        Ok(())
     }
 }

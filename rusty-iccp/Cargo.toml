@@ -18,6 +18,13 @@ rusty-cosp = { workspace = true }
 rusty-cotp = { workspace = true }
 rusty-tpkt = { workspace = true }
 
+rand = { workspace = true }
+tokio = { workspace = true }
 thiserror = { workspace = true }
+der-parser = { workspace = true }
 num-bigint = { workspace = true }
 async-trait = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tracing-test = { workspace = true }
