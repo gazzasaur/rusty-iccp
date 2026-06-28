@@ -26,7 +26,7 @@ pub struct PresentationDataValueList {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum PresentationDataValues {
     SingleAsn1Type(Vec<u8>),
-    // TODO IMPL Not required for MMS/ICCP
+    // Not required for MMS/ICCP
     // OctetAligned(Vec<u8>),
     // Arbitrary(Vec<u8>),
 }
@@ -60,7 +60,7 @@ impl UserData {
                             Some(&[6]) => transfer_syntax_name = Some(Oid::from_ber(pdv_list.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse PDV list on User Data: {e}")))?.1.to_owned()),
                             Some(&[2]) => presentation_contaxt_id = Some(pdv_list_part.data.to_vec()),
                             Some(&[160]) => presentation_data_values = Some(PresentationDataValues::SingleAsn1Type(pdv_list_part.data.to_vec())),
-                            // TODO Other formats
+                            // Not supporting other formats
                             x => tracing::warn!("Unknown data in copp user data: {:?}", x),
                         }
                     }
@@ -72,7 +72,8 @@ impl UserData {
                 }
                 Ok(UserData::FullyEncoded(presentation_list))
             }
-            _ => todo!(),
+            // Ignore any unsupported fields.
+            x => return Err(CoppError::ProtocolError(format!("Unsupported COPP User Data type {x:?}"))),
         }
     }
 
@@ -103,7 +104,7 @@ impl PresentationDataValues {
                 // Shoehorn the BER data into the payload but make it still look like BER data.
                 der_parser::ber::BerObjectContent::OctetString(data),
             ),
-            // TODO IMPL Not required for MMS/ICCP
+            // Not required for MMS/ICCP
             // PresentationDataValues::OctetAligned(data) => der_parser::ber::BerObject::from_header_and_content(
             //     Header::new(Class::ContextSpecific, true, Tag::from(1), der_parser::ber::Length::Definite(0)),
             //     der_parser::ber::BerObjectContent::OctetString(data),

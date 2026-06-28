@@ -1,12 +1,12 @@
 use der_parser::{
-    ber::BitStringObject,
-    der::{Class, Header, Tag}, error::BerError,
+    ber::{BitStringObject, parse_ber_any},
+    der::{Class, Header, Tag},
 };
 
 use crate::{
     CoppError, PresentationContextResultType, ProviderReason, UserData,
     error::protocol_error,
-    messages::parsers::{PresentationMode, Protocol, process_octetstring, process_presentation_context_result_list, process_protocol},
+    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol},
 };
 
 #[derive(Debug)]
@@ -35,7 +35,6 @@ impl RejectMessage {
     }
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<RejectMessage, CoppError> {
-        let mut context_definition_list = None;
         let mut reject_message = RejectMessage {
             protocol: None,
             presentation_mode: None,
@@ -46,35 +45,24 @@ impl RejectMessage {
         };
 
         // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
-        der_parser::ber::parse_ber_sequence_of_v(|data| {
-            let (reject_message_remainder, object) = der_parser::ber::parse_ber_any(data)?;
+        let (_, outer_sequence) = parse_ber_any(&data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse COPP Reject Message: {e}")))?;
 
-            let (_, reject_message_parameter) = match object.header.raw_tag() {
-                Some(&[128]) => {
-                    reject_message.protocol = process_protocol(object)?;
-                    (&[] as &[u8], 0)
-                }
-                Some(&[131]) => {
-                    reject_message.responding_presentation_selector = process_octetstring(object)?;
-                    (&[] as &[u8], 0)
-                }
-                Some(&[165]) => {
-                    context_definition_list = Some(process_presentation_context_result_list(object.data)?);
-                    (&[] as &[u8], 0)
-                }
-                Some(&[138]) => {
-                    reject_message.provider_reason = Some(ProviderReason::from(object.data));
-                    (&[] as &[u8], 0)
-                }
-                Some(&[97]) => {
-                    reject_message.user_data = Some(UserData::parse(object).map_err(|e| BerError::BerValueError)?);
-                    (&[] as &[u8], 0)
-                }
-                _ => (&[] as &[u8], 0),
+        outer_sequence.header.assert_tag(Tag::Sequence).map_err(|e| CoppError::ProtocolError(format!("Failed to parse COPP Reject Message: {e}")))?;
+        outer_sequence.header.assert_constructed().map_err(|e| CoppError::ProtocolError(format!("Failed to parse COPP Reject Message: {e}")))?;
+        outer_sequence.header.assert_class(Class::Universal).map_err(|e| CoppError::ProtocolError(format!("Failed to parse COPP Reject Message: {e}")))?;
+
+        for object in process_constructed_data(outer_sequence.data).map_err(|e| protocol_error("Failed to parse COPP Reject Message Body", e))? {
+            match object.header.raw_tag() {
+                Some(&[128]) => reject_message.protocol = process_protocol(object).map_err(|e| protocol_error("Failed to parse COPP Reject Message Protocol", e))?,
+                Some(&[131]) => reject_message.responding_presentation_selector = process_octetstring(object).map_err(|e| protocol_error("Failed to parse COPP Reject Message Responding Presentation Selector", e))?,
+                Some(&[165]) => reject_message.context_definition_result_list = process_presentation_context_result_list(object.data).map_err(|e| protocol_error("Failed to parse COPP Reject Context Definition List", e))?,
+                Some(&[138]) => reject_message.provider_reason = Some(ProviderReason::from(object.data)),
+                Some(&[97]) => reject_message.user_data = Some(UserData::parse(object).map_err(|e| protocol_error("Failed to parse COPP Reject Message User Data", e))?),
+
+                // Ignore unknown fields
+                _ => (),
             };
-            Ok((reject_message_remainder, reject_message_parameter))
-        })(&data)
-        .map_err(|e| protocol_error("sd", e))?;
+        }
 
         Ok(reject_message)
     }

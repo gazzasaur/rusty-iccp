@@ -271,7 +271,7 @@ impl RustyIccpClient {
      */
     pub async fn get_iccp_connection_parameters(&mut self, domain: String) -> Result<(), IccpError> {
         let mms_read_result = self.mms_client.read(MmsVariableAccessSpecification::ListOfVariables(vec![ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific(domain, "BilateralTable".into())) }])).await?;
-        if (mms_read_result.len() != 3) {
+        if mms_read_result.len() != 3  {
             
         }
         Ok(())

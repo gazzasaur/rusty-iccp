@@ -213,7 +213,7 @@ impl From<&EventIdentifier> for Vec<u8> {
     }
 }
 
-// TODO Support Default Context. This library is targeted towards ACSE/MMS which does not require the default context.
+/// Default contexts are not supported.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextType {
     // DefaultContext,
