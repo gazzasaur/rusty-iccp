@@ -1,6 +1,12 @@
-use der_parser::der::{Class, Header, Tag};
+use der_parser::{
+    ber::parse_ber_any,
+    der::{Class, Header, Tag},
+};
 
-use crate::{CoppError, PresentationContextIdentifier, UserData, error::protocol_error, messages::parsers::process_presentation_context_identifier_list};
+use crate::{
+    CoppError, PresentationContextIdentifier, UserData,
+    messages::parsers::{process_constructed_data, process_presentation_context_identifier_list},
+};
 
 #[derive(Debug)]
 pub(crate) struct AbortUserMessage {
@@ -18,18 +24,20 @@ impl AbortUserMessage {
         let mut context_definition_list = None;
 
         // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
-        der_parser::ber::parse_ber_set_of_v(|data| {
-            let (abort_message_remainder, object) = der_parser::ber::parse_ber_any(data)?;
+        let (_, container) = parse_ber_any(&data).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_constructed().map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_tag(Tag::Set).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_class(Class::Universal).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
 
+        for object in process_constructed_data(container.data).map_err(|e| CoppError::ProtocolError(e.to_string()))? {
             match object.header.raw_tag() {
-                Some(&[160]) => context_definition_list = Some(process_presentation_context_identifier_list(object.data)?),
+                Some(&[160]) => {
+                    context_definition_list = Some(process_presentation_context_identifier_list(object.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Context Definition list on COPP Abort User Message: {e}")))?)
+                }
                 Some(&[97]) => user_data = Some(UserData::parse(object)?),
                 _ => (),
             };
-            Ok((abort_message_remainder, 0))
-        })(&data)
-        .map_err(|e| protocol_error("sd", e))?;
-
+        }
         Ok(AbortUserMessage { presentation_contexts: context_definition_list, user_data })
     }
 

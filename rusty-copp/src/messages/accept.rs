@@ -1,12 +1,11 @@
 use der_parser::{
-    ber::{BitStringObject, parse_ber_tagged_implicit_g},
+    ber::{BitStringObject, parse_ber_any},
     der::{Class, Header, Tag},
 };
 
 use crate::{
     CoppError, PresentationContextResultType, UserData,
-    error::protocol_error,
-    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_octetstring, process_presentation_context_result_list, process_protocol},
+    messages::parsers::{PresentationMode, Protocol, process_constructed_data, process_integer, process_octetstring, process_presentation_context_result_list, process_protocol},
 };
 
 #[derive(Debug)]
@@ -28,48 +27,42 @@ impl AcceptMessage {
     }
 
     pub(crate) fn parse(data: Vec<u8>) -> Result<AcceptMessage, CoppError> {
-        let mut context_definition_list = None;
         let mut accept_message =
             AcceptMessage { protocol: None, presentation_mode: None, responding_presentation_selector: None, context_definition_result_list: PresentationContextResultType::ContextDefinitionList(vec![]), user_data: None };
 
-        // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
-        der_parser::ber::parse_ber_set_of_v(|data| {
-            let (accept_message_remainder, object) = der_parser::ber::parse_ber_any(data)?;
+        let (_, container) = parse_ber_any(&data).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_constructed().map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_tag(Tag::Set).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_class(Class::Universal).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
 
-            let (_, accept_message_parameter) = match object.header.raw_tag() {
+        // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
+        for object in process_constructed_data(container.data).map_err(|e| CoppError::ProtocolError(e.to_string()))? {
+            match object.header.raw_tag() {
                 Some(&[160]) => {
-                    let (_, presentation_mode) = parse_ber_tagged_implicit_g(Tag::from(0), |rem, header, size| {
-                        let (_, value) = der_parser::ber::parse_ber_content(Tag::Integer)(rem, &header, size)?;
-                        header.assert_class(Class::ContextSpecific)?;
-                        header.assert_primitive()?;
-                        Ok((&[], PresentationMode::from(value.as_slice()?)))
-                    })(object.data)?;
-                    accept_message.presentation_mode = Some(presentation_mode);
-                    (&[] as &[u8], 0)
+                    for inner_object in process_constructed_data(object.data).map_err(|e| CoppError::ProtocolError(format!{"Failed to parse Mode Select from COPP Accept Message: {e}"}))? {
+                        let presentation_value = process_integer(inner_object).map_err(|e| CoppError::ProtocolError(format!{"Failed to parse Mode Select Value from COPP Accept Message: {e}"}))?;
+                        let presentation_mode = presentation_value.ok_or_else(|| CoppError::ProtocolError(format!("No Mode Select Value was specified on COPP Accept Message")))?;
+                        accept_message.presentation_mode = Some(PresentationMode::from(presentation_mode.as_slice()));
+                    }
                 }
                 Some(&[162]) => {
                     // This is technically a sequence. But we are going to be relaxed. The standard also says to ignore unknown tags, which can complicate processing. So we treat this as a set.
-
-                    for npm_object in process_constructed_data(object.data)? {
+                    for npm_object in process_constructed_data(object.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse COPP Accept Mesasge Body: {e}")))? {
                         match npm_object.header.raw_tag() {
-                            Some(&[128]) => accept_message.protocol = process_protocol(npm_object)?,
-                            Some(&[131]) => accept_message.responding_presentation_selector = process_octetstring(npm_object)?,
+                            Some(&[128]) => accept_message.protocol = process_protocol(npm_object).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Protocol on COPP Accept Mesasge Body: {e}")))?,
+                            Some(&[131]) => accept_message.responding_presentation_selector = process_octetstring(npm_object).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Responding Presentation Selector on COPP Accept Mesasge Body: {e}")))?,
                             Some(&[165]) => {
-                                context_definition_list = Some(process_presentation_context_result_list(npm_object.data)?);
+                                accept_message.context_definition_result_list = process_presentation_context_result_list(npm_object.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Presentation Context Result List on COPP Accept Mesasge Body: {e}")))?;
                             }
                             Some(&[97]) => accept_message.user_data = Some(UserData::parse(npm_object)?),
                             _ => (),
                         };
                     }
-
-                    (&[] as &[u8], 0)
                 }
-                _ => (&[] as &[u8], 0),
+                // Ignore any unknown fields.
+                _ => (),
             };
-            Ok((accept_message_remainder, accept_message_parameter))
-        })(&data)
-        .map_err(|e| protocol_error("sd", e))?;
-
+        }
         Ok(accept_message)
     }
 

@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use der_parser::Oid;
 use rusty_cosp::CospError;
+use strum::IntoStaticStr;
 use thiserror::Error;
 
 pub use crate::messages::user_data::*;
@@ -296,13 +297,27 @@ impl Default for CoppConnectionInformation {
     }
 }
 
+#[derive(IntoStaticStr)]
+pub enum CoppInitResult<T: CoppConnection> {
+    Success(T, Option<UserData>),
+    Data(UserData),
+    AbortUser(Vec<u8>),
+    AbortProvider(Vec<u8>),
+    Finish(Option<Vec<u8>>),
+    Disconnect(Option<Vec<u8>>),
+}
+
 pub enum CoppRecvResult {
     Closed,
     Data(UserData),
+    AbortUser(Vec<u8>),
+    AbortProvider(Vec<u8>),
+    Finish(Option<Vec<u8>>),
+    Disconnect(Option<Vec<u8>>),
 }
 
 pub trait CoppInitiator: Send {
-    fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(impl CoppConnection, Option<UserData>), CoppError>> + Send;
+    fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<CoppInitResult<impl CoppConnection>, CoppError>> + Send;
 }
 
 pub trait CoppListener: Send {
@@ -336,5 +351,8 @@ pub trait CoppReader: Send {
 pub trait CoppWriter: Send {
     fn send(&mut self, user_data: &mut VecDeque<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
-    fn abort_user(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    fn user_abort(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+
+    fn finish(self) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    fn disconnect(self) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }

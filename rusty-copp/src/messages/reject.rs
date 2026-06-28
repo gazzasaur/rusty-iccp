@@ -1,6 +1,6 @@
 use der_parser::{
     ber::BitStringObject,
-    der::{Class, Header, Tag},
+    der::{Class, Header, Tag}, error::BerError,
 };
 
 use crate::{
@@ -67,7 +67,7 @@ impl RejectMessage {
                     (&[] as &[u8], 0)
                 }
                 Some(&[97]) => {
-                    reject_message.user_data = Some(UserData::parse(object)?);
+                    reject_message.user_data = Some(UserData::parse(object).map_err(|e| BerError::BerValueError)?);
                     (&[] as &[u8], 0)
                 }
                 _ => (&[] as &[u8], 0),

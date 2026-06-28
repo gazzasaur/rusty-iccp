@@ -29,7 +29,7 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseInit
 
 impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator for RustyOsiSingleValueAcseInitiator<T, R, W> {
     async fn initiate(self, abstract_syntax_name: Oid<'static>, user_data: Vec<u8>) -> Result<(impl OsiSingleValueAcseConnection, AcseResponseInformation, Vec<u8>), AcseError> {
-        let (copp_connection, received_user_data) = self
+        let init_result = self
             .copp_initiator
             .initiate(
                 PresentationContextType::ContextDefinitionList(vec![
@@ -49,6 +49,16 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
                 }])),
             )
             .await?;
+        let (copp_connection, received_user_data) = match init_result {
+            rusty_copp::CoppInitResult::Success(x, user_data) => (x, user_data),
+            rusty_copp::CoppInitResult::AbortUser(_) => todo!(),
+            rusty_copp::CoppInitResult::AbortProvider(_) => todo!(),
+            x => {
+                let payload_type: &'static str = x.into();
+                return Err(AcseError::ProtocolError(format!("Unexpected payload during connect: {payload_type}")))
+            }
+        };
+
         let (copp_reader, copp_writer) = copp_connection.split().await?;
         let (acse_response, acse_response_data) = match received_user_data {
             Some(UserData::FullyEncoded(pdvs)) => {
@@ -196,6 +206,10 @@ impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R
                     }
                 }
             },
+            rusty_copp::CoppRecvResult::Finish(_) => todo!(),
+            rusty_copp::CoppRecvResult::Disconnect(_) => todo!(),
+            rusty_copp::CoppRecvResult::AbortUser(_) => todo!(),
+            rusty_copp::CoppRecvResult::AbortProvider(_) => todo!(),
         }
     }
 }

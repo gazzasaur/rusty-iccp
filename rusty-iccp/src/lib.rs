@@ -228,12 +228,12 @@ impl IccpServer for RustyIccpServer {
                 };
                 return Ok(IccpOperation::GetDataSetNames(GetDataSetNamesOperation { scope, message }));
             }
-            MmsServiceMessage::GetVariableAccessAttributes(message) => todo!(),
-            MmsServiceMessage::GetNamedVariableListAttributes(message) => todo!(),
-            MmsServiceMessage::DeleteNamedVariableList(message) => todo!(),
-            MmsServiceMessage::Read(message) => todo!(),
-            MmsServiceMessage::Write(message) => todo!(),
-            MmsServiceMessage::InformationReport(message) => todo!(),
+            MmsServiceMessage::GetVariableAccessAttributes(_) => todo!(),
+            MmsServiceMessage::GetNamedVariableListAttributes(_) => todo!(),
+            MmsServiceMessage::DeleteNamedVariableList(_) => todo!(),
+            MmsServiceMessage::Read(_) => todo!(),
+            MmsServiceMessage::Write(_) => todo!(),
+            MmsServiceMessage::InformationReport(_) => todo!(),
             message => Ok(IccpOperation::MmsOperation(message)),
         }
     }
@@ -410,9 +410,8 @@ fn convert_mms_service_data_to_iccp_data(mms_data: MmsServiceData) -> Result<Icc
 mod tests {
     use std::time::Duration;
 
-    use der_parser::Oid;
     use rand::random_range;
-    use rusty_mms_service::{MmsServiceConnectionParameters, create_mms_service_client, create_mms_service_server, data::Identity, message::MmsServiceMessage};
+    use rusty_mms_service::{MmsServiceConnectionParameters, create_mms_service_client, create_mms_service_server, };
     use tokio::{self, join};
 
     use crate::{IccpClient, IccpServer, RustyIccpClient, RustyIccpServer, error::IccpError};
@@ -431,7 +430,7 @@ mod tests {
         );
 
         let client = client_results?;
-        let mut server = server_results?;
+        let server = server_results?;
 
         let iccp_client = RustyIccpClient::new(client.clone());
         let mut iccp_server = RustyIccpServer::new(server.clone());

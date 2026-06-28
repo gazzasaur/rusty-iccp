@@ -4,9 +4,7 @@ use der_parser::Oid;
 use rusty_cosp::{CospAcceptor, CospConnection, CospError, CospInitiator, CospReader, CospRecvResult, CospResponder, CospWriter, ReasonCode};
 
 use crate::{
-    CoppConnection, CoppConnectionInformation, CoppError, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, EventIdentifier, PresentationContextIdentifier, PresentationContextResult,
-    PresentationContextResultCause, PresentationContextResultType, PresentationContextType, ProviderReason, UserData,
-    messages::{abortprovider::AbortProviderMessage, abortuser::AbortUserMessage, accept::AcceptMessage, connect::ConnectMessage, reject::RejectMessage},
+    CoppConnection, CoppConnectionInformation, CoppError, CoppInitResult, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, EventIdentifier, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType, ProviderReason, UserData, messages::{abortprovider::AbortProviderMessage, abortuser::AbortUserMessage, accept::AcceptMessage, connect::ConnectMessage, reject::RejectMessage}
 };
 
 pub struct RustyCoppInitiator<T: CospInitiator, R: CospReader, W: CospWriter> {
@@ -23,7 +21,7 @@ impl<T: CospInitiator, R: CospReader, W: CospWriter> RustyCoppInitiator<T, R, W>
 }
 
 impl<T: CospInitiator, R: CospReader, W: CospWriter> CoppInitiator for RustyCoppInitiator<T, R, W> {
-    async fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<UserData>) -> Result<(impl CoppConnection, Option<UserData>), CoppError> {
+    async fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<UserData>) -> Result<CoppInitResult<impl CoppConnection>, CoppError> {
         let cosp_initiator = self.cosp_initiator;
 
         let connect_message = ConnectMessage::new(None, self.options.calling_presentation_selector, self.options.called_presentation_selector, presentation_contexts, user_data);
@@ -32,7 +30,12 @@ impl<T: CospInitiator, R: CospReader, W: CospWriter> CoppInitiator for RustyCopp
         let (cosp_connection, accept_data) = match cosp_initiator.initiate(Some(data)).await {
             Ok(x) => x,
             Err(CospError::Refused(Some(ReasonCode::RejectionByCalledSsUserWithData(user_data)))) => return Err(RejectMessage::parse(user_data)?.to_error()),
-            Err(CospError::Aborted(_user_data)) => todo!(),
+            Err(CospError::Aborted(Some(user_data))) => match user_data.get(0) {
+                Some(160) => return Err(AbortUserMessage::parse(user_data)?.to_error()),
+                Some(30) => return Err(AbortProviderMessage::parse(user_data)?.to_error()),
+                Some(x) => return Err(CoppError::ProtocolError(format!("COPP abort expected does not match a supported header: {x}"))),
+                None => return Err(CoppError::ProtocolError("COPP abort expected but no data was received.".into())),
+            },
             Err(e) => Err(e)?,
         };
         let accept_message = match accept_data {
@@ -41,7 +44,7 @@ impl<T: CospInitiator, R: CospReader, W: CospWriter> CoppInitiator for RustyCopp
         };
 
         let (cosp_reader, cosp_writer) = cosp_connection.split().await?;
-        Ok((RustyCoppConnection::new(cosp_reader, cosp_writer), accept_message.user_data()))
+        Ok(CoppInitResult::Success(RustyCoppConnection::new(cosp_reader, cosp_writer), accept_message.user_data()))
     }
 }
 
@@ -192,9 +195,10 @@ impl<R: CospReader> CoppReader for RustyCoppReader<R> {
         };
 
         match message {
-            CospRecvResult::Finish(_) => todo!(),
-            CospRecvResult::Disconnect(_) => todo!(),
+            // There is no special encoding of user data on finish or disconnect.
             CospRecvResult::Closed => return Ok(CoppRecvResult::Closed),
+            CospRecvResult::Finish(x) => Ok(CoppRecvResult::Finish(x)),
+            CospRecvResult::Disconnect(x) => Ok(CoppRecvResult::Disconnect(x)),
             CospRecvResult::Data(items) => Ok(CoppRecvResult::Data(UserData::parse_raw(&items).map_err(|e| CoppError::ProtocolError(e.to_string()))?)),
         }
     }
@@ -226,8 +230,18 @@ impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
         Ok(())
     }
 
-    async fn abort_user(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
+    async fn user_abort(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
         self.cosp_writer.abort(Some(AbortUserMessage::new(presentation_contexts, user_data).serialise()?)).await?;
+        Ok(())
+    }
+    
+    async fn finish(self) -> Result<(), CoppError> {
+        self.cosp_writer.finish(None).await?;
+        Ok(())
+    }
+    
+    async fn disconnect(self) -> Result<(), CoppError> {
+        self.cosp_writer.disconnect(None).await?;
         Ok(())
     }
 }

@@ -6,7 +6,7 @@ use der_parser::{
     error::BerError,
 };
 
-use crate::messages::parsers::process_constructed_data;
+use crate::{CoppError, messages::parsers::process_constructed_data};
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum UserData {
@@ -44,20 +44,20 @@ impl UserData {
         }
     }
 
-    pub fn parse(data: Any<'_>) -> Result<UserData, BerError> {
+    pub fn parse(data: Any<'_>) -> Result<UserData, CoppError> {
         match data.header.raw_tag() {
             Some(&[97]) => {
                 let mut presentation_list = vec![];
-                for pdv_list in process_constructed_data(data.data)? {
-                    pdv_list.header.assert_class(Class::Universal)?;
-                    pdv_list.header.assert_tag(Tag::Sequence)?;
+                for pdv_list in process_constructed_data(data.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse PDV list on User Data: {e}")))? {
+                    pdv_list.header.assert_class(Class::Universal).map_err(|e| CoppError::ProtocolError(format!("Failed to parse PDV list on User Data: {e}")))?;
+                    pdv_list.header.assert_tag(Tag::Sequence).map_err(|e| CoppError::ProtocolError(format!("Failed to parse PDV list on User Data: {e}")))?;
 
                     let mut transfer_syntax_name: Option<Oid<'static>> = None;
                     let mut presentation_contaxt_id = None;
                     let mut presentation_data_values = None;
-                    for pdv_list_part in process_constructed_data(pdv_list.data)? {
+                    for pdv_list_part in process_constructed_data(pdv_list.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse PDV list transfer syntax name on User Data: {e}")))? {
                         match pdv_list_part.header.raw_tag() {
-                            Some(&[6]) => transfer_syntax_name = Some(Oid::from_ber(pdv_list.data)?.1.to_owned()),
+                            Some(&[6]) => transfer_syntax_name = Some(Oid::from_ber(pdv_list.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse PDV list on User Data: {e}")))?.1.to_owned()),
                             Some(&[2]) => presentation_contaxt_id = Some(pdv_list_part.data.to_vec()),
                             Some(&[160]) => presentation_data_values = Some(PresentationDataValues::SingleAsn1Type(pdv_list_part.data.to_vec())),
                             // TODO Other formats
@@ -66,8 +66,8 @@ impl UserData {
                     }
                     presentation_list.push(PresentationDataValueList {
                         transfer_syntax_name,
-                        presentation_context_identifier: presentation_contaxt_id.ok_or_else(|| BerError::BerValueError)?,
-                        presentation_data_values: presentation_data_values.ok_or_else(|| BerError::BerValueError)?,
+                        presentation_context_identifier: presentation_contaxt_id.ok_or_else(|| CoppError::ProtocolError("Presentation Context Identifier not found on COPP User Data".into()))?,
+                        presentation_data_values: presentation_data_values.ok_or_else(|| CoppError::ProtocolError("Presentation Data Values not found on COPP User Data".into()))?,
                     });
                 }
                 Ok(UserData::FullyEncoded(presentation_list))
@@ -78,7 +78,7 @@ impl UserData {
 
     pub fn parse_raw(data: &[u8]) -> Result<UserData, BerError> {
         let (_, packet) = parse_ber_any(data)?;
-        Ok(UserData::parse(packet)?)
+        Ok(UserData::parse(packet).map_err(|e| BerError::BerValueError)?)
     }
 }
 

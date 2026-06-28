@@ -18,7 +18,8 @@ pub type RustyCoppConnectionIsoStack<R, W> = RustyCoppConnection<RustyCospReader
 mod tests {
     use std::{collections::VecDeque, ops::Range, time::Duration, vec};
 
-    use der_parser::Oid;
+    use anyhow::anyhow;
+use der_parser::Oid;
     use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptor, RustyCospInitiator, RustyCospReader, RustyCospResponder, RustyCospWriter};
     use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
@@ -203,7 +204,10 @@ mod tests {
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
-        let (copp_client, accepted_data) = copp_client?;
+        let (copp_client, accepted_data) = match copp_client? {
+            CoppInitResult::Success(x, y) => (x, y),
+            _ => return Err(anyhow!("Test Failed")),
+        };
         let (copp_server, connected_data) = copp_server?;
 
         assert_eq!(accept_data, accepted_data);
