@@ -55,7 +55,7 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
             rusty_copp::CoppInitResult::AbortProvider(_) => todo!(),
             x => {
                 let payload_type: &'static str = x.into();
-                return Err(AcseError::ProtocolError(format!("Unexpected payload during connect: {payload_type}")))
+                return Err(AcseError::ProtocolError(format!("Unexpected payload during connect: {payload_type}")));
             }
         };
 

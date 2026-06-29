@@ -39,8 +39,8 @@ impl AcceptMessage {
         for object in process_constructed_data(container.data).map_err(|e| CoppError::ProtocolError(e.to_string()))? {
             match object.header.raw_tag() {
                 Some(&[160]) => {
-                    for inner_object in process_constructed_data(object.data).map_err(|e| CoppError::ProtocolError(format!{"Failed to parse Mode Select from COPP Accept Message: {e}"}))? {
-                        let presentation_value = process_integer(inner_object).map_err(|e| CoppError::ProtocolError(format!{"Failed to parse Mode Select Value from COPP Accept Message: {e}"}))?;
+                    for inner_object in process_constructed_data(object.data).map_err(|e| CoppError::ProtocolError(format! {"Failed to parse Mode Select from COPP Accept Message: {e}"}))? {
+                        let presentation_value = process_integer(inner_object).map_err(|e| CoppError::ProtocolError(format! {"Failed to parse Mode Select Value from COPP Accept Message: {e}"}))?;
                         let presentation_mode = presentation_value.ok_or_else(|| CoppError::ProtocolError(format!("No Mode Select Value was specified on COPP Accept Message")))?;
                         accept_message.presentation_mode = Some(PresentationMode::from(presentation_mode.as_slice()));
                     }
@@ -50,9 +50,13 @@ impl AcceptMessage {
                     for npm_object in process_constructed_data(object.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse COPP Accept Mesasge Body: {e}")))? {
                         match npm_object.header.raw_tag() {
                             Some(&[128]) => accept_message.protocol = process_protocol(npm_object).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Protocol on COPP Accept Mesasge Body: {e}")))?,
-                            Some(&[131]) => accept_message.responding_presentation_selector = process_octetstring(npm_object).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Responding Presentation Selector on COPP Accept Mesasge Body: {e}")))?,
+                            Some(&[131]) => {
+                                accept_message.responding_presentation_selector =
+                                    process_octetstring(npm_object).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Responding Presentation Selector on COPP Accept Mesasge Body: {e}")))?
+                            }
                             Some(&[165]) => {
-                                accept_message.context_definition_result_list = process_presentation_context_result_list(npm_object.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Presentation Context Result List on COPP Accept Mesasge Body: {e}")))?;
+                                accept_message.context_definition_result_list =
+                                    process_presentation_context_result_list(npm_object.data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse Presentation Context Result List on COPP Accept Mesasge Body: {e}")))?;
                             }
                             Some(&[97]) => accept_message.user_data = Some(UserData::parse(npm_object)?),
                             _ => (),
