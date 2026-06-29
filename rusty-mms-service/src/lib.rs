@@ -8,10 +8,16 @@ use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCop
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{
-    collections::{HashMap, VecDeque, hash_map::Entry::{Occupied, Vacant}}, net::SocketAddr, ops::Deref, sync::{
+    collections::{
+        HashMap, VecDeque,
+        hash_map::Entry::{Occupied, Vacant},
+    },
+    net::SocketAddr,
+    ops::Deref,
+    sync::{
         Arc,
         atomic::{AtomicI32, Ordering},
-    }
+    },
 };
 use tokio::{
     select,
@@ -26,7 +32,7 @@ use rusty_mms::{
     MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
     parameters::{ParameterSupportOption, ServiceSupportOption},
 };
-use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, };
+use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
 
 use crate::{
     data::{
@@ -126,18 +132,18 @@ pub trait RustyMmsServiceClient: Send + Sync {
 }
 
 // Cleans up after iteself if the job has been cancelled.
-struct RsponseReservation {
+struct ResponseReservation {
     invocation_id: Vec<u8>,
     mail_box: Arc<Mutex<HashMap<Vec<u8>, Option<MmsConfirmedResponse>>>>,
 }
 
-impl RsponseReservation {
+impl ResponseReservation {
     fn new(invocation_id: Vec<u8>, mail_box: Arc<Mutex<HashMap<Vec<u8>, Option<MmsConfirmedResponse>>>>) -> Self {
         Self { invocation_id, mail_box }
     }
 }
 
-impl Drop for RsponseReservation {
+impl Drop for ResponseReservation {
     fn drop(&mut self) {
         let invocation_id = self.invocation_id.clone();
         let mail_box = self.mail_box.clone();
@@ -159,17 +165,20 @@ struct RustyTcpMmsServiceClient<R: MmsReader, W: MmsWriter> {
 }
 
 impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceClient<R, W> {
-    async fn fetch_confirmed_message(&mut self, invocation_id: Vec<u8>) -> Result<MmsConfirmedResponse, MmsServiceError> {
-        let mut notify_registration = self.notify.notified();
-
+    async fn register_confirmed_message(&mut self, invocation_id: &Vec<u8>) -> Result<ResponseReservation, MmsServiceError> {
         // Will remove any interest in the result if the call is cancelled.
-        let _reservation = match self.mail_box.lock().await.entry(invocation_id.clone()) {
+        match self.mail_box.lock().await.entry(invocation_id.clone()) {
             Vacant(x) => {
                 x.insert_entry(None);
-                RsponseReservation::new(invocation_id.clone(), self.mail_box.clone())
+                Ok(ResponseReservation::new(invocation_id.clone(), self.mail_box.clone()))
             }
             Occupied(_) => return Err(MmsServiceError::InternalError(format!("Duplicate invocation id detected: {:?}", invocation_id))),
-        };
+        }
+    }
+
+    async fn fetch_confirmed_message(&mut self, invocation_id: Vec<u8>, reservation: ResponseReservation) -> Result<MmsConfirmedResponse, MmsServiceError> {
+        let _reservation = reservation;
+        let mut notify_registration = self.notify.notified();
 
         Ok(loop {
             select! {
@@ -209,7 +218,7 @@ impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceClient<R, W> {
                                 break response;
                             } else {
                                 self.mail_box.lock().await.insert(response_invocation_id.clone(), Some(response));
-                                self.notify.notify_waiters();
+                                self.notify.notify_one();
                             }
                         }
                         rusty_mms::MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service }) => {
@@ -241,9 +250,10 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
 
     async fn identify(&mut self) -> Result<Identity, MmsServiceError> {
         let invocation_id = BigInt::from(self.invocation_id.fetch_add(1, Ordering::Acquire)).to_signed_bytes_be();
+        let registration = self.register_confirmed_message(&invocation_id).await?;
         self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::ConfirmedRequest { invocation_id: invocation_id.clone(), request: MmsConfirmedRequest::Identify }])).await?;
 
-        match self.fetch_confirmed_message(invocation_id).await? {
+        match self.fetch_confirmed_message(invocation_id.clone(), registration).await? {
             MmsConfirmedResponse::Identify { vendor_name, model_name, revision, abstract_syntaxes } => Ok(Identity { vendor_name, model_name, revision, abstract_syntaxes }),
             _ => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
         }
@@ -251,9 +261,10 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
 
     async fn get_name_list(&mut self, object_class: MmsObjectClass, object_scope: MmsObjectScope, continue_after: Option<String>) -> Result<NameList, MmsServiceError> {
         let invocation_id = BigInt::from(self.invocation_id.fetch_add(1, Ordering::Acquire)).to_signed_bytes_be();
+        let registration = self.register_confirmed_message(&invocation_id).await?;
         self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::ConfirmedRequest { invocation_id: invocation_id.clone(), request: MmsConfirmedRequest::GetNameList { object_class, object_scope, continue_after } }])).await?;
 
-        match self.fetch_confirmed_message(invocation_id).await? {
+        match self.fetch_confirmed_message(invocation_id, registration).await? {
             MmsConfirmedResponse::GetNameList { list_of_identifiers, more_follows } => Ok(NameList { identifiers: list_of_identifiers, more_follows: more_follows.unwrap_or(true) }),
             _ => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
         }
@@ -261,9 +272,10 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
 
     async fn get_variable_access_attributes(&mut self, object_name: MmsObjectName) -> Result<VariableAccessAttributes, MmsServiceError> {
         let invocation_id = BigInt::from(self.invocation_id.fetch_add(1, Ordering::Acquire)).to_signed_bytes_be();
+        let registration = self.register_confirmed_message(&invocation_id).await?;
         self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::ConfirmedRequest { invocation_id: invocation_id.clone(), request: MmsConfirmedRequest::GetVariableAccessAttributes { object_name } }])).await?;
 
-        match self.fetch_confirmed_message(invocation_id).await? {
+        match self.fetch_confirmed_message(invocation_id, registration).await? {
             MmsConfirmedResponse::GetVariableAccessAttributes { deletable, type_description } => Ok(VariableAccessAttributes { deletable, type_description: convert_low_level_data_types_to_high_level_data_types(&type_description)? }),
             _ => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
         }
@@ -271,13 +283,14 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
 
     async fn define_named_variable_list(&mut self, variable_list_name: MmsObjectName, list_of_variables: Vec<ListOfVariablesItem>) -> Result<(), MmsServiceError> {
         let invocation_id = BigInt::from(self.invocation_id.fetch_add(1, Ordering::Acquire)).to_signed_bytes_be();
+        let registration = self.register_confirmed_message(&invocation_id).await?;
         self.writer
             .lock()
             .await
             .send(&mut VecDeque::from(vec![MmsMessage::ConfirmedRequest { invocation_id: invocation_id.clone(), request: MmsConfirmedRequest::DefineNamedVariableList { variable_list_name, list_of_variables } }]))
             .await?;
 
-        match self.fetch_confirmed_message(invocation_id).await? {
+        match self.fetch_confirmed_message(invocation_id, registration).await? {
             MmsConfirmedResponse::DefineNamedVariableList {} => Ok(()),
             _ => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
         }
@@ -285,13 +298,14 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
 
     async fn get_named_variable_list_attributes(&mut self, variable_list_name: MmsObjectName) -> Result<NamedVariableListAttributes, MmsServiceError> {
         let invocation_id = BigInt::from(self.invocation_id.fetch_add(1, Ordering::Acquire)).to_signed_bytes_be();
+        let registration = self.register_confirmed_message(&invocation_id).await?;
         self.writer
             .lock()
             .await
             .send(&mut VecDeque::from(vec![MmsMessage::ConfirmedRequest { invocation_id: invocation_id.clone(), request: MmsConfirmedRequest::GetNamedVariableListAttributes { object_name: variable_list_name } }]))
             .await?;
 
-        match self.fetch_confirmed_message(invocation_id).await? {
+        match self.fetch_confirmed_message(invocation_id, registration).await? {
             MmsConfirmedResponse::GetNamedVariableListAttributes { deletable, list_of_variables } => Ok(NamedVariableListAttributes { deletable, list_of_variables }),
             _ => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
         }
@@ -306,9 +320,10 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
         };
 
         let invocation_id = BigInt::from(self.invocation_id.fetch_add(1, Ordering::Acquire)).to_signed_bytes_be();
+        let registration = self.register_confirmed_message(&invocation_id).await?;
         self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::ConfirmedRequest { invocation_id: invocation_id.clone(), request: request_scope }])).await?;
 
-        match self.fetch_confirmed_message(invocation_id).await? {
+        match self.fetch_confirmed_message(invocation_id, registration).await? {
             MmsConfirmedResponse::DeleteNamedVariableList { number_matched, number_deleted } => {
                 Ok((BigInt::from_signed_bytes_be(&number_matched).try_into().map_err(to_mms_error(""))?, BigInt::from_signed_bytes_be(&number_deleted).try_into().map_err(to_mms_error(""))?))
             }
@@ -318,13 +333,14 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
 
     async fn read(&mut self, specification: MmsVariableAccessSpecification) -> Result<Vec<MmsServiceAccessResult>, MmsServiceError> {
         let invocation_id = BigInt::from(self.invocation_id.fetch_add(1, Ordering::Acquire)).to_signed_bytes_be();
+        let registration = self.register_confirmed_message(&invocation_id).await?;
         self.writer
             .lock()
             .await
             .send(&mut VecDeque::from(vec![MmsMessage::ConfirmedRequest { invocation_id: invocation_id.clone(), request: MmsConfirmedRequest::Read { specification_with_result: Some(false), variable_access_specification: specification } }]))
             .await?;
 
-        match self.fetch_confirmed_message(invocation_id).await? {
+        match self.fetch_confirmed_message(invocation_id, registration).await? {
             MmsConfirmedResponse::Read { variable_access_specification: _, access_results } => Ok(access_results
                 .into_iter()
                 .map(|x| match x {
@@ -338,6 +354,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
 
     async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<Vec<MmsWriteResult>, MmsServiceError> {
         let invocation_id = BigInt::from(self.invocation_id.fetch_add(1, Ordering::Acquire)).to_signed_bytes_be();
+        let registration = self.register_confirmed_message(&invocation_id).await?;
         self.writer
             .lock()
             .await
@@ -347,7 +364,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
             }]))
             .await?;
 
-        match self.fetch_confirmed_message(invocation_id).await? {
+        match self.fetch_confirmed_message(invocation_id, registration).await? {
             MmsConfirmedResponse::Write { write_results } => Ok(write_results),
             _ => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
         }
@@ -729,7 +746,7 @@ mod tests {
 
         let mut server1 = server.clone();
         let server_task1 = tokio::task::spawn(async move {
-            for _ in 1..10000 {
+            for x in 1..10000 {
                 let value = match server1.receive_message().await {
                     Ok(x) => x,
                     Err(_) => {
@@ -737,13 +754,13 @@ mod tests {
                     }
                 };
                 if let MmsServiceMessage::Identify(message) = value {
-                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: format!("{x}"), revision: "Fool1".into(), abstract_syntaxes: None }).await.expect("")
                 }
             }
         });
         let mut server2 = server.clone();
         let server_task2 = tokio::task::spawn(async move {
-            for _ in 1..10000 {
+            for x in 1..10000 {
                 let value = match server2.receive_message().await {
                     Ok(x) => x,
                     Err(_) => {
@@ -751,13 +768,13 @@ mod tests {
                     }
                 };
                 if let MmsServiceMessage::Identify(message) = value {
-                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: format!("{x}"), revision: "Fool2".into(), abstract_syntaxes: None }).await.expect("")
                 }
             }
         });
         let mut server3 = server.clone();
         let server_task3 = tokio::task::spawn(async move {
-            for _ in 1..10000 {
+            for x in 1..10000 {
                 let value = match server3.receive_message().await {
                     Ok(x) => x,
                     Err(_) => {
@@ -765,13 +782,13 @@ mod tests {
                     }
                 };
                 if let MmsServiceMessage::Identify(message) = value {
-                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: format!("{x}"), revision: "Fool3".into(), abstract_syntaxes: None }).await.expect("")
                 }
             }
         });
         let mut server4 = server.clone();
         let server_task4 = tokio::task::spawn(async move {
-            for _ in 1..10000 {
+            for x in 1..10000 {
                 let value = match server4.receive_message().await {
                     Ok(x) => x,
                     Err(_) => {
@@ -779,13 +796,13 @@ mod tests {
                     }
                 };
                 if let MmsServiceMessage::Identify(message) = value {
-                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: format!("{x}"), revision: "Fool4".into(), abstract_syntaxes: None }).await.expect("")
                 }
             }
         });
         let mut server5 = server.clone();
         let server_task5 = tokio::task::spawn(async move {
-            for _ in 1..10000 {
+            for x in 1..10000 {
                 let value = match server5.receive_message().await {
                     Ok(x) => x,
                     Err(_) => {
@@ -793,7 +810,7 @@ mod tests {
                     }
                 };
                 if let MmsServiceMessage::Identify(message) = value {
-                    message.respond(Identity { vendor_name: "Yo".into(), model_name: "There".into(), revision: "Fool".into(), abstract_syntaxes: None }).await.expect("")
+                    message.respond(Identity { vendor_name: "Yo".into(), model_name: format!("{x}"), revision: "Fool5".into(), abstract_syntaxes: None }).await.expect("")
                 }
             }
         });
