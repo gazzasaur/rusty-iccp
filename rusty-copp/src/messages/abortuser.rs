@@ -82,9 +82,8 @@ impl AbortUserMessage {
                                     .collect(),
                             ),
                         )),
-                        None => todo!(),
+                        None => return Err(CoppError::ProtocolError("Empty context lists are not supported".into())),
                     },
-                    // User Data
                     user_data,
                 ]
                 .into_iter()

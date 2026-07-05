@@ -70,7 +70,6 @@ impl AcceptMessage {
         Ok(accept_message)
     }
 
-    // TODO Support for default context
     pub(crate) fn serialise(&self) -> Result<Vec<u8>, CoppError> {
         if matches!(self.presentation_mode, Some(PresentationMode::X410)) || matches!(self.presentation_mode, Some(PresentationMode::Unknown)) {
             return Err(CoppError::InternalError(format!("Unsupported mode: {:?}", self.presentation_mode)));

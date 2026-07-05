@@ -1,11 +1,11 @@
 # Rusty COPP
-A pure rust implementation of COPP over COSP. This crate implements 
+A pure rust implementation of COPP over COSP.
 
-COPP is a glue protocol between the ISO standard protocols and byte streams (TCP/Serial links). This implementation covers kernel functionality of COPP with some restrictions.
-
-It is meant to carry ISO protocols. As a result:
+This implementation is used as a glue glue protocol between the ISO standard protocols and byte streams (TCP/Serial links).
+This implementation covers kernel functionality of COPP with some restrictions targeted towards ISO standards:
 * Only fully-encoded user-data is supported.
 * Default contexts are not supported.
+* Only supports Duplex COSP sessions.
 
 This standard is known by:
 * COPP
@@ -21,7 +21,7 @@ This package is intended to be used in conjunction with a higher level protocol.
 
 This library uses static dispatch. This protocol is a very small slice in a large protocol stack. It is called very often. Static dispatch removes vtable lookups reducing call overhead. Static dispatch also allows the types to be resolved at compile time, giving the compiler greater scope to perform optimisations. This also makes it ideal for use in embedded devices.
 
-The trade of is that static dispatch may be more difficult to work with in complex applications. The rusty-mms-service provides one example of going from a static dispatch to a dynamic dispatch environment without degrading performance.
+The trade off is that static dispatch may be more difficult to work with in complex applications. The rusty-mms-service provides one example of going from a static dispatch to a dynamic dispatch environment without degrading performance.
 
 #### Async and STD
 
@@ -35,8 +35,6 @@ Send and Recv operations are cancel safe as long as the caller does not drop the
 This create implements static conformance kernel functionality, with some restriction.
 
 The API has been built to support ISO protocols running over COPP. As a result:
-- It only supports fully encoded data.
-- It does not support a default context.
 
 This allows most ISO protcols to be operated over this implementation, normally using the 'kernel only' or 'core features' of higher layer protocols. Please refer to the conformance statement of the standard you are using to ensure all the features you require are offered given the comformance of this implementation.
 

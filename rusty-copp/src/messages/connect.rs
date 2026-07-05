@@ -77,9 +77,9 @@ impl ConnectMessage {
                             Some(&[164]) => {
                                 connection_message.context_definition_list = process_presentation_context_list(npm_object.data).map_err(|e| CoppError::InternalError(e.to_string()))?;
                             }
-                            // Some(&[136]) => connection_message.presentation_requirements = ..., TODO Don't really need to parse but should
-                            // Some(&[137]) => connection_message.user_session_requirements = ..., TODO Really should
-                            // Some(&[96]) => Simply Encoded User Data TODO should
+                            // Ignoring presentation requirements as we only support kernel features.
+                            // Ignoring user session requirements. We only support duplex.
+                            // Only supporting fully encoded, not simply encoded or any other encoding. This seems to support the majority of ISO protocols.
                             Some(&[97]) => connection_message.user_data = Some(UserData::parse(npm_object).map_err(|e| CoppError::InternalError(e.to_string()))?),
                             _ => (),
                         };
@@ -92,7 +92,6 @@ impl ConnectMessage {
         Ok(connection_message)
     }
 
-    // TODO Support for default context
     pub(crate) fn serialise(&self) -> Result<Vec<u8>, CoppError> {
         if matches!(self.presentation_mode, Some(PresentationMode::X410)) || matches!(self.presentation_mode, Some(PresentationMode::Unknown)) {
             return Err(CoppError::InternalError(format!("Unsupported mode: {:?}", self.presentation_mode)));
