@@ -122,7 +122,7 @@ impl RejectMessage {
                                             match &context.provider_reason {
                                                 Some(provider_reason) => Some(der_parser::ber::BerObject::from_header_and_content(
                                                     Header::new(Class::ContextSpecific, false, Tag::from(2), der_parser::ber::Length::Definite(0)),
-                                                    der_parser::ber::BerObjectContent::Integer(provider_reason.clone().into()),
+                                                    der_parser::ber::BerObjectContent::Integer(provider_reason.into()),
                                                 )),
                                                 None => None,
                                             },

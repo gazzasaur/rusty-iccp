@@ -151,7 +151,7 @@ mod tests {
                     PresentationContextResultType::ContextDefinitionList(vec![PresentationContextResult {
                         result: PresentationContextResultCause::ProviderRejection,
                         transfer_syntax_name: Some(Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
-                        provider_reason: Some(PresentationContextResultProviderReason::AbstrctSyntaxNotSupported),
+                        provider_reason: Some(PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::AbstrctSyntaxNotSupported)),
                     }]),
                     Some(ProviderReason::Value(ProviderReasonValue::CalledPresentationAddressUnknown)),
                     None,

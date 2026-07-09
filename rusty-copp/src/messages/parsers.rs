@@ -6,7 +6,7 @@ use der_parser::{
     error::BerError,
 };
 
-use crate::{PresentationContext, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause, PresentationContextResultType, PresentationContextType};
+use crate::{PresentationContext, PresentationContextIdentifier, PresentationContextResult, PresentationContextResultCause, PresentationContextResultProviderReason, PresentationContextResultType, PresentationContextType};
 
 #[derive(Debug)]
 pub(crate) enum PresentationMode {
@@ -127,19 +127,20 @@ pub(crate) fn process_presentation_context_identifier<'a>(npm_objects: Vec<Any<'
 pub(crate) fn process_presentation_result_context<'a>(npm_objects: Vec<Any<'a>>) -> Result<PresentationContextResult, BerError> {
     let mut result = PresentationContextResultCause::Unknown;
     let mut transfer_syntax_name = None;
+    let mut provider_reason = None;
 
     for npm_object in npm_objects {
         match npm_object.header.raw_tag() {
             Some(&[0]) => result = process_context_result(npm_object)?,
             Some(&[1]) => transfer_syntax_name = process_oid(npm_object)?,
-            // Some(&[2]) => provider_reason = Some(process_transfer_syntaxt_list(npm_object.data)?), TODO
+            Some(&[2]) => provider_reason = process_integer(npm_object)?.map(|x| PresentationContextResultProviderReason::from(x.as_slice())),
             _ => (),
         };
     }
     Ok(PresentationContextResult {
         result,
         transfer_syntax_name,
-        provider_reason: None, // TODO Provider Reason
+        provider_reason
     })
 }
 

@@ -260,20 +260,39 @@ impl From<PresentationContextResultCause> for &[u8] {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub enum PresentationContextResultProviderReason {
+pub enum PresentationContextResultProviderReasonValue {
     ReasonNotSpecified,
     AbstrctSyntaxNotSupported,
     ProposedAbstrctSyntaxNotSupported,
     LocalLimitOnDcsExceeded,
 }
 
-impl From<PresentationContextResultProviderReason> for &[u8] {
-    fn from(value: PresentationContextResultProviderReason) -> Self {
+#[derive(PartialEq, Clone, Debug)]
+pub enum PresentationContextResultProviderReason {
+    Value(PresentationContextResultProviderReasonValue),
+    Unknown(Vec<u8>),
+}
+
+impl<'a> From<&'a PresentationContextResultProviderReason> for &'a [u8] {
+    fn from(value: &'a PresentationContextResultProviderReason) -> Self {
         match value {
-            PresentationContextResultProviderReason::ReasonNotSpecified => &[0],
-            PresentationContextResultProviderReason::AbstrctSyntaxNotSupported => &[1],
-            PresentationContextResultProviderReason::ProposedAbstrctSyntaxNotSupported => &[2],
-            PresentationContextResultProviderReason::LocalLimitOnDcsExceeded => &[3],
+            PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::ReasonNotSpecified) => &[0],
+            PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::AbstrctSyntaxNotSupported) => &[1],
+            PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::ProposedAbstrctSyntaxNotSupported) => &[2],
+            PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::LocalLimitOnDcsExceeded) => &[3],
+            PresentationContextResultProviderReason::Unknown(data) => &data,
+        }
+    }
+}
+
+impl From<&[u8]> for PresentationContextResultProviderReason {
+    fn from(value: &[u8]) -> Self {
+        match value {
+            &[0] => PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::ReasonNotSpecified),
+            &[1] => PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::AbstrctSyntaxNotSupported),
+            &[2] => PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::ProposedAbstrctSyntaxNotSupported),
+            &[3] => PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::LocalLimitOnDcsExceeded),
+            x => PresentationContextResultProviderReason::Unknown(x.to_vec()),
         }
     }
 }
