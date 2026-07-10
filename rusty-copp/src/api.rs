@@ -319,13 +319,13 @@ impl Default for CoppConnectionInformation {
 #[derive(IntoStaticStr)]
 pub enum CoppInitResult<T: CoppConnection> {
     Success(T, Option<UserData>),
-    Data(UserData),
     AbortUser(Vec<u8>),
     AbortProvider(Vec<u8>),
     Finish(Option<Vec<u8>>),
     Disconnect(Option<Vec<u8>>),
 }
 
+#[derive(IntoStaticStr)]
 pub enum CoppRecvResult {
     Closed,
     Data(UserData),

@@ -117,7 +117,7 @@ pub struct RustyCoppResponder<T: CospResponder, R: CospReader, W: CospWriter> {
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppResponder<T, R, W> {
-    fn new(cosp_responder: T, connection_information: CoppConnectionInformation) -> RustyCoppResponder<impl CospResponder, impl CospReader, impl CospWriter> {
+    pub fn new(cosp_responder: T, connection_information: CoppConnectionInformation) -> RustyCoppResponder<impl CospResponder, impl CospReader, impl CospWriter> {
         RustyCoppResponder { cosp_responder, cosp_reader: PhantomData::<R>, cosp_writer: PhantomData::<W>, connection_information }
     }
 }

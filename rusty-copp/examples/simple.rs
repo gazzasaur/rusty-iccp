@@ -1,8 +1,11 @@
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
-use rusty_cosp::CospReader;
+use rusty_copp::{
+    CoppConnection, CoppConnectionInformation, CoppError, CoppInitResult, CoppInitiator, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextType, PresentationDataValueList, RustyCoppInitiator, RustyCoppInitiatorIsoStack, RustyCoppReader, RustyCoppReaderIsoStack, RustyCoppResponder, RustyCoppResponderIsoStack, UserData,
+};
 use rusty_cosp::{CospAcceptor, CospConnection, CospInitiator, CospProtocolInformation, CospRecvResult, CospResponder, CospWriter, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
+use rusty_cosp::{CospReader, RustyCospReaderIsoStack, RustyCospWriterIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
 
@@ -45,35 +48,39 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // COSP has many PDUs that allow for higher level protocols to inject data.
     let (cosp_responder, connect_data) = cosp_acceptor.accept().await?;
 
-    // For example purposes, we will ensure this matches.
-    assert_eq!(connect_data, Some(b"Initiator Higher Level Protocol Data".to_vec()));
-
-    // We will completed the connection, which also allows us to send higher level protocol data back.
-    let cosp_connection = cosp_responder.complete_connection(Some(b"Responder Higher Level Protocol Data".to_vec())).await?;
+    // Using the cosp responder, create a copp connection.
+    let copp_responder = RustyCoppResponder::<_, RustyCospReaderIsoStack<TcpTpktReader>, RustyCospWriterIsoStack<TcpTpktWriter>>::new(cosp_responder, CoppConnectionInformation::default());
+    let copp_connection = copp_responder.complete_connection(Some(UserData::FullyEncoded(vec![]))).await?;
 
     // Split the connection into read and write halves. This is often done for easy multi-tasking.
-    let (mut reader, mut writer) = cosp_connection.split().await?;
+    let (mut copp_reader, copp_writer) = copp_connection.split().await?;
 
     // Get data from the client.
-    let data = match reader.recv().await? {
-        CospRecvResult::Data(data) => data,
-        x => return Err(anyhow!("Expected data but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
-    };
-    assert_eq!(data, "Hello from the client!".as_bytes().to_vec());
+    // let data = match copp_reader.recv().await? {
+    //     rusty_copp::CoppRecvResult::Closed => todo!(),
+    //     rusty_copp::CoppRecvResult::Data(user_data) => todo!(),
+    //     rusty_copp::CoppRecvResult::AbortUser(items) => todo!(),
+    //     rusty_copp::CoppRecvResult::AbortProvider(items) => todo!(),
+    //     rusty_copp::CoppRecvResult::Finish(items) => todo!(),
+    //     rusty_copp::CoppRecvResult::Disconnect(items) => todo!(),
+    //     x => return Err(anyhow!("Expected data but got {}", <CoppRecvResult as Into<&'static str>>::into(x))),
+    // };
 
-    // Send data to the client. This uses a buffer to ensure the operation is cancel safe. Store this buffer on your object an reuse it.
-    let mut data = VecDeque::new();
-    data.push_back("Hello from the server!".as_bytes().to_vec());
-    while data.len() > 0 {
-        writer.send(&mut data).await?;
-    }
+    // assert_eq!(data, "Hello from the client!".as_bytes().to_vec());
 
-    // In this case, the client will call finish, so we will call disconnect as per the standard.
-    match reader.recv().await? {
-        CospRecvResult::Finish(_) => (),
-        x => return Err(anyhow!("Expected finish but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
-    };
-    writer.disconnect(None).await?;
+    // // Send data to the client. This uses a buffer to ensure the operation is cancel safe. Store this buffer on your object an reuse it.
+    // let mut data = VecDeque::new();
+    // data.push_back("Hello from the server!".as_bytes().to_vec());
+    // while data.len() > 0 {
+    //     writer.send(&mut data).await?;
+    // }
+
+    // // In this case, the client will call finish, so we will call disconnect as per the standard.
+    // match reader.recv().await? {
+    //     CospRecvResult::Finish(_) => (),
+    //     x => return Err(anyhow!("Expected finish but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
+    // };
+    // writer.disconnect(None).await?;
 
     // The connection will be closed when it is dropped.
 
@@ -90,31 +97,39 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Upgrade the connection to a COSP connection. Here will will signal our identity and the expected identity of the remote side.
     let cosp_initiator = RustyCospInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), Default::default()).await?;
 
-    // Initial the COSP connection. This performs the actual singalling. In this case we will get higher layer protcol data back.
-    let (cosp_connection, accept_data) = cosp_initiator.initiate(Some(b"Initiator Higher Level Protocol Data".to_vec())).await?;
+    let copp_initiator = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_initiator, CoppConnectionInformation::default());
+    let copp_connection = copp_initiator.initiate(PresentationContextType::ContextDefinitionList(vec![]), Some(UserData::FullyEncoded(vec![]))).await?;
 
-    // For example purposes, we will ensure this matches.
-    assert_eq!(accept_data, Some(b"Responder Higher Level Protocol Data".to_vec()));
-
-    // Split the connection into read and write halves. This is often done for easy multi-tasking.
-    let (mut reader, mut writer) = cosp_connection.split().await?;
-
-    // Send data to the server. This uses a buffer to ensure the operation is cancel safe. Store this buffer on your object an reuse it.
-    let mut data = VecDeque::new();
-    data.push_back("Hello from the client!".as_bytes().to_vec());
-    while data.len() > 0 {
-        writer.send(&mut data).await?;
-    }
-
-    // Get data from the server.
-    let data = match reader.recv().await? {
-        CospRecvResult::Data(data) => data,
-        x => return Err(anyhow!("Expected data but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
+    let (copp_connection, user_data) = match copp_connection {
+        CoppInitResult::Success(copp_connection, user_data) => (copp_connection, user_data),
+        x => return Err(anyhow!("Unexpected payload: {x}")),
     };
-    assert_eq!(data, "Hello from the server!".as_bytes().to_vec());
 
-    // We will close the connection from this side in an orderly manner.
-    writer.finish(None).await?;
+    let (copp_reader, copp_writer) = copp_connection.split().await?;
+    copp_writer.send(&mut VecDeque::from(vec![])).await?;
+
+    // // For example purposes, we will ensure this matches.
+    // assert_eq!(accept_data, Some(b"Responder Higher Level Protocol Data".to_vec()));
+
+    // // Split the connection into read and write halves. This is often done for easy multi-tasking.
+    // let (mut reader, mut writer) = cosp_connection.split().await?;
+
+    // // Send data to the server. This uses a buffer to ensure the operation is cancel safe. Store this buffer on your object an reuse it.
+    // let mut data = VecDeque::new();
+    // data.push_back("Hello from the client!".as_bytes().to_vec());
+    // while data.len() > 0 {
+    //     writer.send(&mut data).await?;
+    // }
+
+    // // Get data from the server.
+    // let data = match reader.recv().await? {
+    //     CospRecvResult::Data(data) => data,
+    //     x => return Err(anyhow!("Expected data but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
+    // };
+    // assert_eq!(data, "Hello from the server!".as_bytes().to_vec());
+
+    // // We will close the connection from this side in an orderly manner.
+    // writer.finish(None).await?;
 
     // The connection will be closed when it is dropped.
 

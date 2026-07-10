@@ -3,7 +3,6 @@ use der_parser::{
     asn1_rs::{Any, FromBer},
     ber::{BerObject, parse_ber_any},
     der::{Class, Header, Tag},
-    error::BerError,
 };
 
 use crate::{CoppError, messages::parsers::process_constructed_data};
@@ -11,7 +10,7 @@ use crate::{CoppError, messages::parsers::process_constructed_data};
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum UserData {
     FullyEncoded(Vec<PresentationDataValueList>),
-    // Not yet supported and not required for MMS/ICCP
+    // Not required for MMS/ICCP
     // SimplyEncoded(Vec<u8>),
 }
 
@@ -77,9 +76,9 @@ impl UserData {
         }
     }
 
-    pub fn parse_raw(data: &[u8]) -> Result<UserData, BerError> {
-        let (_, packet) = parse_ber_any(data)?;
-        Ok(UserData::parse(packet).map_err(|e| BerError::BerValueError)?)
+    pub fn parse_raw(data: &[u8]) -> Result<UserData, CoppError> {
+        let (_, packet) = parse_ber_any(data).map_err(|e| CoppError::ProtocolError(format!("Failed to parse user data: {e}")))?;
+        Ok(UserData::parse(packet)?)
     }
 }
 
