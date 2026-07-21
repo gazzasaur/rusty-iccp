@@ -1,11 +1,13 @@
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
+use der_parser::oid;
 use rusty_copp::{
-    CoppConnection, CoppConnectionInformation, CoppError, CoppInitResult, CoppInitiator, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContextType, PresentationDataValueList, RustyCoppInitiator, RustyCoppInitiatorIsoStack, RustyCoppReader, RustyCoppReaderIsoStack, RustyCoppResponder, RustyCoppResponderIsoStack, UserData,
+    CoppConnection, CoppConnectionInformation, CoppInitResult, CoppInitiator, CoppReader, CoppResponder, CoppWriter, PresentationContextType, PresentationDataValueList, PresentationDataValues, RustyCoppInitiatorIsoStack,
+    RustyCoppResponder, UserData,
 };
-use rusty_cosp::{CospAcceptor, CospConnection, CospInitiator, CospProtocolInformation, CospRecvResult, CospResponder, CospWriter, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
-use rusty_cosp::{CospReader, RustyCospReaderIsoStack, RustyCospWriterIsoStack};
+use rusty_cosp::{CospAcceptor, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
+use rusty_cosp::{RustyCospReaderIsoStack, RustyCospWriterIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
 
@@ -56,15 +58,17 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     let (mut copp_reader, copp_writer) = copp_connection.split().await?;
 
     // Get data from the client.
-    // let data = match copp_reader.recv().await? {
-    //     rusty_copp::CoppRecvResult::Closed => todo!(),
-    //     rusty_copp::CoppRecvResult::Data(user_data) => todo!(),
-    //     rusty_copp::CoppRecvResult::AbortUser(items) => todo!(),
-    //     rusty_copp::CoppRecvResult::AbortProvider(items) => todo!(),
-    //     rusty_copp::CoppRecvResult::Finish(items) => todo!(),
-    //     rusty_copp::CoppRecvResult::Disconnect(items) => todo!(),
-    //     x => return Err(anyhow!("Expected data but got {}", <CoppRecvResult as Into<&'static str>>::into(x))),
-    // };
+    let data = match copp_reader.recv().await? {
+        rusty_copp::CoppRecvResult::Data(user_data) => assert_eq!(
+            user_data,
+            UserData::FullyEncoded(vec![PresentationDataValueList {
+                transfer_syntax_name: Some(oid!(1.2.3.4)),
+                presentation_context_identifier: vec![0x01],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x06, 0x07]),
+            }])
+        ),
+        _ => assert!(false, "Unexpected value"),
+    };
 
     // assert_eq!(data, "Hello from the client!".as_bytes().to_vec());
 
@@ -102,11 +106,22 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
 
     let (copp_connection, user_data) = match copp_connection {
         CoppInitResult::Success(copp_connection, user_data) => (copp_connection, user_data),
-        x => return Err(anyhow!("Unexpected payload: {x}")),
+        x => {
+            let x = <CoppInitResult<_> as Into<&'static str>>::into(x);
+            return Err(anyhow!("Unexpected payload: {x}"));
+        }
     };
 
-    let (copp_reader, copp_writer) = copp_connection.split().await?;
-    copp_writer.send(&mut VecDeque::from(vec![])).await?;
+    let (mut copp_reader, mut copp_writer) = copp_connection.split().await?;
+    copp_writer
+        .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
+            transfer_syntax_name: Some(oid!(1.2.3.4)),
+            presentation_context_identifier: vec![0x01],
+            presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x06, 0x07]),
+        }])]))
+        .await?;
+
+    copp_reader.recv().await?;
 
     // // For example purposes, we will ensure this matches.
     // assert_eq!(accept_data, Some(b"Responder Higher Level Protocol Data".to_vec()));

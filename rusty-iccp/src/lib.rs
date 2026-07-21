@@ -92,7 +92,7 @@ pub enum NormalValue {
     Abnormal,
 }
 
-pub enum TimeStampQualityValue {
+pub enum TimestampQualityValue {
     Valid,
     Invalid,
 }
@@ -106,13 +106,13 @@ pub enum TagValue {
 pub enum IccpData {
     Real(f32),
     Discrete(i32),
-    State(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue),
-    StateSupplemental(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue, TagValue, ExpectedStateValue),
+    State(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
+    StateSupplemental(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue, TagValue, ExpectedStateValue),
 
-    RealQ(f32, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue),
-    StateQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue),
-    DiscreteQ(i32, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue),
-    StateSupplementalQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimeStampQualityValue, TagValue, ExpectedStateValue),
+    RealQ(f32, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
+    StateQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
+    DiscreteQ(i32, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
+    StateSupplementalQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue, TagValue, ExpectedStateValue),
     // TODO The rest of them. No COV support
 }
 
@@ -396,12 +396,61 @@ impl IccpClient for RustyIccpClient {
 }
 
 fn convert_mms_service_data_to_iccp_data(mms_data: MmsServiceData) -> Result<IccpData, IccpError> {
-    match mms_data {
+    match &mms_data {
+        MmsServiceData::BitString(x) => Ok(IccpData::State(flags_to_state(x), flags_to_validity(x), flags_to_current_source(x), flags_to_normal(x), flags_to_timestamp_quality(x))),
         MmsServiceData::Structure(struct_data) => match struct_data.as_slice() {
-            [MmsServiceData::FloatingPoint(value), MmsServiceData::BitString(_)] => Ok(IccpData::RealQ(value.to_f32()?, ValidityValue::Valid, CurrentSourceValue::Telemetered, NormalValue::Normal, TimeStampQualityValue::Valid)),
+            [MmsServiceData::FloatingPoint(value), MmsServiceData::BitString(x)] => Ok(IccpData::RealQ(value.to_f32()?, flags_to_validity(x), flags_to_current_source(x), flags_to_normal(x), flags_to_timestamp_quality(x))),
+            [MmsServiceData::Integer(value), MmsServiceData::BitString(x)] => Ok(IccpData::DiscreteQ(
+                value.try_into().map_err(|e| IccpError::ProtocolError(format!("unable to convert data into DiscreteQ: {e}")))?,
+                flags_to_validity(x),
+                flags_to_current_source(x),
+                flags_to_normal(x),
+                flags_to_timestamp_quality(x),
+            )),
             x => Err(IccpError::ProtocolError(format!("Unknown MMS Structure Data: {x:?}"))),
         },
         x => Err(IccpError::ProtocolError(format!("Unknown MMS Data: {x:?}"))),
+    }
+}
+
+fn flags_to_state(flags: &Vec<bool>) -> StateValue {
+    match (flags.get(0).unwrap_or_else(|| &false), flags.get(1).unwrap_or_else(|| &false)) {
+        (false, false) => StateValue::Closed,
+        (false, true) => StateValue::Tripped,
+        (true, false) => StateValue::Closed,
+        (true, true) => StateValue::Invalid,
+    }
+}
+
+fn flags_to_validity(flags: &Vec<bool>) -> ValidityValue {
+    match (flags.get(2).unwrap_or_else(|| &false), flags.get(3).unwrap_or_else(|| &false)) {
+        (false, false) => ValidityValue::Valid,
+        (false, true) => ValidityValue::Held,
+        (true, false) => ValidityValue::Suspect,
+        (true, true) => ValidityValue::NotValid,
+    }
+}
+
+fn flags_to_current_source(flags: &Vec<bool>) -> CurrentSourceValue {
+    match (flags.get(4).unwrap_or_else(|| &false), flags.get(5).unwrap_or_else(|| &false)) {
+        (false, false) => CurrentSourceValue::Telemetered,
+        (false, true) => CurrentSourceValue::Calculated,
+        (true, false) => CurrentSourceValue::Entered,
+        (true, true) => CurrentSourceValue::Estimated,
+    }
+}
+
+fn flags_to_normal(flags: &Vec<bool>) -> NormalValue {
+    match flags.get(6).unwrap_or_else(|| &false) {
+        false => NormalValue::Normal,
+        true => NormalValue::Abnormal,
+    }
+}
+
+fn flags_to_timestamp_quality(flags: &Vec<bool>) -> TimestampQualityValue {
+    match flags.get(7).unwrap_or_else(|| &false) {
+        false => TimestampQualityValue::Valid,
+        true => TimestampQualityValue::Invalid,
     }
 }
 

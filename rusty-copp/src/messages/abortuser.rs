@@ -82,7 +82,7 @@ impl AbortUserMessage {
                                     .collect(),
                             ),
                         )),
-                        None => return Err(CoppError::ProtocolError("Empty context lists are not supported".into())),
+                        None => return Err(CoppError::ProtocolError("At least one context is required in a context definition list.".into())),
                     },
                     user_data,
                 ]
