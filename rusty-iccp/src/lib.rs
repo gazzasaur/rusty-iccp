@@ -104,15 +104,15 @@ pub enum TagValue {
 }
 
 pub enum IccpData {
-    Real(f32),
-    Discrete(i32),
+    // Real(f32),
+    // Discrete(i32),
     State(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
-    StateSupplemental(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue, TagValue, ExpectedStateValue),
+    // StateSupplemental(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue, TagValue, ExpectedStateValue),
 
     RealQ(f32, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
-    StateQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
+    // StateQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
     DiscreteQ(i32, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
-    StateSupplementalQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue, TagValue, ExpectedStateValue),
+    // StateSupplementalQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue, TagValue, ExpectedStateValue),
     // TODO The rest of them. No COV support
 }
 
