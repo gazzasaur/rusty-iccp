@@ -68,7 +68,7 @@ impl Default for MmsServiceConnectionIdentityParameters {
 }
 
 pub struct MmsServiceConnectionParameters {
-    local_detail_calling: Option<i32>,
+    pub local_detail_calling: Option<i32>,
 
     pub called: MmsServiceConnectionIdentityParameters,
     pub calling: MmsServiceConnectionIdentityParameters,
