@@ -52,7 +52,7 @@ pub trait IccpClient: Send + Sync {
 }
 
 // This can be encoded as a State or Discrete. Discrete should be used of there are more than 4 states.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum StateValue {
     Between, // Between, Invalid
     Tripped, // Tripped, Off, Auto, Normal, Local, Raise, Not Ready, Offline
@@ -67,7 +67,7 @@ pub enum ExpectedStateValue {
     Invalid, // Invalid
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ValidityValue {
     Valid,
     Held,
@@ -75,7 +75,7 @@ pub enum ValidityValue {
     NotValid,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum CurrentSourceValue {
     Telemetered,
     Calculated,
@@ -83,7 +83,7 @@ pub enum CurrentSourceValue {
     Estimated,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum NormalSourceValue {
     Telemetered,
     Calculated,
@@ -91,26 +91,26 @@ pub enum NormalSourceValue {
     Estimated,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum NormalValue {
     Normal,
     Abnormal,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TimestampQualityValue {
     Valid,
     Invalid,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TagValue {
     NoTag,
     OpenAndCloseInhibit,
     CloseOnlyInhibit,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum IccpData {
     // Real(f32),
     // Discrete(i32),
