@@ -24,6 +24,11 @@ thiserror = { workspace = true }
 der-parser = { workspace = true }
 num-bigint = { workspace = true }
 async-trait = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+serde = ["dep:serde"]
+serde_camel_case = ["serde", "dep:serde"]
 
 [dev-dependencies]
 anyhow = { workspace = true }

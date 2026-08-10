@@ -52,6 +52,8 @@ pub trait IccpClient: Send + Sync {
 }
 
 // This can be encoded as a State or Discrete. Discrete should be used of there are more than 4 states.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
 #[derive(Clone, Debug)]
 pub enum StateValue {
     Between, // Between, Invalid
@@ -60,6 +62,9 @@ pub enum StateValue {
     Invalid, // Invalid
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
+#[derive(Clone, Debug)]
 pub enum ExpectedStateValue {
     Between, // Between, Invalid
     Tripped, // Tripped, Off, Auto, Normal, Local, Raise, Not Ready, Offline
@@ -67,6 +72,8 @@ pub enum ExpectedStateValue {
     Invalid, // Invalid
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
 #[derive(Clone, Debug)]
 pub enum ValidityValue {
     Valid,
@@ -75,6 +82,8 @@ pub enum ValidityValue {
     NotValid,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
 #[derive(Clone, Debug)]
 pub enum CurrentSourceValue {
     Telemetered,
@@ -83,6 +92,8 @@ pub enum CurrentSourceValue {
     Estimated,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
 #[derive(Clone, Debug)]
 pub enum NormalSourceValue {
     Telemetered,
@@ -91,18 +102,24 @@ pub enum NormalSourceValue {
     Estimated,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
 #[derive(Clone, Debug)]
 pub enum NormalValue {
     Normal,
     Abnormal,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
 #[derive(Clone, Debug)]
 pub enum TimestampQualityValue {
     Valid,
     Invalid,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
 #[derive(Clone, Debug)]
 pub enum TagValue {
     NoTag,
@@ -110,6 +127,8 @@ pub enum TagValue {
     CloseOnlyInhibit,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde_camel_case", serde(rename_all = "camelCase"))]
 #[derive(Clone, Debug)]
 pub enum IccpData {
     // Real(f32),
