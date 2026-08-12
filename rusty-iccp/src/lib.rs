@@ -11,6 +11,16 @@ use rusty_mms_service::{
     message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage},
 };
 
+pub struct IccpRbeTransferSetValue {
+    pub identifier: IccpScopedIdentifier,
+    pub access_result: IccpAccessResult,
+}
+
+pub enum IccpTransferSetReport {
+    ReportAll(IccpScopedIdentifier, Vec<IccpAccessResult>),
+    ReportByException(Vec<IccpRbeTransferSetValue>),
+}
+
 #[async_trait]
 pub trait IccpClient: Send + Sync {
     async fn clone(&self) -> Box<dyn IccpClient>;
@@ -23,6 +33,8 @@ pub trait IccpClient: Send + Sync {
     async fn delete_data_sets(&mut self, domain: String, identifiers: Vec<String>) -> Result<(), IccpError>;
     async fn delete_domain_data_sets(&mut self, domain: String) -> Result<(), IccpError>;
     async fn start_transfer_set(&mut self, domain: String, name: String) -> Result<(), IccpError>;
+
+    async fn receive_transfer_set_report(&mut self) -> Result<IccpTransferSetReport, IccpError>;
 
     // get_data_values
     // get_data_set_names
@@ -47,8 +59,6 @@ pub trait IccpClient: Send + Sync {
     // operate
     // get_tag_value
     // set_tag_value
-
-    // fn fetch_transfer_report
 }
 
 // This can be encoded as a State or Discrete. Discrete should be used of there are more than 4 states.
@@ -135,7 +145,6 @@ pub enum IccpData {
     // Discrete(i32),
     State(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
     // StateSupplemental(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue, TagValue, ExpectedStateValue),
-
     RealQ(f32, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
     // StateQ(StateValue, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
     DiscreteQ(i32, ValidityValue, CurrentSourceValue, NormalValue, TimestampQualityValue),
@@ -419,6 +428,51 @@ impl IccpClient for RustyIccpClient {
             )
             .await?;
         Ok(())
+    }
+
+    async fn receive_transfer_set_report(&mut self) -> Result<IccpTransferSetReport, IccpError> {
+        let message = self.mms_client.receive_information_report().await?;
+        match message.variable_access_specification {
+            MmsVariableAccessSpecification::VariableListName(mms_object_name) => {
+                let transfer_set_name = match mms_object_name {
+                    MmsObjectName::VmdSpecific(name) => IccpScopedIdentifier::Vcc(name),
+                    MmsObjectName::DomainSpecific(domain, name) => IccpScopedIdentifier::Icc(domain, name),
+                    MmsObjectName::AaSpecific(_) => return Err(IccpError::ProtocolError(format!("Unsupported report type: {mms_object_name:?}"))),
+                };
+
+                // Report All
+                let mut results = vec![];
+                for result in message.access_results {
+                    match result {
+                        MmsServiceAccessResult::Success(mms_service_data) => results.push(IccpAccessResult::Success(convert_mms_service_data_to_iccp_data(mms_service_data)?)),
+                        MmsServiceAccessResult::Failure(mms_access_error) => results.push(IccpAccessResult::Failure(mms_access_error)),
+                    }
+                }
+                return Ok(IccpTransferSetReport::ReportAll(transfer_set_name, results));
+            }
+            MmsVariableAccessSpecification::ListOfVariables(list_of_variables_items) => {
+                if list_of_variables_items.len() != message.access_results.len() {
+                    return Err(IccpError::ProtocolError("An RBE payload was received with mismatching names and results".into()));
+                }
+                let mut results: Vec<IccpRbeTransferSetValue> = vec![];
+                for i in 0..list_of_variables_items.len() {
+                    let name = match &list_of_variables_items[i].variable_specification {
+                        VariableSpecification::Name(MmsObjectName::VmdSpecific(name)) => IccpScopedIdentifier::Vcc(name.clone()),
+                        VariableSpecification::Name(MmsObjectName::DomainSpecific(domain, name)) => IccpScopedIdentifier::Icc(domain.clone(), name.clone()),
+                        VariableSpecification::Name(mms_object_name) => return Err(IccpError::ProtocolError(format!("Unsupported report type: {mms_object_name:?}"))),
+                        // TODO Seems a bit strong, maybe log and warn.
+                        VariableSpecification::Invalidated => return Err(IccpError::ProtocolError(format!("Invalid item in transfer set: {:?}", list_of_variables_items[i].variable_specification))),
+                    };
+                    let result = match &message.access_results[i] {
+                        MmsServiceAccessResult::Success(mms_service_data) => IccpAccessResult::Success(convert_mms_service_data_to_iccp_data(mms_service_data.clone())?),
+                        MmsServiceAccessResult::Failure(mms_access_error) => IccpAccessResult::Failure(mms_access_error.clone()),
+                    };
+                    results.push(IccpRbeTransferSetValue { identifier: name, access_result: result });
+                }
+
+                return Ok(IccpTransferSetReport::ReportByException(results));
+            }
+        }
     }
 }
 

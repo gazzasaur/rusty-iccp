@@ -7,7 +7,7 @@ use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsData, MmsError, MmsObjec
 
 use crate::error::{MmsServiceError, to_mms_error};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MmsServiceDataFloat {
     data: Vec<u8>,
 }
@@ -60,7 +60,7 @@ impl MmsServiceDataFloat {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum MmsServiceData {
     Array(Vec<MmsServiceData>), // Arrays are meant to contain a consistent type across all elements. This is not enforced as it means traversing trees.
     Structure(Vec<MmsServiceData>),

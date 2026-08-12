@@ -110,7 +110,7 @@ pub enum VariableSpecification {
     Invalidated,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MmsAccessError {
     ObjectInvalidated,
     HardwareFault,
