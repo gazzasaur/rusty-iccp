@@ -236,8 +236,8 @@ impl GetNextDsTransferSetOperation {
             .message
             .respond(vec![MmsServiceAccessResult::Success(MmsServiceData::Structure(vec![
                 MmsServiceData::Integer(BigInt::from(1)),
-                MmsServiceData::MmsString(self.domain),
-                MmsServiceData::MmsString(name),
+                MmsServiceData::VisibleString(self.domain),
+                MmsServiceData::VisibleString(name),
             ]))])
             .await?)
     }
