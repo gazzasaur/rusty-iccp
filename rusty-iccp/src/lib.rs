@@ -8,7 +8,7 @@ use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObj
 use rusty_mms_service::{
     RustyMmsServiceClient, RustyMmsServiceServer,
     data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope},
-    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage},
+    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage},
 };
 
 pub struct IccpRbeTransferSetValue {
@@ -175,6 +175,7 @@ pub enum IccpOperation {
 
     CreateDataSet(CreateDataSetOperation),
     GetDataSetNames(GetDataSetNamesOperation),
+    GetNextDsTransferSet(GetNextDsTransferSetOperation),
 }
 
 #[derive(Debug)]
@@ -216,6 +217,29 @@ impl GetDataSetNamesOperation {
 
     pub async fn respond(self, identifiers: Vec<String>, more_follows: bool) -> Result<(), IccpError> {
         Ok(self.message.respond(identifiers, more_follows).await?)
+    }
+}
+
+#[derive(Debug)]
+pub struct GetNextDsTransferSetOperation {
+    domain: String,
+    message: ReadMmsServiceMessage,
+}
+
+impl GetNextDsTransferSetOperation {
+    pub fn domain(&self) -> &String {
+        &self.domain
+    }
+
+    pub async fn respond(self, name: String) -> Result<(), IccpError> {
+        Ok(self
+            .message
+            .respond(vec![MmsServiceAccessResult::Success(MmsServiceData::Structure(vec![
+                MmsServiceData::Integer(BigInt::from(1)),
+                MmsServiceData::MmsString(self.domain),
+                MmsServiceData::MmsString(name),
+            ]))])
+            .await?)
     }
 }
 
@@ -264,10 +288,21 @@ impl IccpServer for RustyIccpServer {
                 };
                 return Ok(IccpOperation::GetDataSetNames(GetDataSetNamesOperation { scope, message }));
             }
+            MmsServiceMessage::Read(message) => match message.specification() {
+                MmsVariableAccessSpecification::ListOfVariables(items) => {
+                    if let Some(req) = items.get(0)
+                        && let VariableSpecification::Name(MmsObjectName::DomainSpecific(domain, name)) = &req.variable_specification
+                        && name.as_str() == "Next_DSTransfer_Set"
+                    {
+                        return Ok(IccpOperation::GetNextDsTransferSet(GetNextDsTransferSetOperation { domain: domain.clone(), message }));
+                    }
+                    todo!();
+                }
+                MmsVariableAccessSpecification::VariableListName(mms_object_name) => todo!(),
+            },
             MmsServiceMessage::GetVariableAccessAttributes(_) => todo!(),
             MmsServiceMessage::GetNamedVariableListAttributes(_) => todo!(),
             MmsServiceMessage::DeleteNamedVariableList(_) => todo!(),
-            MmsServiceMessage::Read(_) => todo!(),
             MmsServiceMessage::Write(_) => todo!(),
             MmsServiceMessage::InformationReport(_) => todo!(),
             message => Ok(IccpOperation::MmsOperation(message)),
