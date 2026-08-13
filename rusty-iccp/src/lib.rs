@@ -346,44 +346,47 @@ impl IccpServer for RustyIccpServer {
                 MmsVariableAccessSpecification::VariableListName(_) => Ok(IccpOperation::MmsOperation(MmsServiceMessage::Read(message))),
             },
             MmsServiceMessage::Write(message) => match message.values().as_slice() {
-                [
-                    MmsServiceData::Structure(data_set_identifier),
-                    MmsServiceData::Integer(start_time),
-                    MmsServiceData::Integer(interval),
-                    MmsServiceData::Integer(useful_time), // TLE
-                    MmsServiceData::Integer(buffer_time),
-                    MmsServiceData::Integer(integrity_check),
-                    MmsServiceData::BitString(transfer_set_options),
-                    MmsServiceData::Boolean(block_date),
-                    MmsServiceData::Boolean(critical),
-                    MmsServiceData::Boolean(report_by_exception),
-                    MmsServiceData::Boolean(all_changes_reported),
-                    MmsServiceData::Boolean(status),
-                    MmsServiceData::Integer(event_code_requested),
-                ] if let [MmsServiceData::Integer(scope), MmsServiceData::VisibleString(data_set_domain), MmsServiceData::VisibleString(data_set_name)] = data_set_identifier.as_slice()
-                    && let [interval_timeout_flag, integrity_timeout_flag, object_change_flag, operator_request_flag, other_external_event_flag] = transfer_set_options.as_slice()
-                    && let MmsVariableAccessSpecification::ListOfVariables(spec_items) = message.specification()
-                    && let [VariableSpecification::Name(MmsObjectName::DomainSpecific(transfer_set_domain, transfer_set_name))] = spec_items.iter().map(|x| x.variable_specification.clone()).collect::<Vec<_>>().as_slice() =>
-                {
-                    // TODO Need to fail this if it cannot be decoded.
-                    let calculated_start_time: i64 = start_time.to_i64().unwrap_or_else(|| 0);
-                    let calculated_interval_timeout = if *integrity_timeout_flag { interval.to_u64() } else { None };
-                    let calculated_integrity_check = if *integrity_timeout_flag { integrity_check.to_u64() } else { None };
-                    let report_mode = match (calculated_interval_timeout, calculated_integrity_check) {
-                        (Some(x), _) if x >= 60 => TransferSetReportMode::OnChange { integrity: x },
-                        (_, Some(x)) if x >= 60 => TransferSetReportMode::Periodic { internal: x },
-                        _ => TransferSetReportMode::Periodic { internal: 600 },
-                    };
+                [MmsServiceData::Structure(internal_structure)] => match internal_structure.as_slice() {
+                    [
+                        MmsServiceData::Structure(data_set_identifier),
+                        MmsServiceData::Integer(start_time),
+                        MmsServiceData::Integer(interval),
+                        MmsServiceData::Integer(useful_time), // TLE
+                        MmsServiceData::Integer(buffer_time),
+                        MmsServiceData::Integer(integrity_check),
+                        MmsServiceData::BitString(transfer_set_options),
+                        MmsServiceData::Boolean(block_date),
+                        MmsServiceData::Boolean(critical),
+                        MmsServiceData::Boolean(report_by_exception),
+                        MmsServiceData::Boolean(all_changes_reported),
+                        MmsServiceData::Boolean(status),
+                        MmsServiceData::Integer(event_code_requested),
+                    ] if let [MmsServiceData::Integer(scope), MmsServiceData::VisibleString(data_set_domain), MmsServiceData::VisibleString(data_set_name)] = data_set_identifier.as_slice()
+                        && let [interval_timeout_flag, integrity_timeout_flag, object_change_flag, operator_request_flag, other_external_event_flag] = transfer_set_options.as_slice()
+                        && let MmsVariableAccessSpecification::ListOfVariables(spec_items) = message.specification()
+                        && let [VariableSpecification::Name(MmsObjectName::DomainSpecific(transfer_set_domain, transfer_set_name))] = spec_items.iter().map(|x| x.variable_specification.clone()).collect::<Vec<_>>().as_slice() =>
+                    {
+                        // TODO Need to fail this if it cannot be decoded.
+                        let calculated_start_time: i64 = start_time.to_i64().unwrap_or_else(|| 0);
+                        let calculated_interval_timeout = if *integrity_timeout_flag { interval.to_u64() } else { None };
+                        let calculated_integrity_check = if *integrity_timeout_flag { integrity_check.to_u64() } else { None };
+                        let report_mode = match (calculated_interval_timeout, calculated_integrity_check) {
+                            (Some(x), _) if x >= 60 => TransferSetReportMode::OnChange { integrity: x },
+                            (_, Some(x)) if x >= 60 => TransferSetReportMode::Periodic { internal: x },
+                            _ => TransferSetReportMode::Periodic { internal: 600 },
+                        };
 
-                    return Ok(IccpOperation::StartTransferSet(StartTransferSetOperation {
-                        transfer_set_domain: transfer_set_domain.clone(),
-                        transfer_set_name: transfer_set_name.clone(),
-                        data_set_domain: data_set_domain.clone(),
-                        data_set_name: data_set_name.clone(),
+                        return Ok(IccpOperation::StartTransferSet(StartTransferSetOperation {
+                            transfer_set_domain: transfer_set_domain.clone(),
+                            transfer_set_name: transfer_set_name.clone(),
+                            data_set_domain: data_set_domain.clone(),
+                            data_set_name: data_set_name.clone(),
 
-                        report_mode,
-                    }));
-                }
+                            report_mode,
+                        }));
+                    }
+                    _ => Ok(IccpOperation::MmsOperation(MmsServiceMessage::Write(message))),
+                },
                 _ => Ok(IccpOperation::MmsOperation(MmsServiceMessage::Write(message))),
             },
             MmsServiceMessage::GetVariableAccessAttributes(_) => todo!(),
