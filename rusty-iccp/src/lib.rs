@@ -6,9 +6,7 @@ use error::*;
 use num_bigint::BigInt;
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
 use rusty_mms_service::{
-    RustyMmsServiceClient, RustyMmsServiceServer,
-    data::{MmsServiceAccessResult, MmsServiceData, MmsServiceDeleteObjectScope},
-    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage},
+    RustyMmsServiceClient, RustyMmsServiceServer, data::{MmsServiceAccessResult, MmsServiceData::{self, Integer, Structure}, MmsServiceDeleteObjectScope}, message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage},
 };
 
 pub struct IccpRbeTransferSetValue {
@@ -300,10 +298,16 @@ impl IccpServer for RustyIccpServer {
                 }
                 MmsVariableAccessSpecification::VariableListName(mms_object_name) => todo!(),
             },
+            MmsServiceMessage::Write(message) => match message.specification() {
+                MmsVariableAccessSpecification::ListOfVariables(items) => match (items.get(0), items.get(1), items.get(2), items.get(3), items.get(4), items.get(5)) {
+                    (Some(&ListOfVariablesItem { variable_specification: Structure(_) }), Some(&Integer(_)), Some(&Integer(_)), Some(&Integer(_)), Some(&Integer(_)), Some(&Integer(_))) => todo!(),
+                    _ => todo!(),
+                },
+                MmsVariableAccessSpecification::VariableListName(mms_object_name) => todo!(),
+            },
             MmsServiceMessage::GetVariableAccessAttributes(_) => todo!(),
             MmsServiceMessage::GetNamedVariableListAttributes(_) => todo!(),
             MmsServiceMessage::DeleteNamedVariableList(_) => todo!(),
-            MmsServiceMessage::Write(_) => todo!(),
             MmsServiceMessage::InformationReport(_) => todo!(),
             message => Ok(IccpOperation::MmsOperation(message)),
         }
