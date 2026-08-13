@@ -4,9 +4,16 @@ use async_trait::async_trait;
 
 use error::*;
 use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
 use rusty_mms_service::{
-    RustyMmsServiceClient, RustyMmsServiceServer, data::{MmsServiceAccessResult, MmsServiceData::{self, Integer, Structure}, MmsServiceDeleteObjectScope}, message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage},
+    RustyMmsServiceClient, RustyMmsServiceServer,
+    data::{
+        MmsServiceAccessResult,
+        MmsServiceData::{self},
+        MmsServiceDeleteObjectScope,
+    },
+    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage},
 };
 
 pub struct IccpRbeTransferSetValue {
@@ -171,9 +178,49 @@ pub enum IccpScopedIdentifier {
 pub enum IccpOperation {
     MmsOperation(MmsServiceMessage), // Pass through unhandled MMS operations so servers can process messages like identify and conclude
 
+    StartTransferSet(StartTransferSetOperation),
     CreateDataSet(CreateDataSetOperation),
     GetDataSetNames(GetDataSetNamesOperation),
     GetNextDsTransferSet(GetNextDsTransferSetOperation),
+}
+
+#[derive(Debug)]
+pub enum TransferSetReportMode {
+    Periodic { internal: u64 },
+    OnChange { integrity: u64 },
+}
+
+#[derive(Debug)]
+pub struct StartTransferSetOperation {
+    transfer_set_domain: String,
+    transfer_set_name: String,
+
+    data_set_domain: String,
+    data_set_name: String,
+
+    report_mode: TransferSetReportMode,
+}
+
+impl StartTransferSetOperation {
+    pub fn transfer_set_domain(&self) -> &str {
+        &self.transfer_set_domain
+    }
+
+    pub fn transfer_set_name(&self) -> &str {
+        &self.transfer_set_name
+    }
+
+    pub fn data_set_domain(&self) -> &str {
+        &self.data_set_domain
+    }
+
+    pub fn data_set_name(&self) -> &str {
+        &self.data_set_name
+    }
+
+    pub fn report_mode(&self) -> &TransferSetReportMode {
+        &self.report_mode
+    }
 }
 
 #[derive(Debug)]
@@ -294,16 +341,50 @@ impl IccpServer for RustyIccpServer {
                     {
                         return Ok(IccpOperation::GetNextDsTransferSet(GetNextDsTransferSetOperation { domain: domain.clone(), message }));
                     }
-                    todo!();
+                    return Ok(IccpOperation::MmsOperation(MmsServiceMessage::Read(message)));
                 }
-                MmsVariableAccessSpecification::VariableListName(mms_object_name) => todo!(),
+                MmsVariableAccessSpecification::VariableListName(_) => Ok(IccpOperation::MmsOperation(MmsServiceMessage::Read(message))),
             },
-            MmsServiceMessage::Write(message) => match message.specification() {
-                MmsVariableAccessSpecification::ListOfVariables(items) => match (items.get(0), items.get(1), items.get(2), items.get(3), items.get(4), items.get(5)) {
-                    (Some(&ListOfVariablesItem { variable_specification: Structure(_) }), Some(&Integer(_)), Some(&Integer(_)), Some(&Integer(_)), Some(&Integer(_)), Some(&Integer(_))) => todo!(),
-                    _ => todo!(),
-                },
-                MmsVariableAccessSpecification::VariableListName(mms_object_name) => todo!(),
+            MmsServiceMessage::Write(message) => match message.values().as_slice() {
+                [
+                    MmsServiceData::Structure(data_set_identifier),
+                    MmsServiceData::Integer(start_time),
+                    MmsServiceData::Integer(interval),
+                    MmsServiceData::Integer(useful_time), // TLE
+                    MmsServiceData::Integer(buffer_time),
+                    MmsServiceData::Integer(integrity_check),
+                    MmsServiceData::BitString(transfer_set_options),
+                    MmsServiceData::Boolean(block_date),
+                    MmsServiceData::Boolean(critical),
+                    MmsServiceData::Boolean(report_by_exception),
+                    MmsServiceData::Boolean(all_changes_reported),
+                    MmsServiceData::Boolean(status),
+                    MmsServiceData::Integer(event_code_requested),
+                ] if let [MmsServiceData::Integer(scope), MmsServiceData::VisibleString(data_set_domain), MmsServiceData::VisibleString(data_set_name)] = data_set_identifier.as_slice()
+                    && let [interval_timeout_flag, integrity_timeout_flag, object_change_flag, operator_request_flag, other_external_event_flag] = transfer_set_options.as_slice()
+                    && let MmsVariableAccessSpecification::ListOfVariables(spec_items) = message.specification()
+                    && let [VariableSpecification::Name(MmsObjectName::DomainSpecific(transfer_set_domain, transfer_set_name))] = spec_items.iter().map(|x| x.variable_specification.clone()).collect::<Vec<_>>().as_slice() =>
+                {
+                    // TODO Need to fail this if it cannot be decoded.
+                    let calculated_start_time: i64 = start_time.to_i64().unwrap_or_else(|| 0);
+                    let calculated_interval_timeout = if *integrity_timeout_flag { interval.to_u64() } else { None };
+                    let calculated_integrity_check = if *integrity_timeout_flag { integrity_check.to_u64() } else { None };
+                    let report_mode = match (calculated_interval_timeout, calculated_integrity_check) {
+                        (Some(x), _) if x >= 60 => TransferSetReportMode::OnChange { integrity: x },
+                        (_, Some(x)) if x >= 60 => TransferSetReportMode::Periodic { internal: x },
+                        _ => TransferSetReportMode::Periodic { internal: 600 },
+                    };
+
+                    return Ok(IccpOperation::StartTransferSet(StartTransferSetOperation {
+                        transfer_set_domain: transfer_set_domain.clone(),
+                        transfer_set_name: transfer_set_name.clone(),
+                        data_set_domain: data_set_domain.clone(),
+                        data_set_name: data_set_name.clone(),
+
+                        report_mode,
+                    }));
+                }
+                _ => Ok(IccpOperation::MmsOperation(MmsServiceMessage::Write(message))),
             },
             MmsServiceMessage::GetVariableAccessAttributes(_) => todo!(),
             MmsServiceMessage::GetNamedVariableListAttributes(_) => todo!(),

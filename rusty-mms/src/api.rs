@@ -104,7 +104,7 @@ pub struct ListOfVariablesItem {
     // Using a struct as this has an optional part that is currently not supported.
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VariableSpecification {
     Name(MmsObjectName),
     Invalidated,
