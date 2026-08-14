@@ -7,13 +7,11 @@ use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
 use rusty_mms_service::{
-    RustyMmsServiceClient, RustyMmsServiceServer,
-    data::{
+    RustyMmsServiceClient, RustyMmsServiceServer, data::{
         MmsServiceAccessResult,
         MmsServiceData::{self},
         MmsServiceDeleteObjectScope,
-    },
-    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage},
+    }, message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage},
 };
 
 pub struct IccpRbeTransferSetValue {
@@ -199,6 +197,8 @@ pub struct StartTransferSetOperation {
     data_set_name: String,
 
     report_mode: TransferSetReportMode,
+
+    message: WriteMmsServiceMessage,
 }
 
 impl StartTransferSetOperation {
@@ -220,6 +220,10 @@ impl StartTransferSetOperation {
 
     pub fn report_mode(&self) -> &TransferSetReportMode {
         &self.report_mode
+    }
+
+    pub async fn respond(self, iccp_data: Vec<IccpData>) -> Result<(), IccpError> {
+        Ok(self.message.respond().await?)
     }
 }
 
