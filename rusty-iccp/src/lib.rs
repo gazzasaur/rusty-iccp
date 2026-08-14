@@ -5,13 +5,15 @@ use async_trait::async_trait;
 use error::*;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
-use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, VariableSpecification};
+use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, VariableSpecification};
 use rusty_mms_service::{
-    RustyMmsServiceClient, RustyMmsServiceServer, data::{
+    RustyMmsServiceClient, RustyMmsServiceServer,
+    data::{
         MmsServiceAccessResult,
         MmsServiceData::{self},
-        MmsServiceDeleteObjectScope,
-    }, message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage},
+        MmsServiceDataFloat, MmsServiceDeleteObjectScope,
+    },
+    message::{DefineNamedVariableListMmsServiceMessage, GetNameListMmsServiceMessage, MmsServiceMessage, ReadMmsServiceMessage, WriteMmsServiceMessage},
 };
 
 pub struct IccpRbeTransferSetValue {
@@ -222,8 +224,8 @@ impl StartTransferSetOperation {
         &self.report_mode
     }
 
-    pub async fn respond(self, iccp_data: Vec<IccpData>) -> Result<(), IccpError> {
-        Ok(self.message.respond().await?)
+    pub async fn respond(self, iccp_write_results: Vec<MmsWriteResult>) -> Result<(), IccpError> {
+        Ok(self.message.respond(iccp_write_results).await?)
     }
 }
 
@@ -385,8 +387,8 @@ impl IccpServer for RustyIccpServer {
                             transfer_set_name: transfer_set_name.clone(),
                             data_set_domain: data_set_domain.clone(),
                             data_set_name: data_set_name.clone(),
-
                             report_mode,
+                            message,
                         }));
                     }
                     _ => Ok(IccpOperation::MmsOperation(MmsServiceMessage::Write(message))),
@@ -617,12 +619,68 @@ fn convert_mms_service_data_to_iccp_data(mms_data: MmsServiceData) -> Result<Icc
     }
 }
 
+fn convert_iccp_data_to_mms_service_data(iccp_data: IccpData) -> MmsServiceData {
+    match &iccp_data {
+        IccpData::State(value, validity, source, normal_state, timestamp_quality) => MmsServiceData::BitString(
+            vec![
+                state_to_flags(value),
+                validity_to_flags(validity),
+                current_source_to_flags(source),
+                vec![normal_to_flags(normal_state)],
+                vec![timestamp_quality_to_flags(timestamp_quality)],
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        ),
+        IccpData::RealQ(value, validity, source, normal_state, timestamp_quality) => MmsServiceData::Structure(vec![
+            MmsServiceData::FloatingPoint(MmsServiceDataFloat::from_f32(*value)),
+            MmsServiceData::BitString(
+                vec![
+                    vec![false, false],
+                    validity_to_flags(validity),
+                    current_source_to_flags(source),
+                    vec![normal_to_flags(normal_state)],
+                    vec![timestamp_quality_to_flags(timestamp_quality)],
+                ]
+                .into_iter()
+                .flatten()
+                .collect(),
+            ),
+        ]),
+        IccpData::DiscreteQ(value, validity, source, normal_state, timestamp_quality) => MmsServiceData::Structure(vec![
+            MmsServiceData::Integer(BigInt::from(*value)),
+            MmsServiceData::BitString(
+                vec![
+                    vec![false, false],
+                    validity_to_flags(validity),
+                    current_source_to_flags(source),
+                    vec![normal_to_flags(normal_state)],
+                    vec![timestamp_quality_to_flags(timestamp_quality)],
+                ]
+                .into_iter()
+                .flatten()
+                .collect(),
+            ),
+        ]),
+    }
+}
+
 fn flags_to_state(flags: &Vec<bool>) -> StateValue {
     match (flags.get(0).unwrap_or_else(|| &false), flags.get(1).unwrap_or_else(|| &false)) {
-        (false, false) => StateValue::Closed,
+        (false, false) => StateValue::Between,
         (false, true) => StateValue::Tripped,
         (true, false) => StateValue::Closed,
         (true, true) => StateValue::Invalid,
+    }
+}
+
+fn state_to_flags(state: &StateValue) -> Vec<bool> {
+    match state {
+        StateValue::Between => vec![false, false],
+        StateValue::Closed => vec![false, true],
+        StateValue::Tripped => vec![true, false],
+        StateValue::Invalid => vec![true, true],
     }
 }
 
@@ -635,12 +693,30 @@ fn flags_to_validity(flags: &Vec<bool>) -> ValidityValue {
     }
 }
 
+fn validity_to_flags(validity: &ValidityValue) -> Vec<bool> {
+    match validity {
+        ValidityValue::Valid => vec![false, false],
+        ValidityValue::Held => vec![false, true],
+        ValidityValue::Suspect => vec![true, false],
+        ValidityValue::NotValid => vec![true, true],
+    }
+}
+
 fn flags_to_current_source(flags: &Vec<bool>) -> CurrentSourceValue {
     match (flags.get(4).unwrap_or_else(|| &false), flags.get(5).unwrap_or_else(|| &false)) {
         (false, false) => CurrentSourceValue::Telemetered,
         (false, true) => CurrentSourceValue::Calculated,
         (true, false) => CurrentSourceValue::Entered,
         (true, true) => CurrentSourceValue::Estimated,
+    }
+}
+
+fn current_source_to_flags(source: &CurrentSourceValue) -> Vec<bool> {
+    match source {
+        CurrentSourceValue::Telemetered => vec![false, false],
+        CurrentSourceValue::Calculated => vec![false, true],
+        CurrentSourceValue::Entered => vec![true, false],
+        CurrentSourceValue::Estimated => vec![true, true],
     }
 }
 
@@ -651,10 +727,24 @@ fn flags_to_normal(flags: &Vec<bool>) -> NormalValue {
     }
 }
 
+fn normal_to_flags(value: &NormalValue) -> bool {
+    match value {
+        NormalValue::Normal => false,
+        NormalValue::Abnormal => true,
+    }
+}
+
 fn flags_to_timestamp_quality(flags: &Vec<bool>) -> TimestampQualityValue {
     match flags.get(7).unwrap_or_else(|| &false) {
         false => TimestampQualityValue::Valid,
         true => TimestampQualityValue::Invalid,
+    }
+}
+
+fn timestamp_quality_to_flags(value: &TimestampQualityValue) -> bool {
+    match value {
+        TimestampQualityValue::Valid => false,
+        TimestampQualityValue::Invalid => true,
     }
 }
 
