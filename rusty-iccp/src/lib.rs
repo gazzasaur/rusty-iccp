@@ -224,8 +224,8 @@ impl StartTransferSetOperation {
         &self.report_mode
     }
 
-    pub async fn respond(self, iccp_write_results: Vec<MmsWriteResult>) -> Result<(), IccpError> {
-        Ok(self.message.respond(iccp_write_results).await?)
+    pub async fn respond(self, iccp_write_results: MmsWriteResult) -> Result<(), IccpError> {
+        Ok(self.message.respond(vec![iccp_write_results]).await?)
     }
 }
 
