@@ -529,12 +529,8 @@ impl IccpClient for RustyIccpClient {
         self.mms_client
             .write(
                 MmsVariableAccessSpecification::ListOfVariables(vec![ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific(domain.clone(), transfer_set_name.clone())) }]),
-                vec![
-                    MmsServiceData::Structure(vec![MmsServiceData::Structure(vec![
-                        MmsServiceData::Integer(BigInt::from(1)),
-                        MmsServiceData::VisibleString(domain.clone()),
-                        MmsServiceData::VisibleString(name),
-                    ])]),
+                vec![MmsServiceData::Structure(vec![
+                    MmsServiceData::Structure(vec![MmsServiceData::Integer(BigInt::from(1)), MmsServiceData::VisibleString(domain.clone()), MmsServiceData::VisibleString(name)]),
                     MmsServiceData::Integer(BigInt::from(0)),                        // Start Time
                     MmsServiceData::Integer(BigInt::from(0)),                        // Interval
                     MmsServiceData::Integer(BigInt::from(0)),                        // TLE
@@ -547,7 +543,7 @@ impl IccpClient for RustyIccpClient {
                     MmsServiceData::Boolean(false),                                  // All Changes Reported
                     MmsServiceData::Boolean(true),                                   // Status
                     MmsServiceData::Integer(BigInt::from(0)),                        // Event Code Requested
-                ],
+                ])],
             )
             .await?;
         Ok(())
