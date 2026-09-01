@@ -498,7 +498,7 @@ impl Clone for Box<dyn RustyMmsServiceServer> {
     }
 }
 
-struct RustyTcpMmsServiceServer<R: MmsReader, W: MmsWriter> {
+pub struct RustyTcpMmsServiceServer<R: MmsReader, W: MmsWriter> {
     reader: Arc<Mutex<R>>,
     writer: Arc<Mutex<W>>,
 }
