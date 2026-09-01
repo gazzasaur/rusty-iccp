@@ -3,8 +3,8 @@ use std::{collections::VecDeque, net::SocketAddr};
 use anyhow::anyhow;
 use der_parser::oid;
 use rusty_copp::{
-    CoppConnection, CoppConnectionInformation, CoppInitResult, CoppInitiator, CoppReader, CoppResponder, CoppWriter, PresentationContextType, PresentationDataValueList, PresentationDataValues, RustyCoppInitiatorIsoStack,
-    RustyCoppResponder, UserData,
+    CoppConnection, CoppConnectionInformation, CoppInitResult, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues,
+    RustyCoppInitiatorIsoStack, RustyCoppListener, RustyCoppListenerIsoStack, RustyCoppResponder, RustyCoppResponderIsoStack, UserData,
 };
 use rusty_cosp::{CospAcceptor, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cosp::{RustyCospReaderIsoStack, RustyCospWriterIsoStack};
@@ -46,12 +46,24 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     assert_eq!(cosp_protocol_information.called_session_selector(), Some(&vec![2]));
     assert_eq!(cosp_protocol_information.calling_session_selector(), Some(&vec![1]));
 
-    // We accept the COSP connection and receive any higher level protocol connection data.
-    // COSP has many PDUs that allow for higher level protocols to inject data.
-    let (cosp_responder, connect_data) = cosp_acceptor.accept().await?;
+    // Pass the COSP acceptor to the COPP layer.
+    let (copp_listener, copp_connection_information) = RustyCoppListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_acceptor).await?;
+
+    // For the presentation layer, we will assert we know who the caller is and ensure it called us.
+    assert_eq!(copp_connection_information.called_presentation_selector, Some(vec![2]));
+    assert_eq!(copp_connection_information.calling_presentation_selector, Some(vec![1]));
 
     // Using the cosp responder, create a copp connection.
-    let copp_responder = RustyCoppResponder::<_, RustyCospReaderIsoStack<TcpTpktReader>, RustyCospWriterIsoStack<TcpTpktWriter>>::new(cosp_responder, CoppConnectionInformation::default());
+    let (copp_responder, presentation_context, user_data) = copp_listener.accept().await?;
+
+    // Verify the context. This only supports a very common subset of OSI encapsulated contexts that require a context list.
+    match presentation_context {
+        PresentationContextType::ContextDefinitionList(presentation_contexts) => {
+            assert_eq!(presentation_contexts.len(), 2);
+            assert_eq!(presentation_contexts.get(0), Some(&PresentationContext { identifier: vec![0], abstract_syntax_name: oid!(1.2.3.4), transfer_syntax_name_list: vec![] }))
+        }
+    }
+
     let copp_connection = copp_responder.complete_connection(Some(UserData::FullyEncoded(vec![]))).await?;
 
     // Split the connection into read and write halves. This is often done for easy multi-tasking.
@@ -101,8 +113,16 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Upgrade the connection to a COSP connection. Here will will signal our identity and the expected identity of the remote side.
     let cosp_initiator = RustyCospInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), Default::default()).await?;
 
-    let copp_initiator = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_initiator, CoppConnectionInformation::default());
-    let copp_connection = copp_initiator.initiate(PresentationContextType::ContextDefinitionList(vec![]), Some(UserData::FullyEncoded(vec![]))).await?;
+    let copp_initiator = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_initiator, CoppConnectionInformation { calling_presentation_selector: Some(vec![1]), called_presentation_selector: Some(vec![2]) });
+    let copp_connection = copp_initiator
+        .initiate(
+            PresentationContextType::ContextDefinitionList(vec![
+                PresentationContext { identifier: vec![1], abstract_syntax_name: oid!(1.2.3.4), transfer_syntax_name_list: vec![oid!(0.3.2.1)] },
+                PresentationContext { identifier: vec![2], abstract_syntax_name: oid!(2.2.3.4), transfer_syntax_name_list: vec![oid!(1.3.2.1), oid!(2.3.2.1)] },
+            ]),
+            Some(UserData::FullyEncoded(vec![])),
+        )
+        .await?;
 
     let (copp_connection, user_data) = match copp_connection {
         CoppInitResult::Success(copp_connection, user_data) => (copp_connection, user_data),

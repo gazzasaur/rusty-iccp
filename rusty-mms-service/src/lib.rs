@@ -4,7 +4,7 @@ use num_bigint::BigInt;
 use rusty_acse::{
     AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
 };
-use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
+use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack, RustyCoppResponderIsoStack};
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{
@@ -667,6 +667,14 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
 
     let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
 
+    Ok(Box::new(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) }))
+}
+
+pub async fn accept_mms_service_server_connect(acse_listener: RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
+    let mms_listener = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await.map_err(to_mms_error(""))?;
+    let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
+    let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
+    let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
     Ok(Box::new(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) }))
 }
 

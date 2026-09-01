@@ -60,8 +60,8 @@ pub struct RustyCoppListener<T: CospResponder, R: CospReader, W: CospWriter> {
 }
 
 impl<T: CospResponder, R: CospReader, W: CospWriter> RustyCoppListener<T, R, W> {
-    pub async fn new(cosp_listener: impl CospAcceptor) -> Result<(RustyCoppListener<impl CospResponder, impl CospReader, impl CospWriter>, CoppConnectionInformation), CoppError> {
-        let (cosp_responder, user_data) = cosp_listener.accept().await?;
+    pub async fn new(cosp_acceptor: impl CospAcceptor) -> Result<(RustyCoppListener<impl CospResponder, impl CospReader, impl CospWriter>, CoppConnectionInformation), CoppError> {
+        let (cosp_responder, user_data) = cosp_acceptor.accept().await?;
 
         let mut connect_message = match user_data {
             Some(user_data) => ConnectMessage::parse(&user_data)?,
