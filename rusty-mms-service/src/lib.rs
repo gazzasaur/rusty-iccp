@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use der_parser::Oid;
 use num_bigint::BigInt;
 use rusty_acse::{
-    AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
+    AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseListener, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
 };
-use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack, RustyCoppResponderIsoStack};
+use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{
@@ -670,7 +670,7 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
     Ok(Box::new(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) }))
 }
 
-pub async fn accept_mms_service_server_connect<R: TpktReader + 'static, W: TpktWriter + 'static>(acse_listener: RustyOsiSingleValueAcseListenerIsoStack::<R, W>) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
+pub async fn accept_mms_service_server_connect<R: TpktReader + 'static, W: TpktWriter + 'static>(acse_listener: impl OsiSingleValueAcseListener + 'static) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
     let mms_listener = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
     let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
     let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;

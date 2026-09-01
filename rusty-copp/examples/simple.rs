@@ -4,10 +4,9 @@ use anyhow::anyhow;
 use der_parser::oid;
 use rusty_copp::{
     CoppConnection, CoppConnectionInformation, CoppInitResult, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues,
-    RustyCoppInitiatorIsoStack, RustyCoppListener, RustyCoppListenerIsoStack, RustyCoppResponder, RustyCoppResponderIsoStack, UserData,
+    RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack, UserData,
 };
-use rusty_cosp::{CospAcceptor, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
-use rusty_cosp::{RustyCospReaderIsoStack, RustyCospWriterIsoStack};
+use rusty_cosp::{CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
 
