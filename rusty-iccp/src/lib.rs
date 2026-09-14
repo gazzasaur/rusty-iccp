@@ -173,13 +173,13 @@ pub enum IccpAccessResult {
     Failure(MmsAccessError),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum IccpScope {
     Vcc,
     Icc(String), // Domain
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum IccpScopedIdentifier {
     Vcc(String),         // Value
     Icc(String, String), // Domain, Value
