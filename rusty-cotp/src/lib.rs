@@ -14,8 +14,8 @@ mod tests {
     use std::{collections::VecDeque, ops::Range, time::Duration};
 
     use anyhow::anyhow;
-    use rand::RngCore;
-    use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
+    use rand::Rng;
+use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
     use tokio::{join, time::timeout};
     use tracing_test::traced_test;
 

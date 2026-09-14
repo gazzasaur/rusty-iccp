@@ -19,8 +19,8 @@ mod tests {
     };
 
     use anyhow::anyhow;
-    use rand::RngCore;
-    use tracing_test::traced_test;
+    use rand::Rng;
+use tracing_test::traced_test;
 
     use super::*;
 

@@ -20,6 +20,7 @@ rusty-tpkt = { workspace = true }
 
 rand = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 thiserror = { workspace = true }
 der-parser = { workspace = true }
 num-bigint = { workspace = true }
