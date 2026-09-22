@@ -50,6 +50,7 @@ pub mod data;
 pub mod error;
 pub mod message;
 
+#[derive(Clone, Debug)]
 pub struct MmsServiceConnectionIdentityParameters {
     pub tsap_id: Option<Vec<u8>>,
     pub session_selector: Option<Vec<u8>>,
