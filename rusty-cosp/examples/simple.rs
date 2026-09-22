@@ -71,6 +71,8 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // In this case, the client will call finish, so we will call disconnect as per the standard.
     match reader.recv().await? {
         CospRecvResult::Finish(_) => (),
+
+        // Normally we would just log and drop the connection instead of fail.
         x => return Err(anyhow!("Expected finish but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
     };
     writer.disconnect(None).await?;
@@ -115,6 +117,14 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
 
     // We will close the connection from this side in an orderly manner.
     writer.finish(None).await?;
+
+    // Wait for the final disconnect
+    match reader.recv().await? {
+        CospRecvResult::Disconnect(_) => (),
+
+        // Normally we would just log and drop the connection instead of fail.
+        x => return Err(anyhow!("Expected disconnect but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
+    }
 
     // The connection will be closed when it is dropped.
 
