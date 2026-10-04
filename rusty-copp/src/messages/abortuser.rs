@@ -65,14 +65,8 @@ impl AbortUserMessage {
                                     .map(|context| {
                                         der_parser::ber::BerObject::from_seq(
                                             vec![
-                                                Some(der_parser::ber::BerObject::from_header_and_content(
-                                                    Header::new(Class::ContextSpecific, false, Tag::from(0), der_parser::ber::Length::Definite(0)),
-                                                    der_parser::ber::BerObjectContent::Integer(&context.identifier),
-                                                )),
-                                                Some(der_parser::ber::BerObject::from_header_and_content(
-                                                    Header::new(Class::ContextSpecific, false, Tag::from(1), der_parser::ber::Length::Definite(0)),
-                                                    der_parser::ber::BerObjectContent::OID(context.transfer_syntax_name.clone()),
-                                                )),
+                                                Some(der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::Integer(&context.identifier))),
+                                                Some(der_parser::ber::BerObject::from_obj(der_parser::ber::BerObjectContent::OID(context.transfer_syntax_name.clone()))),
                                             ]
                                             .into_iter()
                                             .filter_map(|f| f)
