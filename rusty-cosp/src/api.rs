@@ -86,6 +86,11 @@ impl CospProtocolInformation {
     pub fn called_session_selector(&self) -> Option<&Vec<u8>> {
         self.called_session_selector.as_ref()
     }
+
+    /// Convert initiator information received by a connection request to responder information.
+    pub fn responder(self) -> Self {
+        CospProtocolInformation { calling_session_selector: self.called_session_selector, called_session_selector: self.calling_session_selector }
+    }
 }
 
 impl ProtocolInformation for CospProtocolInformation {}

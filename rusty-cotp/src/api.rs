@@ -58,7 +58,7 @@ impl CotpProtocolInformation {
 
     /// Convert initiator information received by a connection request to responder information. This generates a random responder reference.
     pub fn responder(self) -> Self {
-        CotpProtocolInformation { initiator_reference: self.initiator_reference, responder_reference: rand::random(), calling_tsap_id: self.calling_tsap_id.clone(), called_tsap_id: self.calling_tsap_id.clone() }
+        CotpProtocolInformation { initiator_reference: self.initiator_reference, responder_reference: rand::random(), calling_tsap_id: self.called_tsap_id, called_tsap_id: self.calling_tsap_id }
     }
 
     /// The initiator reference. As this supports Class 0 only, the reference is informational.
