@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use der_parser::Oid;
 use num_bigint::BigInt;
 use rusty_acse::{
-    AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseListener, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
+    AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseListener, RustyOsiSingleValueAcseInitiatorIsoStack,
+    RustyOsiSingleValueAcseListener, RustyOsiSingleValueAcseListenerIsoStack,
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
@@ -29,7 +30,7 @@ use tokio::{
 
 use rusty_mms::{
     ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsReader, MmsRequestInformation,
-    MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
+    MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsConnectionIsoStack, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
     parameters::{ParameterSupportOption, ServiceSupportOption},
 };
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
@@ -500,11 +501,17 @@ impl Clone for Box<dyn RustyMmsServiceServer> {
 }
 
 pub struct RustyTcpMmsServiceServer<R: MmsReader, W: MmsWriter> {
-    pub reader: Arc<Mutex<R>>,
-    pub writer: Arc<Mutex<W>>,
+    reader: Arc<Mutex<R>>,
+    writer: Arc<Mutex<W>>,
 }
 
-impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceServer<R, W> {}
+impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceServer<R, W> {
+    pub async fn accept<A: TpktReader, B: TpktWriter>(mms_responder: impl MmsResponder) -> Result<RustyTcpMmsServiceServer<impl MmsReader, impl MmsWriter>, MmsServiceError> {
+        let mms_connection = mms_responder.accept().await?;
+        let (mms_reader, mms_writer) = mms_connection.split().await?;
+        Ok(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) })
+    }
+}
 
 #[async_trait]
 impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for RustyTcpMmsServiceServer<R, W> {

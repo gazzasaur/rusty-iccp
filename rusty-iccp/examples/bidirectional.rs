@@ -3,9 +3,14 @@ use std::{
     sync::Arc,
 };
 
-use rusty_cosp::RustyCospAcceptorIsoStack;
-use rusty_cotp::{CotpResponder, RustyCotpResponder};
-use rusty_mms_service::MmsServiceConnectionIdentityParameters;
+use rusty_mms::{MmsListener, MmsReader, MmsResponder, MmsWriter, RustyMmsReader, RustyMmsWriter};
+
+use rusty_acse::{RustyOsiSingleValueAcseListenerIsoStack, RustyOsiSingleValueAcseReader, RustyOsiSingleValueAcseWriter};
+use rusty_copp::{RustyCoppListenerIsoStack, RustyCoppReader, RustyCoppResponderIsoStack, RustyCoppWriter};
+use rusty_cosp::{CospAcceptor, RustyCospAcceptorIsoStack, RustyCospReader, RustyCospWriter};
+use rusty_cotp::{CotpResponder, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
+use rusty_mms::{RustyMmsListenerIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
+use rusty_mms_service::{MmsServiceConnectionIdentityParameters, RustyMmsServiceServer, RustyTcpMmsServiceServer};
 use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection, TpktReader, TpktWriter};
 use tokio::{
     join, select,
@@ -67,7 +72,18 @@ async fn main() {
     join!(data_centre_a(), data_centre_b());
 }
 
-async fn data_centre_a() {}
+async fn data_centre_a() {
+    try_data_centre_a().await.err().iter().for_each(|e| println!("{e:?}"));
+}
+
+async fn try_data_centre_a() -> Result<(), anyhow::Error> {
+    let associations = Arc::new(Mutex::new(Vec::new()));
+
+    // Normally 102, but to run wihtout perms, using 8102.
+    mms_server_worker("0.0.0.0".into(), 8102, associations).await?;
+
+    Ok(())
+}
 
 async fn data_centre_b() {}
 
@@ -79,7 +95,7 @@ async fn data_centre_b() {}
  * 3. MMS Connection - This packages the negotiation for COSP, COPP, ACSE and MMS in a single request.
  * 4. ICCP Negotiation - To check the ICCP version, supported features and bilateral agreement.
  *
- * Each protocol has their own form of addressing (except TPKT).
+ * Each protocol has their own form of addressing (except TPKT, this is just for framing/packetising the TCP stream whichh the ISO protocols rely on).
  * 1. TCP Port - We usually do not care about the source port. This can be ephermaral.
  * 2. COTP - This has a source and destination TSAP. These are optional, but we will make both of these mandatory in this implementation. This is a safe bet.
  * 3. COSP - This has a source and destination SSAP. These are also optional, but we will make both of these mandatory in this implementation. This is a safe bet.
@@ -88,7 +104,7 @@ async fn data_centre_b() {}
  * 6. MMS - This relies on the lower layers for selection (identifying the caller). THIS IS NOT SECURITY. This is selection and the standards only refer to this as selection, NOT AUTHENTICATION. This stack will support TLS for Authentication.
  * 7. ICCP - Again, relies on lower layers.
  */
-async fn mms_server_worker(listener_address: String, listener_port: u16, associations: Arc<Mutex<VecDeque<IccpAssocation>>>) -> Result<(), anyhow::Error> {
+async fn mms_server_worker(listener_address: String, listener_port: u16, associations: Arc<Mutex<Vec<IccpAssocation>>>) -> Result<(), anyhow::Error> {
     let listener_address = format!("{listener_address}:{listener_port}").parse()?;
 
     // Start by listening on the TCP port. This is bundled with TPKT.
@@ -102,7 +118,7 @@ async fn mms_server_worker(listener_address: String, listener_port: u16, associa
 }
 
 // To avoid tying up the accept loop for the multi-stage handshake, we will use a separate task.
-async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Result<(), anyhow::Error> {
+async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Result<RustyTcpMmsServiceServer<impl MmsReader, impl MmsWriter>, anyhow::Error> {
     // This is one possible implementation.
     //
     // COTP is negotiated before anything else. This requires a request and response payload to be sent between hosts.
@@ -114,11 +130,25 @@ async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Res
 
     let (cotp_responder, cotp_initiator_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
     let cotp_connection = cotp_responder.accept(cotp_initiator_info.responder()).await?;
-    
+
     // We have now responded to the COTP request. The next COTP payload should not contain the COSP to MMS connection information.
 
     // We accept the next COTP payload an assume it is a COSP reqeust. If not, this will throw an error.
-    let (cosp_acceptor, cosp_initiator_info) = RustyCospAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, Default::default()).await?;
+    let (cosp_acceptor, _) = RustyCospAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, Default::default()).await?;
 
-    Ok(())
+    // COPP is next
+    let (copp_acceptor, _) = RustyCoppListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_acceptor).await?;
+
+    // Then ACSE
+    let (acse_acceptor, _) = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_acceptor).await?;
+
+    // Then MMS. This is a low level MMS Api. We will wrap this in a higher level one.
+    let rusty_mms_listener = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_acceptor).await?;
+
+    // You can check the proposed MMS parameters here. This is currently not restricted, but will be in a later version.
+
+    let mms_responder = rusty_mms_listener.responder().await?;
+
+    // Finally MMS. This is the part that will actually respond to the COSP/COPP/ACSE/MMS reqeusts.
+    Ok(RustyTcpMmsServiceServer::<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>::accept::<TcpTpktReader, TcpTpktWriter>(mms_responder).await?)
 }
