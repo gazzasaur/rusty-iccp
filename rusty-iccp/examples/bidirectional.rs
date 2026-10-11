@@ -1,8 +1,10 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
+    time::Duration,
 };
 
+use der_parser::oid;
 use rusty_mms::{MmsListener, MmsReader, MmsResponder, MmsWriter, RustyMmsReader, RustyMmsWriter};
 
 use rusty_acse::{RustyOsiSingleValueAcseListenerIsoStack, RustyOsiSingleValueAcseReader, RustyOsiSingleValueAcseWriter};
@@ -10,7 +12,7 @@ use rusty_copp::{RustyCoppListenerIsoStack, RustyCoppReader, RustyCoppResponderI
 use rusty_cosp::{CospAcceptor, RustyCospAcceptorIsoStack, RustyCospReader, RustyCospWriter};
 use rusty_cotp::{CotpResponder, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
 use rusty_mms::{RustyMmsListenerIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
-use rusty_mms_service::{MmsServiceConnectionIdentityParameters, RustyMmsServiceServer, RustyTcpMmsServiceServer};
+use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyMmsServiceClient, RustyMmsServiceServer, RustyTcpMmsServiceClient, RustyTcpMmsServiceServer, create_mms_service_client};
 use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection, TpktReader, TpktWriter};
 use tokio::{
     join, select,
@@ -21,6 +23,14 @@ use tokio::{
     },
 };
 use tracing::error;
+
+pub fn control_centre_a_identity() -> MmsServiceConnectionIdentityParameters {
+    MmsServiceConnectionIdentityParameters { tsap_id: Some(vec![1]), session_selector: Some(vec![1]), presentation_selector: Some(vec![1]), ap_title: Some(oid!(1.2.3.1)), ae_qualifier: Some(vec![1]), ..Default::default() }
+}
+
+pub fn control_centre_b_identity() -> MmsServiceConnectionIdentityParameters {
+    MmsServiceConnectionIdentityParameters { tsap_id: Some(vec![1]), session_selector: Some(vec![1]), presentation_selector: Some(vec![1]), ap_title: Some(oid!(1.2.3.1)), ae_qualifier: Some(vec![1]), ..Default::default() }
+}
 
 /**
  * This scenario demonstrates how two control centres may share datapoints between each other.
@@ -77,15 +87,38 @@ async fn data_centre_a() {
 }
 
 async fn try_data_centre_a() -> Result<(), anyhow::Error> {
-    let associations = Arc::new(Mutex::new(Vec::new()));
+    // let associations = Arc::new(Mutex::new(Vec::new()));
 
     // Normally 102, but to run wihtout perms, using 8102.
-    mms_server_worker("0.0.0.0".into(), 8102, associations).await?;
+    // let server_handle = tokio::task::spawn(mms_server_worker("0.0.0.0".into(), 8102, associations));
+
+    // Give the server time to start
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let target_address = "127.0.0.1:8103".parse()?;
+    let mms_clinet = create_mms_service_client(
+        target_address,
+        MmsServiceConnectionParameters {
+            local_detail_calling: Some(1 * 1024 * 1024), // Used as Max MMS Payload Size. This is required by most stacks.
+            calling: control_centre_a_identity(),
+            called: control_centre_b_identity(),
+            ..Default::default()
+        },
+    )
+    .await?;
+
+    // mms_clinet.
 
     Ok(())
 }
 
-async fn data_centre_b() {}
+async fn data_centre_b() -> Result<(), anyhow::Error> {
+    let associations = Arc::new(Mutex::new(Vec::new()));
+
+    mms_server_worker("0.0.0.0".into(), 8103, associations).await?;
+
+    Ok(())
+}
 
 /**
  * This is the more interesting part of what we are doing here. An MMS connection has a few distinct layers of handshaking.
@@ -148,7 +181,5 @@ async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Res
     // You can check the proposed MMS parameters here. This is currently not restricted, but will be in a later version.
 
     let mms_responder = rusty_mms_listener.responder().await?;
-
-    // Finally MMS. This is the part that will actually respond to the COSP/COPP/ACSE/MMS reqeusts.
     Ok(RustyTcpMmsServiceServer::<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>::accept::<TcpTpktReader, TcpTpktWriter>(mms_responder).await?)
 }

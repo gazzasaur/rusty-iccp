@@ -155,7 +155,7 @@ impl Drop for ResponseReservation {
     }
 }
 
-struct RustyTcpMmsServiceClient<R: MmsReader, W: MmsWriter> {
+pub struct RustyTcpMmsServiceClient<R: MmsReader, W: MmsWriter> {
     reader: Arc<Mutex<R>>,
     writer: Arc<Mutex<W>>,
     invocation_id: Arc<AtomicI32>,
