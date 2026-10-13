@@ -111,8 +111,8 @@ impl Default for MmsServiceConnectionParameters {
 }
 
 #[async_trait]
-pub trait RustyMmsServiceClient: Send + Sync {
-    fn clone(&self) -> Box<dyn RustyMmsServiceClient>;
+pub trait MmsServiceAssociation: Send + Sync {
+    fn clone(&self) -> Box<dyn MmsServiceAssociation>;
 
     async fn identify(&mut self) -> Result<Identity, MmsServiceError>;
 
@@ -125,12 +125,13 @@ pub trait RustyMmsServiceClient: Send + Sync {
 
     /// Reads data from an MMS Server.
     ///
-    /// This does not expose the specification with result flag. If this is required, cut a ticket and I will add a read_with_specification method.
+    /// This does not expose the specification with result flag yet.
     async fn read(&mut self, specification: MmsVariableAccessSpecification) -> Result<Vec<MmsServiceAccessResult>, MmsServiceError>;
     async fn write(&mut self, specification: MmsVariableAccessSpecification, values: Vec<MmsServiceData>) -> Result<Vec<MmsWriteResult>, MmsServiceError>;
 
     async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError>;
-    async fn receive_information_report(&mut self) -> Result<InformationReportMmsServiceMessage, MmsServiceError>;
+
+    async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError>;
 }
 
 // Cleans up after iteself if the job has been cancelled.
@@ -155,7 +156,7 @@ impl Drop for ResponseReservation {
     }
 }
 
-pub struct RustyTcpMmsServiceClient<R: MmsReader, W: MmsWriter> {
+pub struct RustyTcpMmsServiceAssociation<R: MmsReader, W: MmsWriter> {
     reader: Arc<Mutex<R>>,
     writer: Arc<Mutex<W>>,
     invocation_id: Arc<AtomicI32>,
@@ -166,7 +167,27 @@ pub struct RustyTcpMmsServiceClient<R: MmsReader, W: MmsWriter> {
     info_report_receiver: Arc<Mutex<UnboundedReceiver<MmsUnconfirmedService>>>,
 }
 
-impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceClient<R, W> {
+impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceAssociation<R, W> {
+    pub fn new(mms_reader: impl MmsReader, mms_writer: impl MmsWriter) -> RustyTcpMmsServiceAssociation<impl MmsReader, impl MmsWriter> {
+        let (sender, receiver) = mpsc::unbounded_channel();
+
+        RustyTcpMmsServiceAssociation {
+            reader: Arc::new(Mutex::new(mms_reader)),
+            writer: Arc::new(Mutex::new(mms_writer)),
+            invocation_id: Arc::new(AtomicI32::new(0)),
+            mail_box: Arc::new(Mutex::new(HashMap::new())),
+            notify: Arc::new(Notify::new()),
+            info_report_sender: sender,
+            info_report_receiver: Arc::new(Mutex::new(receiver)),
+        }
+    }
+
+    pub async fn accept(mms_responder: impl MmsResponder) -> Result<RustyTcpMmsServiceAssociation<impl MmsReader, impl MmsWriter>, MmsServiceError> {
+        let mms_connection = mms_responder.accept().await?;
+        let (mms_reader, mms_writer) = mms_connection.split().await?;
+        Ok(RustyTcpMmsServiceAssociation::<R, W>::new(mms_reader, mms_writer))
+    }
+
     async fn register_confirmed_message(&mut self, invocation_id: &Vec<u8>) -> Result<ResponseReservation, MmsServiceError> {
         // Will remove any interest in the result if the call is cancelled.
         match self.mail_box.lock().await.entry(invocation_id.clone()) {
@@ -236,10 +257,16 @@ impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceClient<R, W> {
     }
 }
 
+impl Clone for Box<dyn MmsServiceAssociation> {
+    fn clone(&self) -> Self {
+        self.as_ref().clone()
+    }
+}
+
 #[async_trait]
-impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for RustyTcpMmsServiceClient<R, W> {
-    fn clone(&self) -> Box<dyn RustyMmsServiceClient> {
-        Box::new(RustyTcpMmsServiceClient {
+impl<R: MmsReader + 'static, W: MmsWriter + 'static> MmsServiceAssociation for RustyTcpMmsServiceAssociation<R, W> {
+    fn clone(&self) -> Box<dyn MmsServiceAssociation> {
+        Box::new(RustyTcpMmsServiceAssociation {
             reader: self.reader.clone(),
             writer: self.writer.clone(),
             invocation_id: self.invocation_id.clone(),
@@ -385,140 +412,6 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceClient for R
         Ok(())
     }
 
-    async fn receive_information_report(&mut self) -> Result<InformationReportMmsServiceMessage, MmsServiceError> {
-        Ok(loop {
-            let mut receiver = self.info_report_receiver.lock().await;
-            let mut reader = self.reader.lock().await;
-
-            select! {
-                value = reader.recv() => {
-                    match value? {
-                        rusty_mms::MmsRecvResult::Message(MmsMessage::ConfirmedResponse { invocation_id: response_invocation_id, response }) => {
-                            self.mail_box.lock().await.insert(response_invocation_id, Some(response));
-                        }
-                        rusty_mms::MmsRecvResult::Message(MmsMessage::Unconfirmed { unconfirmed_service: MmsUnconfirmedService::InformationReport { variable_access_specification, access_results } }) => {
-                            break InformationReportMmsServiceMessage {
-                                variable_access_specification,
-                                access_results: access_results
-                                    .into_iter()
-                                    .map(|x| match x {
-                                        MmsAccessResult::Success(mms_data) => Ok(MmsServiceAccessResult::Success(convert_low_level_data_to_high_level_data(&mms_data)?)),
-                                        MmsAccessResult::Failure(mms_access_error) => Ok(MmsServiceAccessResult::Failure(mms_access_error)),
-                                    })
-                                    .collect::<Result<Vec<MmsServiceAccessResult>, MmsServiceError>>()?,
-                            };
-                        }
-                        rusty_mms::MmsRecvResult::Message(_) => return Err(MmsServiceError::ProtocolError("Unexpected payload received.".into())),
-                        rusty_mms::MmsRecvResult::Closed => return Err(MmsServiceError::ProtocolError("Connection Closed".into())),
-                    }
-                },
-                value = receiver.recv() => {
-                    match value {
-                        Some(MmsUnconfirmedService::InformationReport { variable_access_specification, access_results }) =>  {
-                            break InformationReportMmsServiceMessage {
-                                variable_access_specification,
-                                access_results: access_results
-                                    .into_iter()
-                                    .map(|x| match x {
-                                        MmsAccessResult::Success(mms_data) => Ok(MmsServiceAccessResult::Success(convert_low_level_data_to_high_level_data(&mms_data)?)),
-                                        MmsAccessResult::Failure(mms_access_error) => Ok(MmsServiceAccessResult::Failure(mms_access_error)),
-                                    })
-                                    .collect::<Result<Vec<MmsServiceAccessResult>, MmsServiceError>>()?,
-                            };
-                        },
-                        None => todo!(),
-                    }
-                }
-            }
-        })
-    }
-}
-
-pub async fn create_mms_service_client(host: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn RustyMmsServiceClient>, MmsServiceError> {
-    let tpkt_connection = TcpTpktConnection::connect(host).await.map_err(|e| MmsServiceError::ProtocolError(format!("{e}")))?;
-
-    let cotp_connection_info = CotpProtocolInformation::initiator(parameters.calling.tsap_id, parameters.called.tsap_id);
-    let cotp_connection = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_connection, cotp_connection_info, Default::default()).await.map_err(to_mms_error("Failed to create COTP Connection"))?;
-
-    let cosp_connection_info = CospProtocolInformation::new(parameters.calling.session_selector, parameters.called.session_selector);
-    let cosp_initiator = RustyCospInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, cosp_connection_info, Default::default()).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
-
-    let copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };
-    let copp_initiator = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_initiator, copp_connection_info);
-
-    let acse_connection_info = AcseRequestInformation {
-        application_context_name: Oid::from(&[1, 0, 9506, 2, 3]).map_err(to_mms_error("Failed to create MMS Application Context Name"))?,
-        called_ap_title: parameters.called.ap_title.map(|x| ApTitle::Form2(x)),
-        called_ae_qualifier: parameters.called.ae_qualifier.map(|x| AeQualifier::Form2(x)),
-        called_ap_invocation_identifier: parameters.called.ap_invocation_identifier,
-        called_ae_invocation_identifier: parameters.called.ae_invocation_identifier,
-        calling_ap_title: parameters.calling.ap_title.map(|x| ApTitle::Form2(x)),
-        calling_ae_qualifier: parameters.calling.ae_qualifier.map(|x| AeQualifier::Form2(x)),
-        calling_ap_invocation_identifier: parameters.calling.ap_invocation_identifier,
-        calling_ae_invocation_identifier: parameters.calling.ae_invocation_identifier,
-        ..Default::default()
-    };
-    let acse_initiator = RustyOsiSingleValueAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_initiator, acse_connection_info);
-
-    let mms_connection_info = MmsRequestInformation {
-        local_detail_calling: parameters.local_detail_calling,
-        proposed_max_serv_outstanding_calling: parameters.proposed_max_serv_outstanding_calling,
-        proposed_max_serv_outstanding_called: parameters.proposed_max_serv_outstanding_called,
-        proposed_data_structure_nesting_level: parameters.proposed_data_structure_nesting_level,
-        proposed_version_number: 1,
-        propsed_parameter_cbb: parameters.propsed_parameter_cbb,
-        services_supported_calling: parameters.services_supported_calling,
-        ..Default::default()
-    };
-    let mms_initiator = RustyMmsInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_initiator, mms_connection_info);
-    let mms_connection = mms_initiator.initiate().await?;
-    let (reader, writer) = mms_connection.split().await?;
-
-    let (sender, receiver) = mpsc::unbounded_channel();
-
-    Ok(Box::new(RustyTcpMmsServiceClient {
-        reader: Arc::new(Mutex::new(reader)),
-        writer: Arc::new(Mutex::new(writer)),
-        invocation_id: Arc::new(AtomicI32::new(0)),
-        mail_box: Arc::new(Mutex::new(HashMap::new())),
-        notify: Arc::new(Notify::new()),
-        info_report_sender: sender,
-        info_report_receiver: Arc::new(Mutex::new(receiver)),
-    }))
-}
-
-#[async_trait]
-pub trait RustyMmsServiceServer: Send + Sync {
-    fn clone(&self) -> Box<dyn RustyMmsServiceServer>;
-
-    async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError>;
-    async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError>;
-}
-impl Clone for Box<dyn RustyMmsServiceServer> {
-    fn clone(&self) -> Self {
-        self.deref().clone()
-    }
-}
-
-pub struct RustyTcpMmsServiceServer<R: MmsReader, W: MmsWriter> {
-    reader: Arc<Mutex<R>>,
-    writer: Arc<Mutex<W>>,
-}
-
-impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceServer<R, W> {
-    pub async fn accept<A: TpktReader, B: TpktWriter>(mms_responder: impl MmsResponder) -> Result<RustyTcpMmsServiceServer<impl MmsReader, impl MmsWriter>, MmsServiceError> {
-        let mms_connection = mms_responder.accept().await?;
-        let (mms_reader, mms_writer) = mms_connection.split().await?;
-        Ok(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) })
-    }
-}
-
-#[async_trait]
-impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for RustyTcpMmsServiceServer<R, W> {
-    fn clone(&self) -> Box<dyn RustyMmsServiceServer> {
-        Box::new(RustyTcpMmsServiceServer { reader: self.reader.clone(), writer: self.writer.clone() })
-    }
-
     async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError> {
         let mms_message: MmsMessage = match self.reader.lock().await.recv().await? {
             rusty_mms::MmsRecvResult::Closed => return Err(MmsServiceError::ProtocolError("Connection closed".into())),
@@ -630,22 +523,62 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> RustyMmsServiceServer for R
             )),
         })
     }
-
-    async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError> {
-        let access_results = access_results
-            .into_iter()
-            .map(|x| match x {
-                MmsServiceAccessResult::Success(mms_data) => Ok(MmsAccessResult::Success(convert_high_level_data_to_low_level_data(&mms_data)?)),
-                MmsServiceAccessResult::Failure(mms_access_error) => Ok(MmsAccessResult::Failure(mms_access_error)),
-            })
-            .collect::<Result<Vec<MmsAccessResult>, MmsServiceError>>()?;
-
-        self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::Unconfirmed { unconfirmed_service: rusty_mms::MmsUnconfirmedService::InformationReport { variable_access_specification, access_results } }])).await?;
-        Ok(())
-    }
 }
 
-pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
+pub async fn create_mms_service_client(host: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
+    let tpkt_connection = TcpTpktConnection::connect(host).await.map_err(|e| MmsServiceError::ProtocolError(format!("{e}")))?;
+
+    let cotp_connection_info = CotpProtocolInformation::initiator(parameters.calling.tsap_id, parameters.called.tsap_id);
+    let cotp_connection = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_connection, cotp_connection_info, Default::default()).await.map_err(to_mms_error("Failed to create COTP Connection"))?;
+
+    let cosp_connection_info = CospProtocolInformation::new(parameters.calling.session_selector, parameters.called.session_selector);
+    let cosp_initiator = RustyCospInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, cosp_connection_info, Default::default()).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
+
+    let copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };
+    let copp_initiator = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_initiator, copp_connection_info);
+
+    let acse_connection_info = AcseRequestInformation {
+        application_context_name: Oid::from(&[1, 0, 9506, 2, 3]).map_err(to_mms_error("Failed to create MMS Application Context Name"))?,
+        called_ap_title: parameters.called.ap_title.map(|x| ApTitle::Form2(x)),
+        called_ae_qualifier: parameters.called.ae_qualifier.map(|x| AeQualifier::Form2(x)),
+        called_ap_invocation_identifier: parameters.called.ap_invocation_identifier,
+        called_ae_invocation_identifier: parameters.called.ae_invocation_identifier,
+        calling_ap_title: parameters.calling.ap_title.map(|x| ApTitle::Form2(x)),
+        calling_ae_qualifier: parameters.calling.ae_qualifier.map(|x| AeQualifier::Form2(x)),
+        calling_ap_invocation_identifier: parameters.calling.ap_invocation_identifier,
+        calling_ae_invocation_identifier: parameters.calling.ae_invocation_identifier,
+        ..Default::default()
+    };
+    let acse_initiator = RustyOsiSingleValueAcseInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_initiator, acse_connection_info);
+
+    let mms_connection_info = MmsRequestInformation {
+        local_detail_calling: parameters.local_detail_calling,
+        proposed_max_serv_outstanding_calling: parameters.proposed_max_serv_outstanding_calling,
+        proposed_max_serv_outstanding_called: parameters.proposed_max_serv_outstanding_called,
+        proposed_data_structure_nesting_level: parameters.proposed_data_structure_nesting_level,
+        proposed_version_number: 1,
+        propsed_parameter_cbb: parameters.propsed_parameter_cbb,
+        services_supported_calling: parameters.services_supported_calling,
+        ..Default::default()
+    };
+    let mms_initiator = RustyMmsInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_initiator, mms_connection_info);
+    let mms_connection = mms_initiator.initiate().await?;
+    let (reader, writer) = mms_connection.split().await?;
+
+    let (sender, receiver) = mpsc::unbounded_channel();
+
+    Ok(Box::new(RustyTcpMmsServiceAssociation {
+        reader: Arc::new(Mutex::new(reader)),
+        writer: Arc::new(Mutex::new(writer)),
+        invocation_id: Arc::new(AtomicI32::new(0)),
+        mail_box: Arc::new(Mutex::new(HashMap::new())),
+        notify: Arc::new(Notify::new()),
+        info_report_sender: sender,
+        info_report_receiver: Arc::new(Mutex::new(receiver)),
+    }))
+}
+
+pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
     let tpkt_connection = TcpTpktServer::listen(address).await?.accept().await?;
 
     let (cotp_listener, cotp_connection_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await.map_err(to_mms_error("Failed to create COTP Server"))?;
@@ -673,17 +606,36 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
     let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
     let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
 
+    let (sender, receiver) = mpsc::unbounded_channel();
     let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
 
-    Ok(Box::new(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) }))
+    Ok(Box::new(RustyTcpMmsServiceAssociation {
+        reader: Arc::new(Mutex::new(mms_reader)),
+        writer: Arc::new(Mutex::new(mms_writer)),
+        invocation_id: Arc::new(AtomicI32::new(0)),
+        mail_box: Arc::new(Mutex::new(HashMap::new())),
+        notify: Arc::new(Notify::new()),
+        info_report_sender: sender,
+        info_report_receiver: Arc::new(Mutex::new(receiver)),
+    }))
 }
 
-pub async fn accept_mms_service_server_connect<R: TpktReader + 'static, W: TpktWriter + 'static>(acse_listener: impl OsiSingleValueAcseListener + 'static) -> Result<Box<dyn RustyMmsServiceServer>, MmsServiceError> {
+pub async fn accept_mms_service_server_connect<R: TpktReader + 'static, W: TpktWriter + 'static>(acse_listener: impl OsiSingleValueAcseListener + 'static) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
     let mms_listener = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
     let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
     let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
     let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
-    Ok(Box::new(RustyTcpMmsServiceServer { reader: Arc::new(Mutex::new(mms_reader)), writer: Arc::new(Mutex::new(mms_writer)) }))
+    let (sender, receiver) = mpsc::unbounded_channel();
+
+    Ok(Box::new(RustyTcpMmsServiceAssociation {
+        reader: Arc::new(Mutex::new(mms_reader)),
+        writer: Arc::new(Mutex::new(mms_writer)),
+        invocation_id: Arc::new(AtomicI32::new(0)),
+        mail_box: Arc::new(Mutex::new(HashMap::new())),
+        notify: Arc::new(Notify::new()),
+        info_report_sender: sender,
+        info_report_receiver: Arc::new(Mutex::new(receiver)),
+    }))
 }
 
 #[cfg(test)]

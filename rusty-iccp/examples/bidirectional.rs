@@ -5,21 +5,18 @@ use std::{
 };
 
 use der_parser::oid;
-use rusty_mms::{MmsListener, MmsReader, MmsResponder, MmsWriter, RustyMmsReader, RustyMmsWriter};
+use rusty_mms::{MmsListener, MmsReader, MmsWriter};
 
-use rusty_acse::{RustyOsiSingleValueAcseListenerIsoStack, RustyOsiSingleValueAcseReader, RustyOsiSingleValueAcseWriter};
-use rusty_copp::{RustyCoppListenerIsoStack, RustyCoppReader, RustyCoppResponderIsoStack, RustyCoppWriter};
-use rusty_cosp::{CospAcceptor, RustyCospAcceptorIsoStack, RustyCospReader, RustyCospWriter};
-use rusty_cotp::{CotpResponder, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
+use rusty_acse::RustyOsiSingleValueAcseListenerIsoStack;
+use rusty_copp::RustyCoppListenerIsoStack;
+use rusty_cosp::RustyCospAcceptorIsoStack;
+use rusty_cotp::{CotpResponder, RustyCotpResponder};
 use rusty_mms::{RustyMmsListenerIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
-use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyMmsServiceClient, RustyMmsServiceServer, RustyTcpMmsServiceClient, RustyTcpMmsServiceServer, create_mms_service_client};
-use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection, TpktReader, TpktWriter};
+use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyTcpMmsServiceAssociation, create_mms_service_client};
+use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection};
 use tokio::{
-    join, select,
-    sync::{
-        Mutex, Notify,
-        futures::{Notified, OwnedNotified},
-        watch::{self, Receiver, Sender},
+    join, sync::{
+        Mutex, watch::{Receiver, Sender},
     },
 };
 use tracing::error;
@@ -151,7 +148,7 @@ async fn mms_server_worker(listener_address: String, listener_port: u16, associa
 }
 
 // To avoid tying up the accept loop for the multi-stage handshake, we will use a separate task.
-async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Result<RustyTcpMmsServiceServer<impl MmsReader, impl MmsWriter>, anyhow::Error> {
+async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Result<RustyTcpMmsServiceAssociation<impl MmsReader, impl MmsWriter>, anyhow::Error> {
     // This is one possible implementation.
     //
     // COTP is negotiated before anything else. This requires a request and response payload to be sent between hosts.
@@ -181,5 +178,5 @@ async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Res
     // You can check the proposed MMS parameters here. This is currently not restricted, but will be in a later version.
 
     let mms_responder = rusty_mms_listener.responder().await?;
-    Ok(RustyTcpMmsServiceServer::<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>::accept::<TcpTpktReader, TcpTpktWriter>(mms_responder).await?)
+    Ok(RustyTcpMmsServiceAssociation::<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>::accept(mms_responder).await?)
 }
