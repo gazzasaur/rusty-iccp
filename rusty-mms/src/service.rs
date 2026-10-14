@@ -473,15 +473,15 @@ impl<T: OsiSingleValueAcseInitiator, R: OsiSingleValueAcseReader, W: OsiSingleVa
     }
 }
 
-pub struct RustyMmsListener<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
+pub struct RustyMmsAcceptor<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> {
     acse_responder: T,
     _r: PhantomData<R>,
     _w: PhantomData<W>,
     mms_request_information: MmsRequestInformation,
 }
 
-impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsListener<T, R, W> {
-    pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<RustyMmsListener<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsError> {
+impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsAcceptor<T, R, W> {
+    pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<RustyMmsAcceptor<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsError> {
         let (acse_responder, init_data) = acse_listener.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
         let request = InitiateRequestPdu::parse(init_data)?;
 
@@ -495,7 +495,7 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
             services_supported_calling: request.init_request_details().services_supported_calling.options.clone(),
         };
 
-        Ok(RustyMmsListener { acse_responder, mms_request_information, _r: PhantomData::<R>, _w: PhantomData::<W> })
+        Ok(RustyMmsAcceptor { acse_responder, mms_request_information, _r: PhantomData::<R>, _w: PhantomData::<W> })
     }
 
     pub fn mms_request_information(&self) -> &MmsRequestInformation {
@@ -503,7 +503,7 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
     }
 }
 
-impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsListener for RustyMmsListener<T, R, W> {
+impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> MmsListener for RustyMmsAcceptor<T, R, W> {
     async fn responder(self) -> Result<impl MmsResponder, MmsError> {
         Ok(RustyMmsResponder { acse_responder: self.acse_responder, mms_request_information: self.mms_request_information, _r: PhantomData::<R>, _w: PhantomData::<W> })
     }

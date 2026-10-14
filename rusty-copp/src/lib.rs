@@ -10,7 +10,7 @@ pub use service::*;
 pub type RustyCoppReaderIsoStack<R> = RustyCoppReader<RustyCospReaderIsoStack<R>>;
 pub type RustyCoppWriterIsoStack<W> = RustyCoppWriter<RustyCospWriterIsoStack<W>>;
 pub type RustyCoppInitiatorIsoStack<R, W> = RustyCoppInitiator<RustyCospInitiatorIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
-pub type RustyCoppListenerIsoStack<R, W> = RustyCoppListener<RustyCospResponderIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
+pub type RustyCoppAcceptorIsoStack<R, W> = RustyCoppAcceptor<RustyCospResponderIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
 pub type RustyCoppResponderIsoStack<R, W> = RustyCoppResponder<RustyCospResponderIsoStack<R, W>, RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
 pub type RustyCoppConnectionIsoStack<R, W> = RustyCoppConnection<RustyCospReaderIsoStack<R>, RustyCospWriterIsoStack<W>>;
 
@@ -142,11 +142,11 @@ mod tests {
             let tpkt_connection = tpkt_server.accept().await?;
             let (cotp_server, protocol_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
             let cotp_connection = cotp_server.accept(protocol_info.responder()).await?;
-            let (cosp_listener, _) = RustyCospAcceptor::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection, CospConnectionParameters::default()).await?;
-            let (copp_listener, _) =
-                RustyCoppListener::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener)
+            let (cosp_acceptor, _) = RustyCospAcceptor::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection, CospConnectionParameters::default()).await?;
+            let (copp_acceptor, _) =
+                RustyCoppAcceptor::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_acceptor)
                     .await?;
-            copp_listener
+            copp_acceptor
                 .reject(
                     PresentationContextResultType::ContextDefinitionList(vec![PresentationContextResult {
                         result: PresentationContextResultCause::ProviderRejection,
@@ -194,11 +194,11 @@ mod tests {
             let tpkt_connection = tpkt_server.accept().await?;
             let (cotp_server, protocol_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
             let cotp_connection = cotp_server.accept(protocol_info.responder()).await?;
-            let (cosp_listener, _) = RustyCospAcceptor::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection, CospConnectionParameters::default()).await?;
-            let (copp_listener, _) =
-                RustyCoppListener::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener)
+            let (cosp_acceptor, _) = RustyCospAcceptor::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_connection, CospConnectionParameters::default()).await?;
+            let (copp_acceptor, _) =
+                RustyCoppAcceptor::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_acceptor)
                     .await?;
-            let (copp_responder, _, connect_user_data) = copp_listener.accept().await?;
+            let (copp_responder, _, connect_user_data) = copp_acceptor.accept().await?;
 
             Ok((copp_responder.complete_connection(accept_data.clone()).await?, connect_user_data))
         };

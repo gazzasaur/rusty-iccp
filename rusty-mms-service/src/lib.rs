@@ -3,9 +3,9 @@ use der_parser::Oid;
 use num_bigint::BigInt;
 use rusty_acse::{
     AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseListener, RustyOsiSingleValueAcseInitiatorIsoStack,
-    RustyOsiSingleValueAcseListener, RustyOsiSingleValueAcseListenerIsoStack,
+    RustyOsiSingleValueAcseAcceptor, RustyOsiSingleValueAcseAcceptorIsoStack,
 };
-use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
+use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppAcceptorIsoStack};
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use std::{
@@ -30,7 +30,7 @@ use tokio::{
 
 use rusty_mms::{
     ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsReader, MmsRequestInformation,
-    MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsConnectionIsoStack, RustyMmsInitiatorIsoStack, RustyMmsListenerIsoStack,
+    MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsConnectionIsoStack, RustyMmsInitiatorIsoStack, RustyMmsAcceptorIsoStack,
     parameters::{ParameterSupportOption, ServiceSupportOption},
 };
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
@@ -588,9 +588,9 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
 
     // TODO: Need to expose this.
     let _copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };
-    let (copp_responder, _) = RustyCoppListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_listener).await.map_err(to_mms_error(""))?;
+    let (copp_responder, _) = RustyCoppAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_listener).await.map_err(to_mms_error(""))?;
 
-    let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_responder).await.map_err(to_mms_error(""))?;
+    let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_responder).await.map_err(to_mms_error(""))?;
     acse_listener.set_response(Some(AcseResponseInformation {
         application_context_name: Oid::from(&[1, 0, 9506, 2, 3]).map_err(to_mms_error(""))?,
         associate_result: AssociateResult::Accepted,
@@ -602,7 +602,7 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
         implementation_information: None,
     }));
 
-    let mms_listener = RustyMmsListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await.map_err(to_mms_error(""))?;
+    let mms_listener = RustyMmsAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await.map_err(to_mms_error(""))?;
     let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
     let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
 
@@ -621,7 +621,7 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
 }
 
 pub async fn accept_mms_service_server_connect<R: TpktReader + 'static, W: TpktWriter + 'static>(acse_listener: impl OsiSingleValueAcseListener + 'static) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
-    let mms_listener = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
+    let mms_listener = RustyMmsAcceptorIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
     let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
     let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
     let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
@@ -1337,7 +1337,10 @@ mod tests {
         let server_task = tokio::task::spawn(async move {
             task_server.send_information_report(MmsVariableAccessSpecification::VariableListName(MmsObjectName::AaSpecific("MyVariable".into())), vec![MmsServiceAccessResult::Success(MmsServiceData::Boolean(true))]).await
         });
-        let message = client.receive_information_report().await?;
+        let message = match client.receive_message().await? {
+            MmsServiceMessage::InformationReport(x) => x,
+            x => return Err(anyhow!("Test Failed: {:?}", x)),
+        };
         assert_eq!(message.access_results, vec![MmsServiceAccessResult::Success(MmsServiceData::Boolean(true))]);
         server_task.await??;
 

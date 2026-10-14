@@ -3,7 +3,7 @@ use std::{collections::VecDeque, net::SocketAddr};
 use anyhow::anyhow;
 use der_parser::oid;
 use rusty_copp::{
-    CoppConnection, CoppConnectionInformation, CoppInitResult, CoppInitiator, CoppListener, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContext, PresentationContextIdentifier, PresentationContextType, PresentationDataValueList, PresentationDataValues, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack, UserData,
+    CoppConnection, CoppConnectionInformation, CoppInitResult, CoppInitiator, CoppAcceptor, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContext, PresentationContextIdentifier, PresentationContextType, PresentationDataValueList, PresentationDataValues, RustyCoppInitiatorIsoStack, RustyCoppAcceptorIsoStack, UserData,
 };
 use rusty_cosp::{CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
@@ -45,7 +45,7 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     assert_eq!(cosp_protocol_information.calling_session_selector(), Some(&vec![1]));
 
     // Pass the COSP acceptor to the COPP layer.
-    let (copp_listener, copp_connection_information) = RustyCoppListenerIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_acceptor).await?;
+    let (copp_listener, copp_connection_information) = RustyCoppAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_acceptor).await?;
 
     // For the presentation layer, we will assert we know who the caller is and ensure it called us.
     assert_eq!(copp_connection_information.called_presentation_selector, Some(vec![2]));

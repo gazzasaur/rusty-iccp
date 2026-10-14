@@ -6,7 +6,7 @@ use der_parser::{
     der::{Class, Header, Tag},
 };
 use rusty_copp::CoppConnection;
-use rusty_copp::{CoppError, CoppInitiator, CoppListener, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
+use rusty_copp::{CoppError, CoppInitiator, CoppAcceptor, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
 
 use crate::{
     AcseError, AcseRecvResult, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory,
@@ -83,7 +83,7 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
     }
 }
 
-pub struct RustyOsiSingleValueAcseListener<T: CoppResponder, R: CoppReader, W: CoppWriter> {
+pub struct RustyOsiSingleValueAcseAcceptor<T: CoppResponder, R: CoppReader, W: CoppWriter> {
     copp_responder: T,
     copp_reader: PhantomData<R>,
     copp_writer: PhantomData<W>,
@@ -91,9 +91,9 @@ pub struct RustyOsiSingleValueAcseListener<T: CoppResponder, R: CoppReader, W: C
     acse_user_data: Vec<u8>,
 }
 
-impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseListener<T, R, W> {
-    pub async fn new(copp_listener: impl CoppListener) -> Result<(RustyOsiSingleValueAcseListener<impl CoppResponder, impl CoppReader, impl CoppWriter>, AcseRequestInformation), AcseError> {
-        let (copp_responder, _, copp_options) = copp_listener.accept().await?;
+impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseAcceptor<T, R, W> {
+    pub async fn new(copp_acceptor: impl CoppAcceptor) -> Result<(RustyOsiSingleValueAcseAcceptor<impl CoppResponder, impl CoppReader, impl CoppWriter>, AcseRequestInformation), AcseError> {
+        let (copp_responder, _, copp_options) = copp_acceptor.accept().await?;
         let copp_presentation_data_list = match copp_options {
             Some(UserData::FullyEncoded(x)) => x,
             None => return Err(AcseError::ProtocolError("COPP did not provide and data in the initiate payload".into())),
@@ -116,7 +116,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseList
         let (request, acse_user_data) = match &copp_presentation_data.presentation_data_values {
             PresentationDataValues::SingleAsn1Type(data) => process_request(data)?,
         };
-        Ok((RustyOsiSingleValueAcseListener { copp_responder, copp_reader: PhantomData::<R>, copp_writer: PhantomData::<W>, response: None, acse_user_data }, request))
+        Ok((RustyOsiSingleValueAcseAcceptor { copp_responder, copp_reader: PhantomData::<R>, copp_writer: PhantomData::<W>, response: None, acse_user_data }, request))
     }
 
     pub fn set_response(&mut self, response: Option<AcseResponseInformation>) {
@@ -124,7 +124,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseList
     }
 }
 
-impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseListener for RustyOsiSingleValueAcseListener<T, R, W> {
+impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseListener for RustyOsiSingleValueAcseAcceptor<T, R, W> {
     async fn responder(self) -> Result<(impl OsiSingleValueAcseResponder, Vec<u8>), AcseError> {
         match self.response {
             Some(response) => Ok((RustyOsiSingleValueAcseResponder::<T, R, W>::new(self.copp_responder, response), self.acse_user_data)),

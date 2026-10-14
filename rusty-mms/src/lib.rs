@@ -9,10 +9,10 @@ use std::marker::PhantomData;
 
 pub use api::*;
 use rusty_acse::{
-    AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseListenerIsoStack,
+    AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseAcceptorIsoStack,
     RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseResponderIsoStack, RustyOsiSingleValueAcseWriterIsoStack,
 };
-use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppListenerIsoStack};
+use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppAcceptorIsoStack};
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptor, RustyCospInitiator};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
 use rusty_tpkt::{TpktConnection, TpktReader, TpktWriter};
@@ -22,7 +22,7 @@ use crate::error::to_mms_error;
 
 pub type RustyMmsConnectionIsoStack<R, W> = RustyMmsConnection<RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsInitiatorIsoStack<R, W> = RustyMmsInitiator<RustyOsiSingleValueAcseInitiatorIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
-pub type RustyMmsListenerIsoStack<R, W> = RustyMmsListener<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
+pub type RustyMmsAcceptorIsoStack<R, W> = RustyMmsAcceptor<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsResponderIsoStack<R, W> = RustyMmsResponder<RustyOsiSingleValueAcseResponderIsoStack<R, W>, RustyOsiSingleValueAcseReaderIsoStack<R>, RustyOsiSingleValueAcseWriterIsoStack<W>>;
 pub type RustyMmsReaderIsoStack<R> = RustyMmsReader<RustyOsiSingleValueAcseReaderIsoStack<R>>;
 pub type RustyMmsWriterIsoStack<W> = RustyMmsWriter<RustyOsiSingleValueAcseWriterIsoStack<W>>;
@@ -64,8 +64,8 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConne
         let cotp_connection = cotp_listener.accept(init_info.responder()).await.map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
         let (cosp_listener, _) =
             RustyCospAcceptor::<RustyCotpReader<R>, RustyCotpWriter<W>>::new(cotp_connection, CospConnectionParameters::default()).await.map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
-        let (copp_listener, _) = RustyCoppListenerIsoStack::<R, W>::new(cosp_listener).await.map_err(to_mms_error("Failed to create COPP listener"))?;
-        let (mut acse_listener, acse_request_information) = RustyOsiSingleValueAcseListenerIsoStack::<R, W>::new(copp_listener).await.map_err(to_mms_error("Failed to create a COPP connection when creating an MMS association"))?;
+        let (copp_listener, _) = RustyCoppAcceptorIsoStack::<R, W>::new(cosp_listener).await.map_err(to_mms_error("Failed to create COPP listener"))?;
+        let (mut acse_listener, acse_request_information) = RustyOsiSingleValueAcseAcceptorIsoStack::<R, W>::new(copp_listener).await.map_err(to_mms_error("Failed to create a COPP connection when creating an MMS association"))?;
         acse_listener.set_response(Some(AcseResponseInformation {
             application_context_name: acse_request_information.application_context_name, // TODO: Should verify it is MMS
             associate_result: AssociateResult::Accepted,
@@ -76,8 +76,8 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConne
             responding_ae_invocation_identifier: acse_request_information.called_ae_invocation_identifier,
             implementation_information: None,
         }));
-        let mms_listener = RustyMmsListenerIsoStack::<R, W>::new(acse_listener).await?;
-        let mms_responder = mms_listener.responder().await?;
+        let mms_acceptor = RustyMmsAcceptorIsoStack::<R, W>::new(acse_listener).await?;
+        let mms_responder = mms_acceptor.responder().await?;
         mms_responder.accept().await
     }
 }

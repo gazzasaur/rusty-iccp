@@ -339,7 +339,7 @@ pub trait CoppInitiator: Send {
     fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<CoppInitResult<impl CoppConnection>, CoppError>> + Send;
 }
 
-pub trait CoppListener: Send {
+pub trait CoppAcceptor: Send {
     fn accept(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, PresentationContextType, Option<UserData>), CoppError>> + Send;
 
     fn reject(self, context_definition_result_list: PresentationContextResultType, provider_reason: Option<ProviderReason>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
