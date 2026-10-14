@@ -100,7 +100,7 @@ mod tests {
                 RustyCoppAcceptor::<RustyCospResponder<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(cosp_listener)
                     .await?;
             let (mut acse_listener, received_request_information) = RustyOsiSingleValueAcseAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
-            acse_listener.set_response(Some(response_options.clone()));
+            acse_listener.set_response(response_options.clone());
             let (acse_responder, received_connect_data) = acse_listener.responder().await?;
 
             Ok((acse_responder.accept(accept_data.clone()).await?, received_request_information, received_connect_data))

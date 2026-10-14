@@ -7,7 +7,7 @@ use der_parser::ber::compat::BerObjectHeader;
 use der_parser::ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any};
 use der_parser::der::{Class, Header, Tag};
 use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
-use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseListener, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
+use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseAcceptor, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 use tracing::warn;
 
 use crate::parsers::{process_constructed_data, process_integer_content, process_mms_bitstring_content, process_mms_boolean_content, process_mms_string};
@@ -481,7 +481,7 @@ pub struct RustyMmsAcceptor<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcs
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsAcceptor<T, R, W> {
-    pub async fn new(acse_listener: impl OsiSingleValueAcseListener) -> Result<RustyMmsAcceptor<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsError> {
+    pub async fn new(acse_listener: impl OsiSingleValueAcseAcceptor) -> Result<RustyMmsAcceptor<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsError> {
         let (acse_responder, init_data) = acse_listener.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
         let request = InitiateRequestPdu::parse(init_data)?;
 

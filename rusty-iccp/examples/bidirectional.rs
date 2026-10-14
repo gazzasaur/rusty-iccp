@@ -18,7 +18,6 @@ use tokio::{
         Mutex, watch::{Receiver, Sender},
     },
 };
-use tracing::error;
 
 pub fn control_centre_a_identity() -> MmsServiceConnectionIdentityParameters {
     MmsServiceConnectionIdentityParameters { tsap_id: Some(vec![1]), session_selector: Some(vec![1]), presentation_selector: Some(vec![1]), ap_title: Some(oid!(1.2.3.1)), ae_qualifier: Some(vec![1]), ..Default::default() }
@@ -170,7 +169,6 @@ async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Res
 
     // Then ACSE
     let (acse_acceptor, _) = RustyOsiSingleValueAcseAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_acceptor).await?;
-    acse_acceptor.set_response(response);
 
     // Then MMS. This is a low level MMS Api. We will wrap this in a higher level one.
     let rusty_mms_listener = RustyMmsAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_acceptor).await?;

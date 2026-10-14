@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use der_parser::Oid;
 use num_bigint::BigInt;
 use rusty_acse::{
-    AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseListener, RustyOsiSingleValueAcseInitiatorIsoStack,
+    AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseAcceptor, RustyOsiSingleValueAcseInitiatorIsoStack,
     RustyOsiSingleValueAcseAcceptor, RustyOsiSingleValueAcseAcceptorIsoStack,
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppAcceptorIsoStack};
@@ -591,17 +591,7 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
     let (copp_responder, _) = RustyCoppAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_listener).await.map_err(to_mms_error(""))?;
 
     let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_responder).await.map_err(to_mms_error(""))?;
-    acse_listener.set_response(Some(AcseResponseInformation {
-        application_context_name: Oid::from(&[1, 0, 9506, 2, 3]).map_err(to_mms_error(""))?,
-        associate_result: AssociateResult::Accepted,
-        associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
-        responding_ap_title: acse_request_info.called_ap_title,
-        responding_ae_qualifier: acse_request_info.called_ae_qualifier,
-        responding_ap_invocation_identifier: acse_request_info.called_ap_invocation_identifier,
-        responding_ae_invocation_identifier: acse_request_info.called_ae_invocation_identifier,
-        implementation_information: None,
-    }));
-
+ 
     let mms_listener = RustyMmsAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await.map_err(to_mms_error(""))?;
     let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
     let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
@@ -620,7 +610,7 @@ pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServi
     }))
 }
 
-pub async fn accept_mms_service_server_connect<R: TpktReader + 'static, W: TpktWriter + 'static>(acse_listener: impl OsiSingleValueAcseListener + 'static) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
+pub async fn accept_mms_service_server_connect<R: TpktReader + 'static, W: TpktWriter + 'static>(acse_listener: impl OsiSingleValueAcseAcceptor + 'static) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
     let mms_listener = RustyMmsAcceptorIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
     let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
     let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;

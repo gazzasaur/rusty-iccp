@@ -9,10 +9,10 @@ use std::marker::PhantomData;
 
 pub use api::*;
 use rusty_acse::{
-    AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseAcceptorIsoStack,
+    AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseAcceptorIsoStack, RustyOsiSingleValueAcseInitiatorIsoStack,
     RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseResponderIsoStack, RustyOsiSingleValueAcseWriterIsoStack,
 };
-use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppAcceptorIsoStack};
+use rusty_copp::{CoppConnectionInformation, RustyCoppAcceptorIsoStack, RustyCoppInitiatorIsoStack};
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptor, RustyCospInitiator};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
 use rusty_tpkt::{TpktConnection, TpktReader, TpktWriter};
@@ -66,16 +66,6 @@ impl<T: TpktConnection, R: TpktReader, W: TpktWriter> OsiMmsMirrorResponderConne
             RustyCospAcceptor::<RustyCotpReader<R>, RustyCotpWriter<W>>::new(cotp_connection, CospConnectionParameters::default()).await.map_err(to_mms_error("Failed to create a COSP connection when creating an MMS association"))?;
         let (copp_listener, _) = RustyCoppAcceptorIsoStack::<R, W>::new(cosp_listener).await.map_err(to_mms_error("Failed to create COPP listener"))?;
         let (mut acse_listener, acse_request_information) = RustyOsiSingleValueAcseAcceptorIsoStack::<R, W>::new(copp_listener).await.map_err(to_mms_error("Failed to create a COPP connection when creating an MMS association"))?;
-        acse_listener.set_response(Some(AcseResponseInformation {
-            application_context_name: acse_request_information.application_context_name, // TODO: Should verify it is MMS
-            associate_result: AssociateResult::Accepted,
-            associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
-            responding_ap_title: acse_request_information.called_ap_title,
-            responding_ae_qualifier: acse_request_information.called_ae_qualifier,
-            responding_ap_invocation_identifier: acse_request_information.called_ap_invocation_identifier,
-            responding_ae_invocation_identifier: acse_request_information.called_ae_invocation_identifier,
-            implementation_information: None,
-        }));
         let mms_acceptor = RustyMmsAcceptorIsoStack::<R, W>::new(acse_listener).await?;
         let mms_responder = mms_acceptor.responder().await?;
         mms_responder.accept().await

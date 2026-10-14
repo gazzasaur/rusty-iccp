@@ -38,6 +38,21 @@ pub struct AcseRequestInformation {
     pub implementation_information: Option<String>,
 }
 
+impl AcseRequestInformation {
+    pub fn response(&self) -> AcseResponseInformation {
+        AcseResponseInformation {
+            application_context_name: self.application_context_name.clone(),
+            associate_result: AssociateResult::Accepted,
+            associate_source_diagnostic: AssociateSourceDiagnostic::User(AssociateSourceDiagnosticUserCategory::Null),
+            responding_ap_title: self.called_ap_title.clone(),
+            responding_ae_qualifier: self.called_ae_qualifier.clone(),
+            responding_ap_invocation_identifier: self.called_ap_invocation_identifier.clone(),
+            responding_ae_invocation_identifier: self.called_ae_invocation_identifier.clone(),
+            implementation_information: None,
+        }
+    }
+}
+
 impl Default for AcseRequestInformation {
     fn default() -> Self {
         Self {
@@ -135,7 +150,7 @@ pub trait OsiSingleValueAcseInitiator: Send {
     fn initiate(self, abstract_syntax_name: Oid<'static>, user_data: Vec<u8>) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseConnection, AcseResponseInformation, Vec<u8>), AcseError>> + Send;
 }
 
-pub trait OsiSingleValueAcseListener: Send {
+pub trait OsiSingleValueAcseAcceptor: Send {
     fn responder(self) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseResponder, Vec<u8>), AcseError>> + Send;
 }
 
