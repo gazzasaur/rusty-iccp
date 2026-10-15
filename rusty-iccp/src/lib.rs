@@ -941,13 +941,13 @@ mod tests {
 
     use rand::random_range;
     use rusty_acse::RustyOsiSingleValueAcseAcceptorIsoStack;
-use rusty_copp::RustyCoppAcceptorIsoStack;
-use rusty_cosp::RustyCospAcceptorIsoStack;
-use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpResponder};
-use rusty_mms::{MmsConnection, MmsListener, MmsResponder, RustyMmsAcceptorIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
-use rusty_mms_service::{MmsServiceConnectionParameters, RustyMmsServiceAssociationIsoStack, RustyTcpMmsServiceAssociation, call_mms_service};
-    use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter};
-use tokio::{self, join};
+    use rusty_copp::RustyCoppAcceptorIsoStack;
+    use rusty_cosp::RustyCospAcceptorIsoStack;
+    use rusty_cotp::{CotpResponder, RustyCotpResponder};
+    use rusty_mms::{MmsConnection, MmsListener, MmsResponder, RustyMmsAcceptorIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
+    use rusty_mms_service::{MmsServiceAssociation, MmsServiceConnectionParameters, RustyMmsServiceAssociation, RustyMmsServiceAssociationIsoStack, call_mms_service};
+    use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
+    use tokio::{self, join};
 
     use crate::{IccpAssociation, IccpServer, RustyIccpAssociation, RustyIccpServer, error::IccpError};
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -961,7 +961,7 @@ use tokio::{self, join};
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -984,8 +984,8 @@ use tokio::{self, join};
         Ok(())
     }
 
-    // async fn create_mms_service_server(address: SocketAddr) -> Result<RustyTcpMmsServiceAssociation<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>, anyhow::Error> {
-    async fn create_mms_service_server(address: SocketAddr) -> Result<(), anyhow::Error> {
+    async fn create_mms_service_server(address: SocketAddr) -> Result<Box<dyn MmsServiceAssociation>, anyhow::Error> {
+        // async fn create_mms_service_server(address: SocketAddr) -> Result<(), anyhow::Error> {
         let tpkt_server = TcpTpktServer::listen(address).await?;
         let tpkt_connection = tpkt_server.accept().await?;
         let (cotp_responder, a) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
@@ -995,8 +995,6 @@ use tokio::{self, join};
         let (acse_acceptor, _) = RustyOsiSingleValueAcseAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_acceptor).await?;
         let mms_acceptor = RustyMmsAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_acceptor).await?;
         let (mms_reader, mms_writer) = mms_acceptor.responder().await?.accept().await?.split().await?;
-        RustyMmsServiceAssociationIsoStack::<TcpTpktReader, TcpTpktWriter>::new(mms_reader, mms_writer);
-
-        Ok(())
+        Ok(Box::new(RustyMmsServiceAssociationIsoStack::<TcpTpktReader, TcpTpktWriter>::new(mms_reader, mms_writer)))
     }
 }

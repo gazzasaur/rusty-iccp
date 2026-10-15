@@ -12,7 +12,7 @@ use rusty_copp::RustyCoppAcceptorIsoStack;
 use rusty_cosp::RustyCospAcceptorIsoStack;
 use rusty_cotp::{CotpResponder, RustyCotpResponder};
 use rusty_mms::{RustyMmsAcceptorIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
-use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyTcpMmsServiceAssociation, call_mms_service};
+use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyMmsServiceAssociation, call_mms_service};
 use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection};
 use tokio::{
     join, sync::{
@@ -175,6 +175,6 @@ async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection  + 'sta
     // You can check the proposed MMS parameters here. This is currently not restricted, but will be in a later version.
 
     let mms_responder = rusty_mms_listener.responder().await?;
-    let mms_association = RustyTcpMmsServiceAssociation::<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>::accept(mms_responder).await?;
+    let mms_association = RustyMmsServiceAssociation::<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>::accept(mms_responder).await?;
     Ok(RustyIccpAssociation::new(Box::new(mms_association)))
 }

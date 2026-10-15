@@ -49,7 +49,7 @@ pub mod data;
 pub mod error;
 pub mod message;
 
-pub type RustyMmsServiceAssociationIsoStack<R, W> = RustyTcpMmsServiceAssociation<RustyMmsReaderIsoStack<R>, RustyMmsWriterIsoStack<W>>;
+pub type RustyMmsServiceAssociationIsoStack<R, W> = RustyMmsServiceAssociation<RustyMmsReaderIsoStack<R>, RustyMmsWriterIsoStack<W>>;
 
 #[derive(Clone, Debug)]
 pub struct MmsServiceConnectionIdentityParameters {
@@ -156,7 +156,7 @@ impl Drop for ResponseReservation {
     }
 }
 
-pub struct RustyTcpMmsServiceAssociation<R: MmsReader, W: MmsWriter> {
+pub struct RustyMmsServiceAssociation<R: MmsReader, W: MmsWriter> {
     reader: Arc<Mutex<R>>,
     writer: Arc<Mutex<W>>,
     invocation_id: Arc<AtomicI32>,
@@ -167,11 +167,11 @@ pub struct RustyTcpMmsServiceAssociation<R: MmsReader, W: MmsWriter> {
     info_report_receiver: Arc<Mutex<UnboundedReceiver<MmsUnconfirmedService>>>,
 }
 
-impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceAssociation<R, W> {
-    pub fn new(mms_reader: impl MmsReader, mms_writer: impl MmsWriter) -> RustyTcpMmsServiceAssociation<impl MmsReader, impl MmsWriter> {
+impl<R: MmsReader, W: MmsWriter> RustyMmsServiceAssociation<R, W> {
+    pub fn new(mms_reader: impl MmsReader, mms_writer: impl MmsWriter) -> RustyMmsServiceAssociation<impl MmsReader, impl MmsWriter> {
         let (sender, receiver) = mpsc::unbounded_channel();
 
-        RustyTcpMmsServiceAssociation {
+        RustyMmsServiceAssociation {
             reader: Arc::new(Mutex::new(mms_reader)),
             writer: Arc::new(Mutex::new(mms_writer)),
             invocation_id: Arc::new(AtomicI32::new(0)),
@@ -182,10 +182,10 @@ impl<R: MmsReader, W: MmsWriter> RustyTcpMmsServiceAssociation<R, W> {
         }
     }
 
-    pub async fn accept(mms_responder: impl MmsResponder) -> Result<RustyTcpMmsServiceAssociation<impl MmsReader, impl MmsWriter>, MmsServiceError> {
+    pub async fn accept(mms_responder: impl MmsResponder) -> Result<RustyMmsServiceAssociation<impl MmsReader, impl MmsWriter>, MmsServiceError> {
         let mms_connection = mms_responder.accept().await?;
         let (mms_reader, mms_writer) = mms_connection.split().await?;
-        Ok(RustyTcpMmsServiceAssociation::<R, W>::new(mms_reader, mms_writer))
+        Ok(RustyMmsServiceAssociation::<R, W>::new(mms_reader, mms_writer))
     }
 
     async fn register_confirmed_message(&mut self, invocation_id: &Vec<u8>) -> Result<ResponseReservation, MmsServiceError> {
@@ -264,9 +264,9 @@ impl Clone for Box<dyn MmsServiceAssociation> {
 }
 
 #[async_trait]
-impl<R: MmsReader + 'static, W: MmsWriter + 'static> MmsServiceAssociation for RustyTcpMmsServiceAssociation<R, W> {
+impl<R: MmsReader + 'static, W: MmsWriter + 'static> MmsServiceAssociation for RustyMmsServiceAssociation<R, W> {
     fn clone(&self) -> Box<dyn MmsServiceAssociation> {
-        Box::new(RustyTcpMmsServiceAssociation {
+        Box::new(RustyMmsServiceAssociation {
             reader: self.reader.clone(),
             writer: self.writer.clone(),
             invocation_id: self.invocation_id.clone(),
@@ -567,7 +567,7 @@ pub async fn call_mms_service(host: SocketAddr, parameters: MmsServiceConnection
 
     let (sender, receiver) = mpsc::unbounded_channel();
 
-    Ok(Box::new(RustyTcpMmsServiceAssociation {
+    Ok(Box::new(RustyMmsServiceAssociation {
         reader: Arc::new(Mutex::new(reader)),
         writer: Arc::new(Mutex::new(writer)),
         invocation_id: Arc::new(AtomicI32::new(0)),
