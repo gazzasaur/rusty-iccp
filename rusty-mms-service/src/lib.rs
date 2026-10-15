@@ -29,9 +29,7 @@ use tokio::{
 };
 
 use rusty_mms::{
-    ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsReader, MmsRequestInformation,
-    MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsConnectionIsoStack, RustyMmsInitiatorIsoStack, RustyMmsAcceptorIsoStack,
-    parameters::{ParameterSupportOption, ServiceSupportOption},
+    ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsReader, MmsRequestInformation, MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsAcceptorIsoStack, RustyMmsConnectionIsoStack, RustyMmsInitiatorIsoStack, RustyMmsReader, RustyMmsReaderIsoStack, RustyMmsWriter, RustyMmsWriterIsoStack, parameters::{ParameterSupportOption, ServiceSupportOption},
 };
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
 
@@ -50,6 +48,8 @@ use crate::{
 pub mod data;
 pub mod error;
 pub mod message;
+
+pub type RustyMmsServiceAssociationIsoStack<R, W> = RustyTcpMmsServiceAssociation<RustyMmsReaderIsoStack<R>, RustyMmsWriterIsoStack<W>>;
 
 #[derive(Clone, Debug)]
 pub struct MmsServiceConnectionIdentityParameters {
@@ -525,7 +525,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> MmsServiceAssociation for R
     }
 }
 
-pub async fn create_mms_service_client(host: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
+pub async fn call_mms_service(host: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
     let tpkt_connection = TcpTpktConnection::connect(host).await.map_err(|e| MmsServiceError::ProtocolError(format!("{e}")))?;
 
     let cotp_connection_info = CotpProtocolInformation::initiator(parameters.calling.tsap_id, parameters.called.tsap_id);
@@ -578,56 +578,6 @@ pub async fn create_mms_service_client(host: SocketAddr, parameters: MmsServiceC
     }))
 }
 
-pub async fn create_mms_service_server(address: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
-    let tpkt_connection = TcpTpktServer::listen(address).await?.accept().await?;
-
-    let (cotp_listener, cotp_connection_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await.map_err(to_mms_error("Failed to create COTP Server"))?;
-    let cotp_connection = cotp_listener.accept(cotp_connection_info).await.map_err(to_mms_error(""))?;
-
-    let (cosp_listener, _) = RustyCospAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, CospConnectionParameters::default()).await.map_err(to_mms_error("Failed to create COSP Connection"))?;
-
-    // TODO: Need to expose this.
-    let _copp_connection_info = CoppConnectionInformation { called_presentation_selector: parameters.called.presentation_selector, calling_presentation_selector: parameters.calling.presentation_selector };
-    let (copp_responder, _) = RustyCoppAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_listener).await.map_err(to_mms_error(""))?;
-
-    let (mut acse_listener, acse_request_info) = RustyOsiSingleValueAcseAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_responder).await.map_err(to_mms_error(""))?;
- 
-    let mms_listener = RustyMmsAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_listener).await.map_err(to_mms_error(""))?;
-    let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
-    let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
-
-    let (sender, receiver) = mpsc::unbounded_channel();
-    let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
-
-    Ok(Box::new(RustyTcpMmsServiceAssociation {
-        reader: Arc::new(Mutex::new(mms_reader)),
-        writer: Arc::new(Mutex::new(mms_writer)),
-        invocation_id: Arc::new(AtomicI32::new(0)),
-        mail_box: Arc::new(Mutex::new(HashMap::new())),
-        notify: Arc::new(Notify::new()),
-        info_report_sender: sender,
-        info_report_receiver: Arc::new(Mutex::new(receiver)),
-    }))
-}
-
-pub async fn accept_mms_service_server_connect<R: TpktReader + 'static, W: TpktWriter + 'static>(acse_listener: impl OsiSingleValueAcseAcceptor + 'static) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
-    let mms_listener = RustyMmsAcceptorIsoStack::<R, W>::new(acse_listener).await.map_err(to_mms_error(""))?;
-    let mms_responder = mms_listener.responder().await.map_err(to_mms_error(""))?;
-    let mms_connection = mms_responder.accept().await.map_err(to_mms_error(""))?;
-    let (mms_reader, mms_writer) = mms_connection.split().await.map_err(to_mms_error(""))?;
-    let (sender, receiver) = mpsc::unbounded_channel();
-
-    Ok(Box::new(RustyTcpMmsServiceAssociation {
-        reader: Arc::new(Mutex::new(mms_reader)),
-        writer: Arc::new(Mutex::new(mms_writer)),
-        invocation_id: Arc::new(AtomicI32::new(0)),
-        mail_box: Arc::new(Mutex::new(HashMap::new())),
-        notify: Arc::new(Notify::new()),
-        info_report_sender: sender,
-        info_report_receiver: Arc::new(Mutex::new(receiver)),
-    }))
-}
-
 #[cfg(test)]
 mod tests {
     use crate::data::{
@@ -635,7 +585,7 @@ mod tests {
         VariableAccessAttributes,
     };
     use crate::error::to_mms_error;
-    use crate::{create_mms_service_client, create_mms_service_server};
+    use crate::{call_mms_service, create_mms_service_server};
     use std::time::Duration;
 
     use anyhow::anyhow;
@@ -658,7 +608,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -800,7 +750,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -839,7 +789,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -872,7 +822,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -987,7 +937,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -1037,7 +987,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -1085,7 +1035,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -1149,7 +1099,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -1232,7 +1182,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );
@@ -1304,7 +1254,7 @@ mod tests {
             async {
                 // Allow the server to start listening first.
                 tokio::time::sleep(Duration::from_millis(1)).await;
-                create_mms_service_client(address, MmsServiceConnectionParameters::default()).await
+                call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
             async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
         );

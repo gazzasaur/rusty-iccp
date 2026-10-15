@@ -481,8 +481,8 @@ pub struct RustyMmsAcceptor<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcs
 }
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsAcceptor<T, R, W> {
-    pub async fn new(acse_listener: impl OsiSingleValueAcseAcceptor) -> Result<RustyMmsAcceptor<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsError> {
-        let (acse_responder, init_data) = acse_listener.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
+    pub async fn new(acse_acceptor: impl OsiSingleValueAcseAcceptor) -> Result<RustyMmsAcceptor<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsError> {
+        let (acse_responder, init_data) = acse_acceptor.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
         let request = InitiateRequestPdu::parse(init_data)?;
 
         let mms_request_information = MmsRequestInformation {

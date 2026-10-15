@@ -4,6 +4,7 @@ use std::{
 };
 
 use der_parser::oid;
+use rusty_iccp::RustyIccpAssociation;
 use rusty_mms::{MmsListener, MmsReader, MmsWriter};
 
 use rusty_acse::RustyOsiSingleValueAcseAcceptorIsoStack;
@@ -11,7 +12,7 @@ use rusty_copp::RustyCoppAcceptorIsoStack;
 use rusty_cosp::RustyCospAcceptorIsoStack;
 use rusty_cotp::{CotpResponder, RustyCotpResponder};
 use rusty_mms::{RustyMmsAcceptorIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
-use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyTcpMmsServiceAssociation, create_mms_service_client};
+use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyTcpMmsServiceAssociation, call_mms_service};
 use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection};
 use tokio::{
     join, sync::{
@@ -91,7 +92,7 @@ async fn try_data_centre_a() -> Result<(), anyhow::Error> {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let target_address = "127.0.0.1:8103".parse()?;
-    let mms_clinet = create_mms_service_client(
+    let mms_clinet = call_mms_service(
         target_address,
         MmsServiceConnectionParameters {
             local_detail_calling: Some(1 * 1024 * 1024), // Used as Max MMS Payload Size. This is required by most stacks.
@@ -101,8 +102,6 @@ async fn try_data_centre_a() -> Result<(), anyhow::Error> {
         },
     )
     .await?;
-
-    // mms_clinet.
 
     Ok(())
 }
@@ -146,7 +145,7 @@ async fn mms_server_worker(listener_address: String, listener_port: u16, associa
 }
 
 // To avoid tying up the accept loop for the multi-stage handshake, we will use a separate task.
-async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Result<RustyTcpMmsServiceAssociation<impl MmsReader, impl MmsWriter>, anyhow::Error> {
+async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection  + 'static) -> Result<RustyIccpAssociation, anyhow::Error> {
     // This is one possible implementation.
     //
     // COTP is negotiated before anything else. This requires a request and response payload to be sent between hosts.
@@ -176,5 +175,6 @@ async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection) -> Res
     // You can check the proposed MMS parameters here. This is currently not restricted, but will be in a later version.
 
     let mms_responder = rusty_mms_listener.responder().await?;
-    Ok(RustyTcpMmsServiceAssociation::<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>::accept(mms_responder).await?)
+    let mms_association = RustyTcpMmsServiceAssociation::<RustyMmsReaderIsoStack<TcpTpktReader>, RustyMmsWriterIsoStack<TcpTpktWriter>>::accept(mms_responder).await?;
+    Ok(RustyIccpAssociation::new(Box::new(mms_association)))
 }
