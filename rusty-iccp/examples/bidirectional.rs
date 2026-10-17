@@ -1,10 +1,7 @@
-use std::{
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use der_parser::oid;
-use rusty_iccp::RustyIccpAssociation;
+use rusty_iccp::{IccpAssociation, IccpScopedIdentifier, RustyIccpAssociation};
 use rusty_mms::{MmsListener, MmsReader, MmsWriter};
 
 use rusty_acse::RustyOsiSingleValueAcseAcceptorIsoStack;
@@ -12,11 +9,13 @@ use rusty_copp::RustyCoppAcceptorIsoStack;
 use rusty_cosp::RustyCospAcceptorIsoStack;
 use rusty_cotp::{CotpResponder, RustyCotpResponder};
 use rusty_mms::{RustyMmsAcceptorIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
-use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyMmsServiceAssociation, call_mms_service};
+use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyMmsServiceAssociation, call_mms_service, data::Identity, message::MmsServiceMessage};
 use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection};
 use tokio::{
-    join, sync::{
-        Mutex, watch::{Receiver, Sender},
+    join,
+    sync::{
+        Mutex,
+        watch::{Receiver, Sender},
     },
 };
 
@@ -92,7 +91,7 @@ async fn try_data_centre_a() -> Result<(), anyhow::Error> {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let target_address = "127.0.0.1:8103".parse()?;
-    let mms_clinet = call_mms_service(
+    let mut mms_association = call_mms_service(
         target_address,
         MmsServiceConnectionParameters {
             local_detail_calling: Some(1 * 1024 * 1024), // Used as Max MMS Payload Size. This is required by most stacks.
@@ -103,7 +102,17 @@ async fn try_data_centre_a() -> Result<(), anyhow::Error> {
     )
     .await?;
 
-    Ok(())
+    let mut counter = 0u64;
+    loop {
+        assert_eq!(mms_association.identify().await?, Identity { vendor_name: "Gazzasaur".into(), model_name: "Rusty ICCP".into(), revision: "Sample".into(), abstract_syntaxes: None });
+        counter += 1;
+
+        if counter % 10000 == 0 {
+            println!("{counter:?}");
+        }
+    }
+
+//    Ok(())
 }
 
 async fn data_centre_b() -> Result<(), anyhow::Error> {
@@ -140,12 +149,45 @@ async fn mms_server_worker(listener_address: String, listener_port: u16, associa
     loop {
         // Process connections as they arrive.
         let tpkt_connection = tpkt_listener.accept().await?;
-        tokio::task::spawn(async move { mms_server_worker_acceptor(tpkt_connection).await.err().iter().for_each(|e| println!("{e:?}")) });
+        tokio::task::spawn(async move {
+            let iccp_association = match mms_server_worker_acceptor(tpkt_connection).await {
+                Ok(x) => x,
+                Err(e) => {
+                    println!("{e:?}");
+                    return;
+                }
+            };
+            iccp_server_loop(iccp_association).await.err().iter().for_each(|e| println!("{e:?}"));
+        });
+    }
+}
+
+async fn iccp_server_loop(mut iccp_association: RustyIccpAssociation) -> Result<(), anyhow::Error> {
+    let datasets: HashMap<String, Vec<IccpScopedIdentifier>> = HashMap::new();
+
+    loop {
+        for message in iccp_association.receive_message().await? {
+            match message {
+                // Commonly used as a heartbeat
+                rusty_iccp::IccpMessage::MmsMessage(MmsServiceMessage::Identify(res)) => res.respond(Identity { vendor_name: "Gazzasaur".into(), model_name: "Rusty ICCP".into(), revision: "Sample".into(), abstract_syntaxes: None }).await?,
+                
+                rusty_iccp::IccpMessage::CreateDataSet(res) => todo!(),
+
+                rusty_iccp::IccpMessage::Read(read_operation) => todo!(),
+                rusty_iccp::IccpMessage::StartTransferSet(start_transfer_set_operation) => todo!(),
+                rusty_iccp::IccpMessage::GetDataSetNames(get_data_set_names_operation) => todo!(),
+                rusty_iccp::IccpMessage::GetNextDsTransferSet(get_next_ds_transfer_set_operation) => todo!(),
+                rusty_iccp::IccpMessage::IccpTransferSetReport(iccp_transfer_set_report) => todo!(),
+
+                rusty_iccp::IccpMessage::MmsAaRead(aa_read_operation) => todo!(),
+                rusty_iccp::IccpMessage::MmsMessage(mms_service_message) => todo!(),
+            }
+        }
     }
 }
 
 // To avoid tying up the accept loop for the multi-stage handshake, we will use a separate task.
-async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection  + 'static) -> Result<RustyIccpAssociation, anyhow::Error> {
+async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection + 'static) -> Result<RustyIccpAssociation, anyhow::Error> {
     // This is one possible implementation.
     //
     // COTP is negotiated before anything else. This requires a request and response payload to be sent between hosts.

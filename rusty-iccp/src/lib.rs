@@ -943,7 +943,7 @@ mod tests {
     use rusty_acse::RustyOsiSingleValueAcseAcceptorIsoStack;
     use rusty_copp::RustyCoppAcceptorIsoStack;
     use rusty_cosp::RustyCospAcceptorIsoStack;
-    use rusty_cotp::{CotpResponder, RustyCotpResponder};
+    use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpResponder};
     use rusty_mms::{MmsConnection, MmsListener, MmsResponder, RustyMmsAcceptorIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
     use rusty_mms_service::{MmsServiceAssociation, MmsServiceConnectionParameters, RustyMmsServiceAssociation, RustyMmsServiceAssociationIsoStack, call_mms_service};
     use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
@@ -985,7 +985,6 @@ mod tests {
     }
 
     async fn create_mms_service_server(address: SocketAddr) -> Result<Box<dyn MmsServiceAssociation>, anyhow::Error> {
-        // async fn create_mms_service_server(address: SocketAddr) -> Result<(), anyhow::Error> {
         let tpkt_server = TcpTpktServer::listen(address).await?;
         let tpkt_connection = tpkt_server.accept().await?;
         let (cotp_responder, a) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
