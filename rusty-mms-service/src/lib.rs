@@ -1,20 +1,16 @@
 use async_trait::async_trait;
 use der_parser::Oid;
 use num_bigint::BigInt;
-use rusty_acse::{
-    AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseAcceptor, RustyOsiSingleValueAcseInitiatorIsoStack,
-    RustyOsiSingleValueAcseAcceptor, RustyOsiSingleValueAcseAcceptorIsoStack,
-};
-use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack, RustyCoppAcceptorIsoStack};
-use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
-use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
+use rusty_acse::{AcseRequestInformation, AeQualifier, ApTitle, RustyOsiSingleValueAcseInitiatorIsoStack};
+use rusty_copp::{CoppConnectionInformation, RustyCoppInitiatorIsoStack};
+use rusty_cosp::{CospProtocolInformation, RustyCospInitiatorIsoStack};
+use rusty_cotp::{CotpProtocolInformation, RustyCotpConnection};
 use std::{
     collections::{
         HashMap, VecDeque,
         hash_map::Entry::{Occupied, Vacant},
     },
     net::SocketAddr,
-    ops::Deref,
     sync::{
         Arc,
         atomic::{AtomicI32, Ordering},
@@ -29,9 +25,11 @@ use tokio::{
 };
 
 use rusty_mms::{
-    ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsListener, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsReader, MmsRequestInformation, MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsAcceptorIsoStack, RustyMmsConnectionIsoStack, RustyMmsInitiatorIsoStack, RustyMmsReader, RustyMmsReaderIsoStack, RustyMmsWriter, RustyMmsWriterIsoStack, parameters::{ParameterSupportOption, ServiceSupportOption},
+    ListOfVariablesItem, MmsAccessResult, MmsConfirmedRequest, MmsConfirmedResponse, MmsConnection, MmsData, MmsError, MmsInitiator, MmsMessage, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsReader,
+    MmsRequestInformation, MmsResponder, MmsScope, MmsUnconfirmedService, MmsVariableAccessSpecification, MmsWriteResult, MmsWriter, RustyMmsInitiatorIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack,
+    parameters::{ParameterSupportOption, ServiceSupportOption},
 };
-use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
+use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktWriter};
 
 use crate::{
     data::{
@@ -132,6 +130,12 @@ pub trait MmsServiceAssociation: Send + Sync {
     async fn send_information_report(&mut self, variable_access_specification: MmsVariableAccessSpecification, access_results: Vec<MmsServiceAccessResult>) -> Result<(), MmsServiceError>;
 
     async fn receive_message(&mut self) -> Result<MmsServiceMessage, MmsServiceError>;
+
+    async fn conclude_request(&mut self) -> Result<(), MmsServiceError>;
+    async fn conclude_response(&mut self) -> Result<(), MmsServiceError>;
+
+    async fn complete_conclude_request(&mut self) -> Result<(), MmsServiceError>;
+    async fn complete_conclude_response(&mut self) -> Result<(), MmsServiceError>;
 }
 
 // Cleans up after iteself if the job has been cancelled.
@@ -429,6 +433,12 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> MmsServiceAssociation for R
                     .collect::<Result<Vec<MmsServiceAccessResult>, MmsError>>()?;
                 return Ok(MmsServiceMessage::InformationReport(InformationReportMmsServiceMessage { variable_access_specification, access_results }));
             }
+            MmsMessage::ConcludeRequest => {
+                return Ok(MmsServiceMessage::ConcludeRequest);
+            }
+            MmsMessage::ConcludeResponse => {
+                return Ok(MmsServiceMessage::ConcludeResponse);
+            }
             _ => todo!(),
         };
 
@@ -523,6 +533,22 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> MmsServiceAssociation for R
             )),
         })
     }
+
+    async fn conclude_request(&mut self) -> Result<(), MmsServiceError> {
+        Ok(self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::ConcludeRequest])).await?)
+    }
+
+    async fn conclude_response(&mut self) -> Result<(), MmsServiceError> {
+        Ok(self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::ConcludeResponse])).await?)
+    }
+
+    async fn complete_conclude_request(&mut self) -> Result<(), MmsServiceError> {
+        Ok(self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::CompleteConcludeRequest])).await?)
+    }
+
+    async fn complete_conclude_response(&mut self) -> Result<(), MmsServiceError> {
+        Ok(self.writer.lock().await.send(&mut VecDeque::from(vec![MmsMessage::CompleteConcludeResponse])).await?)
+    }
 }
 
 pub async fn call_mms_service(host: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
@@ -585,18 +611,28 @@ mod tests {
         VariableAccessAttributes,
     };
     use crate::error::to_mms_error;
-    use crate::{call_mms_service, create_mms_service_server};
+    use crate::{MmsServiceAssociation, RustyMmsServiceAssociationIsoStack, call_mms_service};
+    use std::net::SocketAddr;
     use std::time::Duration;
 
+    use crate::{Identity, MmsServiceConnectionParameters, error::MmsServiceError, message::MmsServiceMessage};
     use anyhow::anyhow;
     use der_parser::Oid;
     use num_bigint::{BigInt, BigUint};
     use rand::random_range;
-    use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, VariableSpecification};
+    use rusty_acse::RustyOsiSingleValueAcseAcceptorIsoStack;
+    use rusty_copp::RustyCoppAcceptorIsoStack;
+    use rusty_cosp::RustyCospAcceptorIsoStack;
+    use rusty_cotp::CotpResponder;
+    use rusty_cotp::RustyCotpResponder;
+    use rusty_mms::MmsListener;
+    use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, RustyMmsAcceptorIsoStack, VariableSpecification};
+    use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter};
     use tokio::join;
     use tracing_test::traced_test;
 
-    use crate::{Identity, MmsServiceConnectionParameters, error::MmsServiceError, message::MmsServiceMessage};
+    use rusty_mms::MmsConnection;
+    use rusty_mms::MmsResponder;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[traced_test]
@@ -610,7 +646,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -752,7 +788,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -791,7 +827,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let mut client = client_results?;
@@ -824,7 +860,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -939,7 +975,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -989,7 +1025,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -1037,7 +1073,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -1101,7 +1137,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -1184,7 +1220,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let client = client_results?;
@@ -1256,7 +1292,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(1)).await;
                 call_mms_service(address, MmsServiceConnectionParameters::default()).await
             },
-            async { create_mms_service_server(address, MmsServiceConnectionParameters::default()).await }
+            async { create_mms_service_server(address).await }
         );
 
         let mut client = client_results?;
@@ -1285,5 +1321,18 @@ mod tests {
         server_task.await??;
 
         Ok(())
+    }
+
+    async fn create_mms_service_server(address: SocketAddr) -> Result<Box<dyn MmsServiceAssociation>, anyhow::Error> {
+        let tpkt_server = TcpTpktServer::listen(address).await?;
+        let tpkt_connection = tpkt_server.accept().await?;
+        let (cotp_responder, a) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
+        let cotp_connection = cotp_responder.accept(a.responder()).await?;
+        let (cosp_acceptor, _) = RustyCospAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, Default::default()).await?;
+        let (copp_acceptor, _) = RustyCoppAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_acceptor).await?;
+        let (acse_acceptor, _) = RustyOsiSingleValueAcseAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_acceptor).await?;
+        let mms_acceptor = RustyMmsAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(acse_acceptor).await?;
+        let (mms_reader, mms_writer) = mms_acceptor.responder().await?.accept().await?.split().await?;
+        Ok(Box::new(RustyMmsServiceAssociationIsoStack::<TcpTpktReader, TcpTpktWriter>::new(mms_reader, mms_writer)))
     }
 }

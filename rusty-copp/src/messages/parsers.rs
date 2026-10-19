@@ -137,11 +137,7 @@ pub(crate) fn process_presentation_result_context<'a>(npm_objects: Vec<Any<'a>>)
             _ => (),
         };
     }
-    Ok(PresentationContextResult {
-        result,
-        transfer_syntax_name,
-        provider_reason
-    })
+    Ok(PresentationContextResult { result, transfer_syntax_name, provider_reason })
 }
 
 pub(crate) fn process_presentation_context_list<'a>(data: &'a [u8]) -> Result<PresentationContextType, BerError> {

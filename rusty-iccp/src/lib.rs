@@ -9,7 +9,7 @@ use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObj
 use rusty_mms_service::{
     MmsServiceAssociation,
     data::{
-        MmsServiceAccessResult,
+        Identity, MmsServiceAccessResult,
         MmsServiceData::{self},
         MmsServiceDataFloat, MmsServiceDeleteObjectScope,
     },
@@ -43,6 +43,9 @@ pub enum IccpTransferSetReport {
 pub trait IccpAssociation: Send + Sync {
     fn clone(&self) -> Box<dyn IccpAssociation>;
 
+    // An MMS Operation typically used for protocol heartbeats.
+    async fn identify(&mut self) -> Result<Identity, IccpError>;
+
     // --- Completed ---
     async fn get_data_values(&mut self, names: Vec<String>) -> Result<Vec<IccpAccessResult>, IccpError>;
     async fn get_data_set_names(&mut self, scope: IccpScope) -> Result<Vec<String>, IccpError>;
@@ -53,6 +56,12 @@ pub trait IccpAssociation: Send + Sync {
     async fn start_transfer_set(&mut self, domain: String, name: String) -> Result<(), IccpError>;
 
     async fn receive_message(&mut self) -> Result<Vec<IccpMessage>, IccpError>;
+
+    async fn conclude_request(&mut self) -> Result<(), IccpError>;
+    async fn conclude_response(&mut self) -> Result<(), IccpError>;
+
+    async fn complete_conclude_request(&mut self) -> Result<(), IccpError>;
+    async fn complete_conclude_response(&mut self) -> Result<(), IccpError>;
 
     // get_data_values
     // get_data_set_names
@@ -191,7 +200,6 @@ pub enum IccpScopedIdentifier {
 #[derive(Debug)]
 pub enum IccpMessage {
     Read(ReadOperation),
-    MmsAaRead(AaReadOperation),
 
     StartTransferSet(StartTransferSetOperation),
     CreateDataSet(CreateDataSetOperation),
@@ -349,11 +357,6 @@ impl GetNextDsTransferSetOperation {
     }
 }
 
-#[async_trait]
-pub trait IccpServer: Send + Sync + Clone {
-    async fn receive_operations(&mut self) -> Result<Vec<IccpMessage>, IccpError>;
-}
-
 #[derive(Clone)]
 pub struct RustyIccpServer {
     mms_server: Box<dyn MmsServiceAssociation>,
@@ -362,116 +365,6 @@ pub struct RustyIccpServer {
 impl RustyIccpServer {
     pub fn new(mms_server: Box<dyn MmsServiceAssociation>) -> Self {
         Self { mms_server }
-    }
-}
-
-#[async_trait]
-impl IccpServer for RustyIccpServer {
-    async fn receive_operations(&mut self) -> Result<Vec<IccpMessage>, IccpError> {
-        let mms_message = self.mms_server.receive_message().await?;
-        match mms_message {
-            MmsServiceMessage::DefineNamedVariableList(message) => {
-                let (data_set_domain, data_set_name) = match message.variable_list_name() {
-                    MmsObjectName::DomainSpecific(domain, name) => (domain.into(), name.into()),
-                    x => return Err(IccpError::ProtocolError(format!("Data Sets can only be created in the ICC scope but was: {x:?}"))),
-                };
-                let data_set_items = message
-                    .list_of_variables()
-                    .iter()
-                    .map(|x| match &x.variable_specification {
-                        VariableSpecification::Name(mms_object_name) => mms_object_name.try_into(),
-                        VariableSpecification::Invalidated => Err(IccpError::ProtocolError(format!("Invalidated variable specified in create data set request: {data_set_domain}:{data_set_name}"))),
-                    })
-                    .collect::<Result<Vec<IccpScopedIdentifier>, IccpError>>()?;
-                return Ok(vec![IccpMessage::CreateDataSet(CreateDataSetOperation { data_set_domain, data_set_name, data_set_items, message })]);
-            }
-            MmsServiceMessage::GetNameList(message) if matches!(message.object_class(), MmsObjectClass::Basic(MmsBasicObjectClass::NamedVariable)) => {
-                let scope = match message.object_scope() {
-                    MmsObjectScope::Vmd => IccpScope::Vcc,
-                    MmsObjectScope::Domain(x) => IccpScope::Icc(x.into()),
-                    x => return Err(IccpError::ProtocolError(format!("Can only list data sets for VCC and ICC but got {x:?}"))),
-                };
-                return Ok(vec![IccpMessage::GetDataSetNames(GetDataSetNamesOperation { scope, message })]);
-            }
-            MmsServiceMessage::Read(message) => match message.specification() {
-                MmsVariableAccessSpecification::ListOfVariables(items) => {
-                    let mut read_requests = vec![];
-
-                    // Used to support resolving operations one at a time.
-                    let mut response_index = 0usize;
-                    let (sender, receiver) = unbounded_channel();
-
-                    for item in items {
-                        match &item.variable_specification {
-                            VariableSpecification::Name(MmsObjectName::DomainSpecific(domain, name)) if name.as_str() == "Next_DSTransfer_Set" => {
-                                read_requests.push(IccpMessage::GetNextDsTransferSet(GetNextDsTransferSetOperation { index: response_index, domain: domain.clone(), responder: sender.clone() }))
-                            }
-                            VariableSpecification::Name(MmsObjectName::DomainSpecific(domain, name)) => {
-                                read_requests.push(IccpMessage::Read(ReadOperation { index: response_index, name: IccpScopedIdentifier::Icc(domain.clone(), name.clone()), responder: sender.clone() }))
-                            }
-                            VariableSpecification::Name(MmsObjectName::VmdSpecific(name)) => {
-                                read_requests.push(IccpMessage::Read(ReadOperation { index: response_index, name: IccpScopedIdentifier::Vcc(name.clone()), responder: sender.clone() }))
-                            }
-                            VariableSpecification::Name(MmsObjectName::AaSpecific(name)) => read_requests.push(IccpMessage::MmsAaRead(AaReadOperation { index: response_index, name: name.clone(), responder: sender.clone() })),
-                            VariableSpecification::Invalidated => (),
-                        }
-                        response_index += 1;
-                    }
-                    tokio::task::spawn(async move { perform_bulk_read_responds(message, response_index, receiver).await });
-                    Ok(read_requests)
-                }
-                MmsVariableAccessSpecification::VariableListName(_) => Ok(vec![IccpMessage::MmsMessage(MmsServiceMessage::Read(message))]),
-            },
-            MmsServiceMessage::Write(message) => match message.values().as_slice() {
-                [MmsServiceData::Structure(internal_structure)] => match internal_structure.as_slice() {
-                    [
-                        MmsServiceData::Structure(data_set_identifier),
-                        MmsServiceData::Integer(start_time),
-                        MmsServiceData::Integer(interval),
-                        MmsServiceData::Integer(useful_time), // TLE
-                        MmsServiceData::Integer(buffer_time),
-                        MmsServiceData::Integer(integrity_check),
-                        MmsServiceData::BitString(transfer_set_options),
-                        MmsServiceData::Boolean(block_date),
-                        MmsServiceData::Boolean(critical),
-                        MmsServiceData::Boolean(report_by_exception),
-                        MmsServiceData::Boolean(all_changes_reported),
-                        MmsServiceData::Boolean(status),
-                        MmsServiceData::Integer(event_code_requested),
-                    ] if let [MmsServiceData::Integer(scope), MmsServiceData::VisibleString(data_set_domain), MmsServiceData::VisibleString(data_set_name)] = data_set_identifier.as_slice()
-                        && let [interval_timeout_flag, integrity_timeout_flag, object_change_flag, operator_request_flag, other_external_event_flag] = transfer_set_options.as_slice()
-                        && let MmsVariableAccessSpecification::ListOfVariables(spec_items) = message.specification()
-                        && let [VariableSpecification::Name(MmsObjectName::DomainSpecific(transfer_set_domain, transfer_set_name))] = spec_items.iter().map(|x| x.variable_specification.clone()).collect::<Vec<_>>().as_slice() =>
-                    {
-                        // TODO Need to fail this if it cannot be decoded.
-                        let calculated_start_time: i64 = start_time.to_i64().unwrap_or_else(|| 0);
-                        let calculated_interval_timeout = if *integrity_timeout_flag { interval.to_u64() } else { None };
-                        let calculated_integrity_check = if *integrity_timeout_flag { integrity_check.to_u64() } else { None };
-                        let report_mode = match (calculated_interval_timeout, calculated_integrity_check) {
-                            (Some(x), _) if x >= 60 => TransferSetReportMode::OnChange { integrity: x },
-                            (_, Some(x)) if x >= 60 => TransferSetReportMode::Periodic { internal: x },
-                            _ => TransferSetReportMode::Periodic { internal: 600 },
-                        };
-
-                        return Ok(vec![IccpMessage::StartTransferSet(StartTransferSetOperation {
-                            transfer_set_domain: transfer_set_domain.clone(),
-                            transfer_set_name: transfer_set_name.clone(),
-                            data_set_domain: data_set_domain.clone(),
-                            data_set_name: data_set_name.clone(),
-                            report_mode,
-                            message,
-                        })]);
-                    }
-                    _ => Ok(vec![IccpMessage::MmsMessage(MmsServiceMessage::Write(message))]),
-                },
-                _ => Ok(vec![IccpMessage::MmsMessage(MmsServiceMessage::Write(message))]),
-            },
-            MmsServiceMessage::GetVariableAccessAttributes(_) => todo!(),
-            MmsServiceMessage::GetNamedVariableListAttributes(_) => todo!(),
-            MmsServiceMessage::DeleteNamedVariableList(_) => todo!(),
-            MmsServiceMessage::InformationReport(_) => todo!(),
-            message => Ok(vec![IccpMessage::MmsMessage(message)]),
-        }
     }
 }
 
@@ -529,6 +422,10 @@ impl Clone for Box<dyn IccpAssociation> {
 impl IccpAssociation for RustyIccpAssociation {
     fn clone(&self) -> Box<dyn IccpAssociation> {
         Box::new(RustyIccpAssociation { mms_client: self.mms_client.clone() })
+    }
+
+    async fn identify(&mut self) -> Result<Identity, IccpError> {
+        Ok(self.mms_client.identify().await?)
     }
 
     async fn get_data_values(&mut self, names: Vec<String>) -> Result<Vec<IccpAccessResult>, IccpError> {
@@ -683,7 +580,7 @@ impl IccpAssociation for RustyIccpAssociation {
                             VariableSpecification::Name(MmsObjectName::VmdSpecific(name)) => {
                                 read_requests.push(IccpMessage::Read(ReadOperation { index: response_index, name: IccpScopedIdentifier::Vcc(name.clone()), responder: sender.clone() }))
                             }
-                            VariableSpecification::Name(MmsObjectName::AaSpecific(name)) => read_requests.push(IccpMessage::MmsAaRead(AaReadOperation { index: response_index, name: name.clone(), responder: sender.clone() })),
+                            VariableSpecification::Name(MmsObjectName::AaSpecific(_)) => (), // ICCP does not use the AA Specific scope. This may be exposed if required at a later point.
                             VariableSpecification::Invalidated => (),
                         }
                         response_index += 1;
@@ -785,6 +682,22 @@ impl IccpAssociation for RustyIccpAssociation {
             }
             message => Ok(vec![IccpMessage::MmsMessage(message)]),
         }
+    }
+
+    async fn conclude_request(&mut self) -> Result<(), IccpError> {
+        Ok(self.mms_client.conclude_request().await?)
+    }
+
+    async fn conclude_response(&mut self) -> Result<(), IccpError> {
+        Ok(self.mms_client.conclude_response().await?)
+    }
+
+    async fn complete_conclude_request(&mut self) -> Result<(), IccpError> {
+        Ok(self.mms_client.complete_conclude_request().await?)
+    }
+
+    async fn complete_conclude_response(&mut self) -> Result<(), IccpError> {
+        Ok(self.mms_client.complete_conclude_response().await?)
     }
 }
 
@@ -949,7 +862,7 @@ mod tests {
     use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
     use tokio::{self, join};
 
-    use crate::{IccpAssociation, IccpServer, RustyIccpAssociation, RustyIccpServer, error::IccpError};
+    use crate::{IccpAssociation, RustyIccpAssociation, RustyIccpServer, error::IccpError};
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_identify_operation() -> Result<(), anyhow::Error> {
         let port: u16 = random_range(20000..30000);
@@ -968,11 +881,11 @@ mod tests {
         let server = server_results?;
 
         let iccp_client = RustyIccpAssociation::new(client.clone());
-        let mut iccp_server = RustyIccpServer::new(server.clone());
+        let mut iccp_server = RustyIccpAssociation::new(server.clone());
 
         let mut op_iccp_client = iccp_client.clone();
         let client_future = tokio::task::spawn(async move { op_iccp_client.create_data_set("MyDomain".into(), "DataSetName".into(), vec!["Variable1".into(), "Variable2".into()]).await });
-        let received_values = iccp_server.receive_operations().await?;
+        let received_values = iccp_server.receive_message().await?;
         for received_value in received_values {
             match received_value {
                 crate::IccpMessage::CreateDataSet(message) => message.respond().await?,

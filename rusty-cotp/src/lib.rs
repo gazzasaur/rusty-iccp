@@ -15,7 +15,7 @@ mod tests {
 
     use anyhow::anyhow;
     use rand::Rng;
-use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
+    use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktReader, TpktWriter};
     use tokio::{join, time::timeout};
     use tracing_test::traced_test;
 

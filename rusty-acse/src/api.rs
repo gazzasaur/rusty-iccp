@@ -86,6 +86,16 @@ pub struct AcseResponseInformation {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub struct AcseReleaseRequestInformation {
+    // TODO Reason and user data
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct AcseReleaseResponseInformation {
+    // TODO Reason and user data
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub enum AssociateResult {
     Accepted,
     RejectedPermanent,
@@ -168,4 +178,8 @@ pub trait OsiSingleValueAcseReader: Send {
 
 pub trait OsiSingleValueAcseWriter: Send {
     fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
+
+    // TODO Reason and Data
+    fn release_request(&mut self) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
+    fn release_response(&mut self) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
 }

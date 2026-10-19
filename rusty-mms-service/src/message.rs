@@ -271,6 +271,11 @@ impl WriteMmsServiceMessage {
 // FIXME TODO Need to implement Drop so an error may be returned if a response is not provided.
 #[derive(Debug)]
 pub enum MmsServiceMessage {
+    ConcludeRequest,
+    ConcludeResponse,
+    CompleteConcludeRequest,
+    CompleteConcludeResponse,
+
     Identify(IdentifyMmsServiceMessage),
     GetNameList(GetNameListMmsServiceMessage),
     GetVariableAccessAttributes(GetVariableAccessAttributesMmsServiceMessage),

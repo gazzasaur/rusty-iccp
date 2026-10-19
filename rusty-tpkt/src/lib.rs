@@ -20,7 +20,7 @@ mod tests {
 
     use anyhow::anyhow;
     use rand::Rng;
-use tracing_test::traced_test;
+    use tracing_test::traced_test;
 
     use super::*;
 

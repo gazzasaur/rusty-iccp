@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::time::Duration;
 
 use der_parser::oid;
-use rusty_iccp::{IccpAssociation, IccpScopedIdentifier, RustyIccpAssociation};
-use rusty_mms::{MmsListener, MmsReader, MmsWriter};
+use rusty_iccp::{IccpAssociation, RustyIccpAssociation};
+use rusty_mms::MmsListener;
 
 use rusty_acse::RustyOsiSingleValueAcseAcceptorIsoStack;
 use rusty_copp::RustyCoppAcceptorIsoStack;
@@ -11,13 +11,7 @@ use rusty_cotp::{CotpResponder, RustyCotpResponder};
 use rusty_mms::{RustyMmsAcceptorIsoStack, RustyMmsReaderIsoStack, RustyMmsWriterIsoStack};
 use rusty_mms_service::{MmsServiceConnectionIdentityParameters, MmsServiceConnectionParameters, RustyMmsServiceAssociation, call_mms_service, data::Identity, message::MmsServiceMessage};
 use rusty_tpkt::{TcpTpktReader, TcpTpktServer, TcpTpktWriter, TpktConnection};
-use tokio::{
-    join,
-    sync::{
-        Mutex,
-        watch::{Receiver, Sender},
-    },
-};
+use tokio::join;
 
 pub fn control_centre_a_identity() -> MmsServiceConnectionIdentityParameters {
     MmsServiceConnectionIdentityParameters { tsap_id: Some(vec![1]), session_selector: Some(vec![1]), presentation_selector: Some(vec![1]), ap_title: Some(oid!(1.2.3.1)), ae_qualifier: Some(vec![1]), ..Default::default() }
@@ -61,20 +55,11 @@ pub fn control_centre_b_identity() -> MmsServiceConnectionIdentityParameters {
  * ICCP links are usually critical and stopping and entire server to make configuration changes is a bit silly IMHO.
  */
 
-struct IccpAssocation {
-    pub id: String,
-    pub terminator: Sender<()>,
-
-    pub calling: Arc<MmsServiceConnectionIdentityParameters>,
-    pub called: Arc<MmsServiceConnectionIdentityParameters>,
-
-    // Easy way to allow anyone using an association to clean-up when it is dropped.
-    _terminate: Receiver<()>,
-}
-
 #[tokio::main]
-async fn main() {
-    join!(data_centre_a(), data_centre_b());
+async fn main() -> Result<(), anyhow::Error> {
+    let ((), centre_b_results) = join!(data_centre_a(), data_centre_b());
+    centre_b_results?;
+    Ok(())
 }
 
 async fn data_centre_a() {
@@ -91,7 +76,7 @@ async fn try_data_centre_a() -> Result<(), anyhow::Error> {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let target_address = "127.0.0.1:8103".parse()?;
-    let mut mms_association = call_mms_service(
+    let mms_association = call_mms_service(
         target_address,
         MmsServiceConnectionParameters {
             local_detail_calling: Some(1 * 1024 * 1024), // Used as Max MMS Payload Size. This is required by most stacks.
@@ -101,24 +86,28 @@ async fn try_data_centre_a() -> Result<(), anyhow::Error> {
         },
     )
     .await?;
+    let mut iccp_association = RustyIccpAssociation::new(mms_association);
 
-    let mut counter = 0u64;
-    loop {
-        assert_eq!(mms_association.identify().await?, Identity { vendor_name: "Gazzasaur".into(), model_name: "Rusty ICCP".into(), revision: "Sample".into(), abstract_syntaxes: None });
-        counter += 1;
-
-        if counter % 10000 == 0 {
-            println!("{counter:?}");
-        }
+    for _ in 0..10 {
+        iccp_association.identify().await?;
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
-
-//    Ok(())
+    iccp_association.conclude_request().await?;
+    loop {
+        for message in iccp_association.receive_message().await? {
+            match message {
+                rusty_iccp::IccpMessage::MmsMessage(MmsServiceMessage::ConcludeResponse) => break,
+                _ => (),
+            }
+        }
+        break;
+    }
+    iccp_association.complete_conclude_request().await?;
+    Ok(())
 }
 
 async fn data_centre_b() -> Result<(), anyhow::Error> {
-    let associations = Arc::new(Mutex::new(Vec::new()));
-
-    mms_server_worker("0.0.0.0".into(), 8103, associations).await?;
+    mms_server_worker("0.0.0.0".into(), 8103).await?;
 
     Ok(())
 }
@@ -140,53 +129,52 @@ async fn data_centre_b() -> Result<(), anyhow::Error> {
  * 6. MMS - This relies on the lower layers for selection (identifying the caller). THIS IS NOT SECURITY. This is selection and the standards only refer to this as selection, NOT AUTHENTICATION. This stack will support TLS for Authentication.
  * 7. ICCP - Again, relies on lower layers.
  */
-async fn mms_server_worker(listener_address: String, listener_port: u16, associations: Arc<Mutex<Vec<IccpAssocation>>>) -> Result<(), anyhow::Error> {
+async fn mms_server_worker(listener_address: String, listener_port: u16) -> Result<(), anyhow::Error> {
     let listener_address = format!("{listener_address}:{listener_port}").parse()?;
 
     // Start by listening on the TCP port. This is bundled with TPKT.
     let tpkt_listener = TcpTpktServer::listen(listener_address).await?;
 
-    loop {
-        // Process connections as they arrive.
-        let tpkt_connection = tpkt_listener.accept().await?;
-        tokio::task::spawn(async move {
-            let iccp_association = match mms_server_worker_acceptor(tpkt_connection).await {
-                Ok(x) => x,
-                Err(e) => {
-                    println!("{e:?}");
-                    return;
-                }
-            };
-            iccp_server_loop(iccp_association).await.err().iter().for_each(|e| println!("{e:?}"));
-        });
-    }
+    // In a eal server, you would loop over this bit so the server socket is not closed.
+    let tpkt_connection = tpkt_listener.accept().await?;
+    tokio::task::spawn(async move {
+        match mms_server_worker_acceptor(tpkt_connection).await {
+            Ok(iccp_association) => iccp_server_loop(iccp_association).await.err().iter().for_each(|e| println!("{e:?}")),
+            Err(e) => println!("{e:?}"),
+        };
+    });
+    Ok(())
 }
 
 async fn iccp_server_loop(mut iccp_association: RustyIccpAssociation) -> Result<(), anyhow::Error> {
-    let datasets: HashMap<String, Vec<IccpScopedIdentifier>> = HashMap::new();
-
     loop {
         for message in iccp_association.receive_message().await? {
             match message {
                 // Commonly used as a heartbeat
                 rusty_iccp::IccpMessage::MmsMessage(MmsServiceMessage::Identify(res)) => res.respond(Identity { vendor_name: "Gazzasaur".into(), model_name: "Rusty ICCP".into(), revision: "Sample".into(), abstract_syntaxes: None }).await?,
-                
-                rusty_iccp::IccpMessage::CreateDataSet(res) => todo!(),
 
-                rusty_iccp::IccpMessage::Read(read_operation) => todo!(),
-                rusty_iccp::IccpMessage::StartTransferSet(start_transfer_set_operation) => todo!(),
-                rusty_iccp::IccpMessage::GetDataSetNames(get_data_set_names_operation) => todo!(),
-                rusty_iccp::IccpMessage::GetNextDsTransferSet(get_next_ds_transfer_set_operation) => todo!(),
-                rusty_iccp::IccpMessage::IccpTransferSetReport(iccp_transfer_set_report) => todo!(),
+                // Received a conclude request, we will close the connection here.
+                rusty_iccp::IccpMessage::MmsMessage(MmsServiceMessage::ConcludeRequest) => {
+                    iccp_association.conclude_response().await?;
+                }
+                rusty_iccp::IccpMessage::MmsMessage(MmsServiceMessage::CompleteConcludeRequest) => {
+                    iccp_association.complete_conclude_response().await?;
+                }
 
-                rusty_iccp::IccpMessage::MmsAaRead(aa_read_operation) => todo!(),
-                rusty_iccp::IccpMessage::MmsMessage(mms_service_message) => todo!(),
+                rusty_iccp::IccpMessage::CreateDataSet(_) => todo!(),
+
+                rusty_iccp::IccpMessage::Read(_) => todo!(),
+                rusty_iccp::IccpMessage::StartTransferSet(_) => todo!(),
+                rusty_iccp::IccpMessage::GetDataSetNames(_) => todo!(),
+                rusty_iccp::IccpMessage::GetNextDsTransferSet(_) => todo!(),
+                rusty_iccp::IccpMessage::IccpTransferSetReport(_) => todo!(),
+
+                rusty_iccp::IccpMessage::MmsMessage(_) => todo!(),
             }
         }
     }
 }
 
-// To avoid tying up the accept loop for the multi-stage handshake, we will use a separate task.
 async fn mms_server_worker_acceptor(tpkt_connection: impl TpktConnection + 'static) -> Result<RustyIccpAssociation, anyhow::Error> {
     // This is one possible implementation.
     //

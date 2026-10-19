@@ -9,9 +9,7 @@ use rusty_copp::CoppConnection;
 use rusty_copp::{CoppAcceptor, CoppError, CoppInitiator, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
 
 use crate::{
-    AcseError, AcseRecvResult, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory,
-    OsiSingleValueAcseAcceptor, OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter,
-    messages::parsers::{process_request, process_response, to_acse_error},
+    AcseError, AcseRecvResult, AcseReleaseRequestInformation, AcseReleaseResponseInformation, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseAcceptor, OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter, messages::parsers::{process_request, process_response, to_acse_error},
 };
 
 pub struct RustyOsiSingleValueAcseInitiator<T: CoppInitiator, R: CoppReader, W: CoppWriter> {
@@ -238,6 +236,28 @@ impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W
 
         // Perform one more to ensure lower levels are also flushed even if this layer is complete.
         self.copp_writer.send(&mut self.buffer).await?;
+        Ok(())
+    }
+
+    async fn release_request(&mut self) -> Result<(), AcseError> {
+        self.copp_writer
+            .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
+                transfer_syntax_name: None,
+                presentation_context_identifier: vec![1],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(AcseReleaseRequestInformation {}.serialise()?),
+            }])]))
+            .await?;
+        Ok(())
+    }
+
+    async fn release_response(&mut self) -> Result<(), AcseError> {
+        self.copp_writer
+            .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
+                transfer_syntax_name: None,
+                presentation_context_identifier: vec![1],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(AcseReleaseResponseInformation {}.serialise()?),
+            }])]))
+            .await?;
         Ok(())
     }
 }
@@ -585,6 +605,26 @@ impl AcseResponseInformation {
         if user_data_length > 0 {
             data[tl - user_data_length] = 0xbe;
         }
+        Ok(data)
+    }
+}
+
+impl AcseReleaseRequestInformation {
+    pub fn serialise(&self) -> Result<Vec<u8>, AcseError> {
+        // There is a bug that prevents creating a tag with a value of 30. Instead we create the header from a raw tag.
+        // https://github.com/rusticata/der-parser/issues/89
+        let payload = BerObject::from_header_and_content(Header::new(Class::Application, true, Tag::from(2), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::Sequence(vec![]));
+        let data = payload.to_vec().map_err(to_acse_error("Failed to serialise Application Request Information"))?;
+        Ok(data)
+    }
+}
+
+impl AcseReleaseResponseInformation {
+    pub fn serialise(&self) -> Result<Vec<u8>, AcseError> {
+        // There is a bug that prevents creating a tag with a value of 30. Instead we create the header from a raw tag.
+        // https://github.com/rusticata/der-parser/issues/89
+        let payload = BerObject::from_header_and_content(Header::new(Class::Application, true, Tag::from(3), der_parser::ber::Length::Definite(0)), der_parser::ber::BerObjectContent::Sequence(vec![]));
+        let data = payload.to_vec().map_err(to_acse_error("Failed to serialise Application Request Information"))?;
         Ok(data)
     }
 }

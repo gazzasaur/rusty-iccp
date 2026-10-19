@@ -7,7 +7,7 @@ use der_parser::ber::compat::BerObjectHeader;
 use der_parser::ber::{BerObject, BerObjectContent, BitStringObject, Length, parse_ber_any};
 use der_parser::der::{Class, Header, Tag};
 use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
-use rusty_acse::{OsiSingleValueAcseInitiator, OsiSingleValueAcseAcceptor, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
+use rusty_acse::{OsiSingleValueAcseAcceptor, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 use tracing::warn;
 
 use crate::parsers::{process_constructed_data, process_integer_content, process_mms_bitstring_content, process_mms_boolean_content, process_mms_string};
@@ -621,11 +621,19 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
     async fn send(&mut self, messages: &mut VecDeque<MmsMessage>) -> Result<(), MmsError> {
         while let Some(message) = messages.pop_front() {
             let data = match message {
-                MmsMessage::ConcludeRequest { request: _ } => conclude_request_to_ber().to_vec(),
-                MmsMessage::ConcludeResponse { request: _ } => conclude_response_to_ber().to_vec(),
+                MmsMessage::ConcludeRequest => conclude_request_to_ber().to_vec(),
+                MmsMessage::ConcludeResponse => conclude_response_to_ber().to_vec(),
                 MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
                 MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request)?.to_vec(),
                 MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
+                MmsMessage::CompleteConcludeRequest { } => {
+                    self.acse_writer.release_request().await?;
+                    break;
+                },
+                MmsMessage::CompleteConcludeResponse { } => {
+                    self.acse_writer.release_response().await?;
+                    break;
+                },
             }
             .map_err(to_mms_error("Failed to serialise message"))?;
             self.buffer.push_back(data);

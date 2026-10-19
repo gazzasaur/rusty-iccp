@@ -9,8 +9,7 @@ use std::marker::PhantomData;
 
 pub use api::*;
 use rusty_acse::{
-    AcseRequestInformation, AcseResponseInformation, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticUserCategory, RustyOsiSingleValueAcseAcceptorIsoStack, RustyOsiSingleValueAcseInitiatorIsoStack,
-    RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseResponderIsoStack, RustyOsiSingleValueAcseWriterIsoStack,
+    AcseRequestInformation, RustyOsiSingleValueAcseAcceptorIsoStack, RustyOsiSingleValueAcseInitiatorIsoStack, RustyOsiSingleValueAcseReaderIsoStack, RustyOsiSingleValueAcseResponderIsoStack, RustyOsiSingleValueAcseWriterIsoStack,
 };
 use rusty_copp::{CoppConnectionInformation, RustyCoppAcceptorIsoStack, RustyCoppInitiatorIsoStack};
 use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptor, RustyCospInitiator};
