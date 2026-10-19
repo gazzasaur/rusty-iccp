@@ -436,8 +436,14 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> MmsServiceAssociation for R
             MmsMessage::ConcludeRequest => {
                 return Ok(MmsServiceMessage::ConcludeRequest);
             }
+            MmsMessage::CompleteConcludeRequest => {
+                return Ok(MmsServiceMessage::CompleteConcludeRequest);
+            }
             MmsMessage::ConcludeResponse => {
                 return Ok(MmsServiceMessage::ConcludeResponse);
+            }
+            MmsMessage::CompleteConcludeResponse => {
+                return Ok(MmsServiceMessage::CompleteConcludeResponse);
             }
             _ => todo!(),
         };

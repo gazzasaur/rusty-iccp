@@ -163,13 +163,13 @@ pub trait CospWriter: Send {
     fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 
     /// Signals the intent to close a connection. A disconnect should be received before dropping the reader and writer.
-    fn finish(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn finish(&mut self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 
     /// Confirms that a finish was received and this side is okay to close the connection.
     /// As this is a kernel implementation, this is the only normal flow options.
     /// Abnormal flows would be to send back an abort, or simply close the connection by dropping the reader and writer.
-    fn disconnect(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn disconnect(&mut self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 
     /// Abort the connection. The reader and writer should be dropped after this is sent.
-    fn abort(self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
+    fn abort(&mut self, user_data: Option<Vec<u8>>) -> impl std::future::Future<Output = Result<(), CospError>> + Send;
 }

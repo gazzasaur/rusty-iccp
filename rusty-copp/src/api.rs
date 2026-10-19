@@ -321,8 +321,8 @@ pub enum CoppInitResult<T: CoppConnection> {
     Success(T, Option<UserData>),
     AbortUser(Vec<u8>),
     AbortProvider(Vec<u8>),
-    Finish(Option<Vec<u8>>),
-    Disconnect(Option<Vec<u8>>),
+    Finish(Option<UserData>),
+    Disconnect(Option<UserData>),
 }
 
 #[derive(IntoStaticStr)]
@@ -331,8 +331,8 @@ pub enum CoppRecvResult {
     Data(UserData),
     AbortUser(Vec<u8>),
     AbortProvider(Vec<u8>),
-    Finish(Option<Vec<u8>>),
-    Disconnect(Option<Vec<u8>>),
+    Finish(Option<UserData>),
+    Disconnect(Option<UserData>),
 }
 
 pub trait CoppInitiator: Send {
@@ -370,8 +370,8 @@ pub trait CoppReader: Send {
 pub trait CoppWriter: Send {
     fn send(&mut self, user_data: &mut VecDeque<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
-    fn user_abort(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    fn user_abort(&mut self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
-    fn finish(self) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
-    fn disconnect(self) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    fn finish(&mut self, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    fn disconnect(&mut self, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }

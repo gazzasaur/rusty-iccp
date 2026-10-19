@@ -329,17 +329,17 @@ impl<W: CotpWriter> CospWriter for RustyCospWriter<W> {
         Ok(())
     }
 
-    async fn finish(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+    async fn finish(&mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
         send_finish(&mut self.cotp_writer, self.remote_max_size, user_data).await?;
         Ok(())
     }
 
-    async fn disconnect(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+    async fn disconnect(&mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
         send_disconnect(&mut self.cotp_writer, self.remote_max_size, user_data).await?;
         Ok(())
     }
 
-    async fn abort(mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
+    async fn abort(&mut self, user_data: Option<Vec<u8>>) -> Result<(), CospError> {
         send_abort(&mut self.cotp_writer, self.remote_max_size, user_data).await?;
         Ok(())
     }

@@ -6,7 +6,7 @@ use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let test_address: SocketAddr = "127.0.0.1:12345".parse()?;
+    let test_address: SocketAddr = "127.0.0.1:8103".parse()?;
 
     let client_connect_task = tokio::task::spawn(async move {
         // Give the server time to connect.

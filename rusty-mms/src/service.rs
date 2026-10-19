@@ -10,6 +10,7 @@ use rusty_acse::{AcseRecvResult, OsiSingleValueAcseConnection};
 use rusty_acse::{OsiSingleValueAcseAcceptor, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter};
 use tracing::warn;
 
+use crate::MmsMessage::{CompleteConcludeRequest, CompleteConcludeResponse};
 use crate::parsers::{process_constructed_data, process_integer_content, process_mms_bitstring_content, process_mms_boolean_content, process_mms_string};
 use crate::pdu::common::expect_value;
 use crate::pdu::concluderequest::{conclude_request_to_ber, parse_conclude_request};
@@ -590,6 +591,8 @@ impl<R: OsiSingleValueAcseReader> MmsReader for RustyMmsReader<R> {
             let result = self.acse_reader.recv().await?;
             match result {
                 AcseRecvResult::Closed => return Ok(MmsRecvResult::Closed),
+                AcseRecvResult::ReleaseRequest(_) => return Ok(MmsRecvResult::Message(CompleteConcludeRequest)), // User data is ignored
+                AcseRecvResult::ReleaseResponse(_) => return Ok(MmsRecvResult::Message(CompleteConcludeResponse)), // User data is ignored
                 AcseRecvResult::Data(data) => {
                     let (_, message) = parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS message"))?;
                     match message.header.raw_tag() {

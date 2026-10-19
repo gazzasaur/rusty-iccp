@@ -154,6 +154,8 @@ pub enum AeQualifier {
 pub enum AcseRecvResult {
     Closed,
     Data(Vec<u8>),
+    ReleaseRequest(Option<Vec<u8>>),
+    ReleaseResponse(Option<Vec<u8>>),
 }
 
 pub trait OsiSingleValueAcseInitiator: Send {

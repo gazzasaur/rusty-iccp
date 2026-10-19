@@ -199,8 +199,20 @@ impl<R: CospReader> CoppReader for RustyCoppReader<R> {
         match message {
             // There is no special encoding of user data on finish or disconnect.
             CospRecvResult::Closed => return Ok(CoppRecvResult::Closed),
-            CospRecvResult::Finish(x) => Ok(CoppRecvResult::Finish(x)),
-            CospRecvResult::Disconnect(x) => Ok(CoppRecvResult::Disconnect(x)),
+            CospRecvResult::Finish(x) => {
+                let user_data = match x {
+                    Some(items) => Some(UserData::parse_raw(&items).map_err(|e| CoppError::ProtocolError(e.to_string()))?),
+                    None => None,
+                };
+                Ok(CoppRecvResult::Finish(user_data))
+            }
+            CospRecvResult::Disconnect(x) => {
+                let user_data = match x {
+                    Some(items) => Some(UserData::parse_raw(&items).map_err(|e| CoppError::ProtocolError(e.to_string()))?),
+                    None => None,
+                };
+                Ok(CoppRecvResult::Disconnect(user_data))
+            }
             CospRecvResult::Data(items) => Ok(CoppRecvResult::Data(UserData::parse_raw(&items).map_err(|e| CoppError::ProtocolError(e.to_string()))?)),
         }
     }
@@ -232,18 +244,26 @@ impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
         Ok(())
     }
 
-    async fn user_abort(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
+    async fn user_abort(&mut self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
         self.cosp_writer.abort(Some(AbortUserMessage::new(presentation_contexts, user_data).serialise()?)).await?;
         Ok(())
     }
 
-    async fn finish(self) -> Result<(), CoppError> {
-        self.cosp_writer.finish(None).await?;
+    async fn finish(&mut self, user_data: Option<UserData>) -> Result<(), CoppError> {
+        let user_data_bytes = match user_data {
+            Some(x) => Some(x.to_ber().to_vec().map_err(|e| CoppError::ProtocolError(e.to_string()))?),
+            None => None,
+        };
+        self.cosp_writer.finish(user_data_bytes).await?;
         Ok(())
     }
 
-    async fn disconnect(self) -> Result<(), CoppError> {
-        self.cosp_writer.disconnect(None).await?;
+    async fn disconnect(&mut self, user_data: Option<UserData>) -> Result<(), CoppError> {
+        let user_data_bytes = match user_data {
+            Some(x) => Some(x.to_ber().to_vec().map_err(|e| CoppError::ProtocolError(e.to_string()))?),
+            None => None,
+        };
+        self.cosp_writer.disconnect(user_data_bytes).await?;
         Ok(())
     }
 }

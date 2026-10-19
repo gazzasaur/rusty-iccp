@@ -173,7 +173,7 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     };
 
     // We will close the connection from this side in an orderly manner.
-    copp_writer.finish().await?;
+    copp_writer.finish(None).await?;
 
     // Wait for the final disconnect
     match copp_reader.recv().await? {

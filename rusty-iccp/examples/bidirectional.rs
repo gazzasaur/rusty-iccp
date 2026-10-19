@@ -103,6 +103,15 @@ async fn try_data_centre_a() -> Result<(), anyhow::Error> {
         break;
     }
     iccp_association.complete_conclude_request().await?;
+    loop {
+        for message in iccp_association.receive_message().await? {
+            match message {
+                rusty_iccp::IccpMessage::MmsMessage(MmsServiceMessage::CompleteConcludeResponse) => break,
+                _ => (),
+            }
+        }
+        break;
+    }
     Ok(())
 }
 
@@ -159,6 +168,7 @@ async fn iccp_server_loop(mut iccp_association: RustyIccpAssociation) -> Result<
                 }
                 rusty_iccp::IccpMessage::MmsMessage(MmsServiceMessage::CompleteConcludeRequest) => {
                     iccp_association.complete_conclude_response().await?;
+                    return Ok(());
                 }
 
                 rusty_iccp::IccpMessage::CreateDataSet(_) => todo!(),

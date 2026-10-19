@@ -9,7 +9,10 @@ use rusty_copp::CoppConnection;
 use rusty_copp::{CoppAcceptor, CoppError, CoppInitiator, CoppReader, CoppResponder, CoppWriter, PresentationContext, PresentationContextType, PresentationDataValueList, PresentationDataValues, UserData};
 
 use crate::{
-    AcseError, AcseRecvResult, AcseReleaseRequestInformation, AcseReleaseResponseInformation, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic, AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseAcceptor, OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader, OsiSingleValueAcseResponder, OsiSingleValueAcseWriter, messages::parsers::{process_request, process_response, to_acse_error},
+    AcseError, AcseRecvResult, AcseReleaseRequestInformation, AcseReleaseResponseInformation, AcseRequestInformation, AcseResponseInformation, AeQualifier, ApTitle, AssociateResult, AssociateSourceDiagnostic,
+    AssociateSourceDiagnosticProviderCategory, AssociateSourceDiagnosticUserCategory, OsiSingleValueAcseAcceptor, OsiSingleValueAcseConnection, OsiSingleValueAcseInitiator, OsiSingleValueAcseReader, OsiSingleValueAcseResponder,
+    OsiSingleValueAcseWriter,
+    messages::parsers::{process_request, process_response, to_acse_error},
 };
 
 pub struct RustyOsiSingleValueAcseInitiator<T: CoppInitiator, R: CoppReader, W: CoppWriter> {
@@ -201,8 +204,44 @@ impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R
                     }
                 }
             },
-            rusty_copp::CoppRecvResult::Finish(_) => todo!(),
-            rusty_copp::CoppRecvResult::Disconnect(_) => todo!(),
+            rusty_copp::CoppRecvResult::Finish(user_data) => match user_data {
+                Some(UserData::FullyEncoded(presentation_data_value_lists)) => {
+                    if presentation_data_value_lists.len() > 1 {
+                        return Err(AcseError::ProtocolError(format!("Expected one PDV value on ACSE read but found {}", presentation_data_value_lists.len())));
+                    }
+                    match presentation_data_value_lists.first() {
+                        Some(x) => {
+                            if x.presentation_context_identifier != vec![1] {
+                                return Err(AcseError::ProtocolError(format!("Expected a context id of 3 on ACSE read but was {:?}", x.presentation_context_identifier)));
+                            }
+                            match &x.presentation_data_values {
+                                PresentationDataValues::SingleAsn1Type(data) => return Ok(AcseRecvResult::ReleaseRequest(Some(data.to_vec()))),
+                            }
+                        }
+                        None => return Err(AcseError::ProtocolError("Expected one PDV value on ACSE read but did not find any".into())),
+                    }
+                }
+                None => return Ok(AcseRecvResult::ReleaseRequest(None)),
+            },
+            rusty_copp::CoppRecvResult::Disconnect(user_data) => match user_data {
+                Some(UserData::FullyEncoded(presentation_data_value_lists)) => {
+                    if presentation_data_value_lists.len() > 1 {
+                        return Err(AcseError::ProtocolError(format!("Expected one PDV value on ACSE read but found {}", presentation_data_value_lists.len())));
+                    }
+                    match presentation_data_value_lists.first() {
+                        Some(x) => {
+                            if x.presentation_context_identifier != vec![1] {
+                                return Err(AcseError::ProtocolError(format!("Expected a context id of 3 on ACSE read but was {:?}", x.presentation_context_identifier)));
+                            }
+                            match &x.presentation_data_values {
+                                PresentationDataValues::SingleAsn1Type(data) => return Ok(AcseRecvResult::ReleaseResponse(Some(data.to_vec()))),
+                            }
+                        }
+                        None => return Err(AcseError::ProtocolError("Expected one PDV value on ACSE read but did not find any".into())),
+                    }
+                }
+                None => return Ok(AcseRecvResult::ReleaseResponse(None)),
+            },
             rusty_copp::CoppRecvResult::AbortUser(_) => todo!(),
             rusty_copp::CoppRecvResult::AbortProvider(_) => todo!(),
         }
@@ -241,22 +280,22 @@ impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W
 
     async fn release_request(&mut self) -> Result<(), AcseError> {
         self.copp_writer
-            .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
+            .finish(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
                 transfer_syntax_name: None,
                 presentation_context_identifier: vec![1],
                 presentation_data_values: PresentationDataValues::SingleAsn1Type(AcseReleaseRequestInformation {}.serialise()?),
-            }])]))
+            }])))
             .await?;
         Ok(())
     }
 
     async fn release_response(&mut self) -> Result<(), AcseError> {
         self.copp_writer
-            .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
+            .disconnect(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
                 transfer_syntax_name: None,
                 presentation_context_identifier: vec![1],
                 presentation_data_values: PresentationDataValues::SingleAsn1Type(AcseReleaseResponseInformation {}.serialise()?),
-            }])]))
+            }])))
             .await?;
         Ok(())
     }
