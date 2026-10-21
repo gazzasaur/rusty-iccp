@@ -483,7 +483,7 @@ pub struct RustyMmsAcceptor<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcs
 
 impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleValueAcseWriter> RustyMmsAcceptor<T, R, W> {
     pub async fn new(acse_acceptor: impl OsiSingleValueAcseAcceptor) -> Result<RustyMmsAcceptor<impl OsiSingleValueAcseResponder, impl OsiSingleValueAcseReader, impl OsiSingleValueAcseWriter>, MmsError> {
-        let (acse_responder, init_data) = acse_acceptor.responder().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
+        let (acse_responder, init_data) = acse_acceptor.accept().await.map_err(to_mms_error("Failed to create ACSE association for MMS response"))?;
         let request = InitiateRequestPdu::parse(init_data)?;
 
         let mms_request_information = MmsRequestInformation {
@@ -552,7 +552,7 @@ impl<T: OsiSingleValueAcseResponder, R: OsiSingleValueAcseReader, W: OsiSingleVa
                 },
             },
         );
-        let acse_connection = self.acse_responder.accept(repsonse.serialise()?).await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
+        let acse_connection = self.acse_responder.complete_connection(repsonse.serialise()?).await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
         let (acse_reader, acse_writer) = acse_connection.split().await.map_err(|e| MmsError::ProtocolError(format!("Failed to initiate MMS connection: {:?}", e)))?;
         Ok(RustyMmsConnection::<R, W>::new(acse_reader, acse_writer))
     }
@@ -591,7 +591,7 @@ impl<R: OsiSingleValueAcseReader> MmsReader for RustyMmsReader<R> {
             let result = self.acse_reader.recv().await?;
             match result {
                 AcseRecvResult::Closed => return Ok(MmsRecvResult::Closed),
-                AcseRecvResult::ReleaseRequest(_) => return Ok(MmsRecvResult::Message(CompleteConcludeRequest)), // User data is ignored
+                AcseRecvResult::ReleaseRequest(_) => return Ok(MmsRecvResult::Message(CompleteConcludeRequest)),   // User data is ignored
                 AcseRecvResult::ReleaseResponse(_) => return Ok(MmsRecvResult::Message(CompleteConcludeResponse)), // User data is ignored
                 AcseRecvResult::Data(data) => {
                     let (_, message) = parse_ber_any(&data).map_err(to_mms_error("Failed to parse MMS message"))?;
@@ -629,14 +629,14 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
                 MmsMessage::Unconfirmed { unconfirmed_service } => unconfirmed_to_ber(&unconfirmed_service)?.to_vec(),
                 MmsMessage::ConfirmedRequest { invocation_id, request } => confirmed_request_to_ber(&invocation_id, &request)?.to_vec(),
                 MmsMessage::ConfirmedResponse { invocation_id, response } => confirmed_response_to_ber(&invocation_id, &response)?.to_vec(),
-                MmsMessage::CompleteConcludeRequest { } => {
-                    self.acse_writer.release_request().await?;
+                MmsMessage::CompleteConcludeRequest {} => {
+                    self.acse_writer.release().await?;
                     break;
-                },
-                MmsMessage::CompleteConcludeResponse { } => {
-                    self.acse_writer.release_response().await?;
+                }
+                MmsMessage::CompleteConcludeResponse {} => {
+                    self.acse_writer.complete_release().await?;
                     break;
-                },
+                }
             }
             .map_err(to_mms_error("Failed to serialise message"))?;
             self.buffer.push_back(data);
@@ -646,6 +646,15 @@ impl<W: OsiSingleValueAcseWriter> MmsWriter for RustyMmsWriter<W> {
             self.acse_writer.send(&mut self.buffer).await?;
         }
         self.acse_writer.send(&mut self.buffer).await?;
+        Ok(())
+    }
+
+    async fn conclude(mut self) -> Result<(), MmsError> {
+        self.buffer.push_back(conclude_response_to_ber().to_vec().map_err(to_mms_error("Failed to serialise Conclude"))?);
+
+        while !self.buffer.is_empty() {
+            self.acse_writer.send(&mut self.buffer).await?;
+        }
         Ok(())
     }
 }

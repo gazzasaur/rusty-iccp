@@ -304,4 +304,6 @@ pub trait MmsReader: Send {
 
 pub trait MmsWriter: Send {
     fn send(&mut self, message: &mut VecDeque<MmsMessage>) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
+
+    fn conclude(self) -> impl std::future::Future<Output = Result<(), MmsError>> + Send;
 }

@@ -101,9 +101,9 @@ mod tests {
                     .await?;
             let (mut acse_listener, received_request_information) = RustyOsiSingleValueAcseAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(copp_listener).await?;
             acse_listener.set_response(response_options.clone());
-            let (acse_responder, received_connect_data) = acse_listener.responder().await?;
+            let (acse_responder, received_connect_data) = acse_listener.accept().await?;
 
-            Ok((acse_responder.accept(accept_data.clone()).await?, received_request_information, received_connect_data))
+            Ok((acse_responder.complete_connection(accept_data.clone()).await?, received_request_information, received_connect_data))
         };
 
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);

@@ -163,11 +163,11 @@ pub trait OsiSingleValueAcseInitiator: Send {
 }
 
 pub trait OsiSingleValueAcseAcceptor: Send {
-    fn responder(self) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseResponder, Vec<u8>), AcseError>> + Send;
+    fn accept(self) -> impl std::future::Future<Output = Result<(impl OsiSingleValueAcseResponder, Vec<u8>), AcseError>> + Send;
 }
 
 pub trait OsiSingleValueAcseResponder: Send {
-    fn accept(self, user_data: Vec<u8>) -> impl std::future::Future<Output = Result<impl OsiSingleValueAcseConnection, AcseError>> + Send;
+    fn complete_connection(self, user_data: Vec<u8>) -> impl std::future::Future<Output = Result<impl OsiSingleValueAcseConnection, AcseError>> + Send;
 }
 
 pub trait OsiSingleValueAcseConnection: Send {
@@ -182,6 +182,6 @@ pub trait OsiSingleValueAcseWriter: Send {
     fn send(&mut self, input: &mut VecDeque<Vec<u8>>) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
 
     // TODO Reason and Data
-    fn release_request(&mut self) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
-    fn release_response(&mut self) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
+    fn release(&mut self) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
+    fn complete_release(&mut self) -> impl std::future::Future<Output = Result<(), AcseError>> + Send;
 }

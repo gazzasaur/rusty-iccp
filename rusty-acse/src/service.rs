@@ -126,7 +126,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseAcce
 }
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseAcceptor for RustyOsiSingleValueAcseAcceptor<T, R, W> {
-    async fn responder(self) -> Result<(impl OsiSingleValueAcseResponder, Vec<u8>), AcseError> {
+    async fn accept(self) -> Result<(impl OsiSingleValueAcseResponder, Vec<u8>), AcseError> {
         Ok((RustyOsiSingleValueAcseResponder::<T, R, W>::new(self.copp_responder, self.response), self.acse_user_data))
     }
 }
@@ -145,7 +145,7 @@ impl<T: CoppResponder, R: CoppReader, W: CoppWriter> RustyOsiSingleValueAcseResp
 }
 
 impl<T: CoppResponder, R: CoppReader, W: CoppWriter> OsiSingleValueAcseResponder for RustyOsiSingleValueAcseResponder<T, R, W> {
-    async fn accept(self, user_data: Vec<u8>) -> Result<impl OsiSingleValueAcseConnection, AcseError> {
+    async fn complete_connection(self, user_data: Vec<u8>) -> Result<impl OsiSingleValueAcseConnection, AcseError> {
         let acse_data = self.response.serialise(&Some(user_data))?;
         let copp_connection = self
             .copp_responder
@@ -278,7 +278,7 @@ impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W
         Ok(())
     }
 
-    async fn release_request(&mut self) -> Result<(), AcseError> {
+    async fn release(&mut self) -> Result<(), AcseError> {
         self.copp_writer
             .finish(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
                 transfer_syntax_name: None,
@@ -289,7 +289,7 @@ impl<W: CoppWriter> OsiSingleValueAcseWriter for RustyOsiSingleValueAcseWriter<W
         Ok(())
     }
 
-    async fn release_response(&mut self) -> Result<(), AcseError> {
+    async fn complete_release(&mut self) -> Result<(), AcseError> {
         self.copp_writer
             .disconnect(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
                 transfer_syntax_name: None,
