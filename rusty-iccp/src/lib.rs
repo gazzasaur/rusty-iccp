@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use error::*;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
-use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, VariableSpecification};
+use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsAccessResult, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, VariableSpecification};
 use rusty_mms_service::{
     MmsServiceAssociation,
     data::{
@@ -25,7 +25,7 @@ pub struct IccpRbeTransferSetValue {
 }
 
 #[derive(Debug)]
-pub struct SupportedFeature {
+pub struct SupportedFeatures {
     block1: bool, // Basic Services
     block2: bool, // Extended Conditions
     // block3, Blocked Transfers
@@ -222,6 +222,10 @@ pub struct ReadOperation {
 }
 
 impl ReadOperation {
+    pub fn name(&self) -> &IccpScopedIdentifier {
+        &self.name
+    }
+
     pub async fn success(self, iccp_data: IccpData) {
         let mms_data = convert_iccp_data_to_mms_service_data(iccp_data);
         self.responder.send((self.index, MmsServiceAccessResult::Success(mms_data)));
@@ -385,9 +389,9 @@ pub struct RustyIccpAssociation {
 }
 
 pub struct IccpConnectionParameters {
-    version: (u32, u32),
-    bilateral_table: String,
-    supported_features: String,
+    pub version: (u16, u16),
+    pub bilateral_table: String,
+    pub supported_features: SupportedFeatures,
 }
 
 impl RustyIccpAssociation {
@@ -398,17 +402,38 @@ impl RustyIccpAssociation {
     /**
      * Reads the ICCP Version, Bilateral Table Name and Supported Features.
      */
-    pub async fn get_iccp_connection_parameters(&mut self, domain: String) -> Result<(), IccpError> {
+    pub async fn get_iccp_connection_parameters(&mut self, domain: String) -> Result<IccpConnectionParameters, IccpError> {
         let mms_read_result = self
             .mms_client
             .read(MmsVariableAccessSpecification::ListOfVariables(vec![
-                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("TASE2Version".into())) },
-                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific(domain, "BilateralTable".into())) },
-                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("SupportedFeatures".into())) },
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("TASE2_Version".into())) },
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::DomainSpecific(domain, "Bilateral_Table_ID".into())) },
+                ListOfVariablesItem { variable_specification: VariableSpecification::Name(MmsObjectName::VmdSpecific("Supported_Features".into())) },
             ]))
             .await?;
-        if mms_read_result.len() != 3 {}
-        Ok(())
+        if mms_read_result.len() != 3 {
+            return Err(IccpError::ProtocolError("Invalid response when fetching connection parameters.".into()));
+        }
+
+        let (major_version, minor_version) = if let Some(MmsServiceAccessResult::Success(MmsServiceData::Structure(version))) = mms_read_result.get(0)
+            && let [MmsServiceData::Integer(major_version), MmsServiceData::Integer(minor_version)] = version.as_slice()
+        {
+            (major_version.to_u16().ok_or_else(|| IccpError::ProtocolError("Invalid major version number.".into()))?, minor_version.to_u16().ok_or_else(|| IccpError::ProtocolError("Invalid minor version number.".into()))?)
+        } else {
+            return Err(IccpError::ProtocolError("Failed to fetch ICCP version.".into()));
+        };
+        let table_id = match mms_read_result.get(1) {
+            Some(MmsServiceAccessResult::Success(MmsServiceData::VisibleString(table_id))) => table_id,
+            _ => return Err(IccpError::ProtocolError("Failed to fetch ICCP bilateral table id.".into())),
+        };
+        let supported_features = match mms_read_result.get(1) {
+            Some(MmsServiceAccessResult::Success(MmsServiceData::BitString(values))) => {
+                SupportedFeatures { block1: values.get(0).map_or_else(|| false, |x| *x), block2: values.get(1).map_or_else(|| false, |x| *x), block5: values.get(4).map_or_else(|| false, |x| *x) }
+            }
+            _ => return Err(IccpError::ProtocolError("Failed to fetch ICCP supported features.".into())),
+        };
+
+        Ok(IccpConnectionParameters { version: (major_version, minor_version), bilateral_table: table_id.to_owned(), supported_features })
     }
 }
 

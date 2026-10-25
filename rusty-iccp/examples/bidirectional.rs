@@ -88,6 +88,8 @@ async fn try_data_centre_a() -> Result<(), anyhow::Error> {
     .await?;
     let mut iccp_association = RustyIccpAssociation::new(mms_association);
 
+    iccp_association.get_iccp_connection_parameters("MyDomain".into()).await?;
+
     for _ in 0..10 {
         iccp_association.identify().await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -173,7 +175,7 @@ async fn iccp_server_loop(mut iccp_association: RustyIccpAssociation) -> Result<
 
                 rusty_iccp::IccpMessage::CreateDataSet(_) => todo!(),
 
-                rusty_iccp::IccpMessage::Read(_) => todo!(),
+                rusty_iccp::IccpMessage::Read(x) => {},
                 rusty_iccp::IccpMessage::StartTransferSet(_) => todo!(),
                 rusty_iccp::IccpMessage::GetDataSetNames(_) => todo!(),
                 rusty_iccp::IccpMessage::GetNextDsTransferSet(_) => todo!(),
