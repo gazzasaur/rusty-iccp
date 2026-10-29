@@ -19,7 +19,7 @@ mod tests {
     use std::{collections::VecDeque, ops::Range, time::Duration, vec};
 
     use anyhow::anyhow;
-    use der_parser::Oid;
+    use der_parser::{Oid, oid};
     use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptor, RustyCospInitiator, RustyCospReader, RustyCospResponder, RustyCospWriter};
     use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
@@ -34,17 +34,9 @@ mod tests {
         let options = CoppConnectionInformation { calling_presentation_selector: Some(vec![0x00, 0x00, 0x00, 0x23]), called_presentation_selector: Some(vec![0x65, 0x00, 0x00, 0x00]), ..Default::default() };
         let presentation_contexts = vec![
             // ACSE
-            PresentationContext {
-                identifier: vec![1],
-                abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
-                transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
-            },
+            PresentationContext { identifier: vec![1], abstract_syntax_name: oid!(2.2.1.0.1), transfer_syntax_name_list: vec![oid!(2.1.1)] },
             // MMS
-            PresentationContext {
-                identifier: vec![3],
-                abstract_syntax_name: Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
-                transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
-            },
+            PresentationContext { identifier: vec![3], abstract_syntax_name: oid!(1.0.9506.2.1), transfer_syntax_name_list: vec![oid!(2.1.1)] },
         ];
         let (client_connection, server_connection) = create_copp_connection_pair_with_options(
             Some(UserData::FullyEncoded(vec![PresentationDataValueList {
@@ -93,17 +85,9 @@ mod tests {
 
         let presentation_contexts = vec![
             // ACSE
-            PresentationContext {
-                identifier: vec![1],
-                abstract_syntax_name: Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
-                transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
-            },
+            PresentationContext { identifier: vec![1], abstract_syntax_name: oid!(2.2.1.0.1), transfer_syntax_name_list: vec![oid!(2.1.1)] },
             // MMS
-            PresentationContext {
-                identifier: vec![3],
-                abstract_syntax_name: Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?,
-                transfer_syntax_name_list: vec![Oid::from(&[2, 1, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?],
-            },
+            PresentationContext { identifier: vec![3], abstract_syntax_name: oid!(1.0.9506.2.1), transfer_syntax_name_list: vec![oid!(2.1.1)] },
         ];
 
         let options = CoppConnectionInformation { calling_presentation_selector: Some(vec![0x00, 0x00, 0x00, 0x23]), called_presentation_selector: Some(vec![0x65, 0x00, 0x00, 0x00]), ..Default::default() };
@@ -150,7 +134,7 @@ mod tests {
                 .reject(
                     PresentationContextResultType::ContextDefinitionList(vec![PresentationContextResult {
                         result: PresentationContextResultCause::ProviderRejection,
-                        transfer_syntax_name: Some(Oid::from(&[2, 2, 1, 0, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?),
+                        transfer_syntax_name: Some(oid!(2.2.1.0.1)),
                         provider_reason: Some(PresentationContextResultProviderReason::Value(PresentationContextResultProviderReasonValue::AbstrctSyntaxNotSupported)),
                     }]),
                     Some(ProviderReason::Value(ProviderReasonValue::CalledPresentationAddressUnknown)),
@@ -167,14 +151,66 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    #[traced_test]
+    async fn it_should_user_abort_the_connection() -> Result<(), anyhow::Error> {
+        let options = CoppConnectionInformation { calling_presentation_selector: Some(vec![0x00, 0x00, 0x00, 0x23]), called_presentation_selector: Some(vec![0x65, 0x00, 0x00, 0x00]), ..Default::default() };
+        let presentation_contexts = vec![
+            // ACSE
+            PresentationContext { identifier: vec![1], abstract_syntax_name: oid!(2.2.1.0.1), transfer_syntax_name_list: vec![oid!(2.1.1)] },
+            // MMS
+            PresentationContext { identifier: vec![3], abstract_syntax_name: oid!(1.0.9506.2.1), transfer_syntax_name_list: vec![oid!(2.1.1)] },
+        ];
+        let (client_connection, server_connection) = create_copp_connection_pair_with_options(
+            Some(UserData::FullyEncoded(vec![PresentationDataValueList {
+                presentation_context_identifier: vec![0x01],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x60, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
+                transfer_syntax_name: None,
+            }])),
+            options,
+            Some(UserData::FullyEncoded(vec![PresentationDataValueList {
+                presentation_context_identifier: vec![0x01],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x61, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
+                transfer_syntax_name: None,
+            }])),
+            presentation_contexts,
+        )
+        .await?;
+
+        let (mut client_reader, mut client_writer) = client_connection.split().await?;
+        let (mut server_reader, mut server_writer) = server_connection.split().await?;
+
+        client_writer
+            .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
+                presentation_context_identifier: vec![0x03],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x60, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
+                transfer_syntax_name: None,
+            }])]))
+            .await?;
+        server_reader.recv().await?;
+        server_writer
+            .user_abort(
+                Some(vec![PresentationContextIdentifier { identifier: vec![3], transfer_syntax_name: oid!(2.1.1) }]),
+                Some(UserData::FullyEncoded(vec![PresentationDataValueList {
+                    presentation_context_identifier: vec![0x01],
+                    presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x60, 0x09, 0xa1, 0x07, 0x06, 0x05, 0x28, 0xca, 0x22, 0x02, 0x03]),
+                    transfer_syntax_name: None,
+                }])),
+            )
+            .await?;
+        client_reader.recv().await?;
+
+        Ok(())
+    }
+
     async fn create_copp_connection_pair_with_options(
         connect_data: Option<UserData>,
         options: CoppConnectionInformation,
         accept_data: Option<UserData>,
         contexts: Vec<PresentationContext>,
     ) -> Result<(impl CoppConnection, impl CoppConnection), anyhow::Error> {
-        let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
-        // let test_address = "127.0.0.1:10002".parse()?;
+        // let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
+        let test_address = "127.0.0.1:10002".parse()?;
 
         let connect_information = CotpProtocolInformation::initiator(None, None);
 

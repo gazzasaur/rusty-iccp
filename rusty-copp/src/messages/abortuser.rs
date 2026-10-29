@@ -26,8 +26,8 @@ impl AbortUserMessage {
         // This destructively processes the payload directly into the accept message in a single pass. No retrun is required.
         let (_, container) = parse_ber_any(&data).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
         container.header.assert_constructed().map_err(|e| CoppError::ProtocolError(e.to_string()))?;
-        container.header.assert_tag(Tag::Set).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
-        container.header.assert_class(Class::Universal).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_tag(Tag::from(0)).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
+        container.header.assert_class(Class::ContextSpecific).map_err(|e| CoppError::ProtocolError(e.to_string()))?;
 
         for object in process_constructed_data(container.data).map_err(|e| CoppError::ProtocolError(e.to_string()))? {
             match object.header.raw_tag() {
