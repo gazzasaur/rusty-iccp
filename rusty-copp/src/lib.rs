@@ -16,10 +16,10 @@ pub type RustyCoppConnectionIsoStack<R, W> = RustyCoppConnection<RustyCospReader
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::VecDeque, ops::Range, time::Duration, vec};
+    use std::{collections::VecDeque, time::Duration, vec};
 
     use anyhow::anyhow;
-    use der_parser::{Oid, oid};
+    use der_parser::oid;
     use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptor, RustyCospInitiator, RustyCospReader, RustyCospResponder, RustyCospWriter};
     use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
     use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};

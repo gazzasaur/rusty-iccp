@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use error::*;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
-use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsAccessResult, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, VariableSpecification};
+use rusty_mms::{ListOfVariablesItem, MmsAccessError, MmsBasicObjectClass, MmsObjectClass, MmsObjectName, MmsObjectScope, MmsVariableAccessSpecification, MmsWriteResult, VariableSpecification};
 use rusty_mms_service::{
     MmsServiceAssociation,
     data::{
@@ -45,6 +45,11 @@ pub trait IccpAssociation: Send + Sync {
 
     // An MMS Operation typically used for protocol heartbeats.
     async fn identify(&mut self) -> Result<Identity, IccpError>;
+
+    /**
+     * Reads the ICCP Version, Bilateral Table Name and Supported Features.
+     */
+    async fn get_iccp_connection_parameters(&mut self, domain: String) -> Result<IccpConnectionParameters, IccpError>;
 
     // --- Completed ---
     async fn get_data_values(&mut self, names: Vec<String>) -> Result<Vec<IccpAccessResult>, IccpError>;
@@ -399,10 +404,25 @@ impl RustyIccpAssociation {
         RustyIccpAssociation { mms_client: mms_association }
     }
 
-    /**
-     * Reads the ICCP Version, Bilateral Table Name and Supported Features.
-     */
-    pub async fn get_iccp_connection_parameters(&mut self, domain: String) -> Result<IccpConnectionParameters, IccpError> {
+}
+
+impl Clone for Box<dyn IccpAssociation> {
+    fn clone(&self) -> Self {
+        self.as_ref().clone()
+    }
+}
+
+#[async_trait]
+impl IccpAssociation for RustyIccpAssociation {
+    fn clone(&self) -> Box<dyn IccpAssociation> {
+        Box::new(RustyIccpAssociation { mms_client: self.mms_client.clone() })
+    }
+
+    async fn identify(&mut self) -> Result<Identity, IccpError> {
+        Ok(self.mms_client.identify().await?)
+    }
+
+    async fn get_iccp_connection_parameters(&mut self, domain: String) -> Result<IccpConnectionParameters, IccpError> {
         let mms_read_result = self
             .mms_client
             .read(MmsVariableAccessSpecification::ListOfVariables(vec![
@@ -426,7 +446,7 @@ impl RustyIccpAssociation {
             Some(MmsServiceAccessResult::Success(MmsServiceData::VisibleString(table_id))) => table_id,
             _ => return Err(IccpError::ProtocolError("Failed to fetch ICCP bilateral table id.".into())),
         };
-        let supported_features = match mms_read_result.get(1) {
+        let supported_features = match mms_read_result.get(2) {
             Some(MmsServiceAccessResult::Success(MmsServiceData::BitString(values))) => {
                 SupportedFeatures { block1: values.get(0).map_or_else(|| false, |x| *x), block2: values.get(1).map_or_else(|| false, |x| *x), block5: values.get(4).map_or_else(|| false, |x| *x) }
             }
@@ -434,23 +454,6 @@ impl RustyIccpAssociation {
         };
 
         Ok(IccpConnectionParameters { version: (major_version, minor_version), bilateral_table: table_id.to_owned(), supported_features })
-    }
-}
-
-impl Clone for Box<dyn IccpAssociation> {
-    fn clone(&self) -> Self {
-        self.as_ref().clone()
-    }
-}
-
-#[async_trait]
-impl IccpAssociation for RustyIccpAssociation {
-    fn clone(&self) -> Box<dyn IccpAssociation> {
-        Box::new(RustyIccpAssociation { mms_client: self.mms_client.clone() })
-    }
-
-    async fn identify(&mut self) -> Result<Identity, IccpError> {
-        Ok(self.mms_client.identify().await?)
     }
 
     async fn get_data_values(&mut self, names: Vec<String>) -> Result<Vec<IccpAccessResult>, IccpError> {
