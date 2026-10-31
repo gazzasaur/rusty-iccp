@@ -89,7 +89,7 @@ mod tests {
         let test_address = "127.0.0.1:10002".parse()?;
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
-            let tpkt_client = TcpTpktConnection::connect(test_address).await?;
+            let tpkt_client = TcpTpktConnection::connect(test_address, Default::default()).await?;
             let connection = OsiMmsInitiatorConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::connect(
                 tpkt_client,
                 CotpProtocolInformation::initiator(None, None),
@@ -103,7 +103,7 @@ mod tests {
             Ok(connection)
         };
         let server_path = async {
-            let tpkt_server = TcpTpktServer::listen(test_address).await?;
+            let tpkt_server = TcpTpktServer::listen(test_address, Default::default()).await?;
             let tpkt_connection = tpkt_server.accept().await?;
             let connection = OsiMmsMirrorResponderConnectionFactory::<TcpTpktConnection, TcpTpktReader, TcpTpktWriter>::accept(tpkt_connection).await?;
 

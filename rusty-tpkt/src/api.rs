@@ -23,6 +23,24 @@ pub trait ProtocolInformation: Any + Send + Debug + DynClone {}
 
 dyn_clone::clone_trait_object!(ProtocolInformation);
 
+pub struct MessageStack {
+    pub stack: Vec<MessageDetails>
+}
+
+pub struct MessageDetails {
+    pub name: String,
+    pub fields: Vec<MessageField>
+}
+
+pub enum MessageField {
+    Value { name: String, value: String },
+    Field { name: String, fields: Vec<MessageField> },
+}
+
+pub trait ProtocolLogger: Any + Send + Sync + Debug + DynClone {
+    fn log(&mut self, field: MessageField);
+}
+
 /// A trait representing a TPKT connection. There is no distinction between a client and a server connection once they are established.
 pub trait TpktConnection: Send {
     /// Gets the information regarding the protocols that have been negotiated during the connect phase.

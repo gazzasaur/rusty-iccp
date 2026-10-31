@@ -83,7 +83,7 @@ mod tests {
 
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
-            let tpkt_client = TcpTpktConnection::connect(test_address).await?;
+            let tpkt_client = TcpTpktConnection::connect(test_address, Default::default()).await?;
             let cotp_client = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone(), Default::default()).await?;
             let cosp_client = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(None, None), Default::default()).await?;
             let copp_client = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_client, Default::default());
@@ -91,7 +91,7 @@ mod tests {
             Ok(acse_client.initiate(Oid::from(&[1, 0, 9506, 2, 1]).map_err(|e| CoppError::InternalError(e.to_string()))?, connect_data.clone()).await?)
         };
         let server_path = async {
-            let tpkt_server = TcpTpktServer::listen(test_address).await?;
+            let tpkt_server = TcpTpktServer::listen(test_address, None).await?;
             let tpkt_connection = tpkt_server.accept().await?;
             let (cotp_server, initiator_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
             let cotp_connection = cotp_server.accept(initiator_info.responder()).await?;

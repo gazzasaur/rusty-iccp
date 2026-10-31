@@ -558,7 +558,7 @@ impl<R: MmsReader + 'static, W: MmsWriter + 'static> MmsServiceAssociation for R
 }
 
 pub async fn call_mms_service(host: SocketAddr, parameters: MmsServiceConnectionParameters) -> Result<Box<dyn MmsServiceAssociation>, MmsServiceError> {
-    let tpkt_connection = TcpTpktConnection::connect(host).await.map_err(|e| MmsServiceError::ProtocolError(format!("{e}")))?;
+    let tpkt_connection = TcpTpktConnection::connect(host, Default::default()).await.map_err(|e| MmsServiceError::ProtocolError(format!("{e}")))?;
 
     let cotp_connection_info = CotpProtocolInformation::initiator(parameters.calling.tsap_id, parameters.called.tsap_id);
     let cotp_connection = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_connection, cotp_connection_info, Default::default()).await.map_err(to_mms_error("Failed to create COTP Connection"))?;
@@ -1330,7 +1330,7 @@ mod tests {
     }
 
     async fn create_mms_service_server(address: SocketAddr) -> Result<Box<dyn MmsServiceAssociation>, anyhow::Error> {
-        let tpkt_server = TcpTpktServer::listen(address).await?;
+        let tpkt_server = TcpTpktServer::listen(address, Default::default()).await?;
         let tpkt_connection = tpkt_server.accept().await?;
         let (cotp_responder, a) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
         let cotp_connection = cotp_responder.accept(a.responder()).await?;

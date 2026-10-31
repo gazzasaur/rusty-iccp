@@ -144,7 +144,7 @@ async fn mms_server_worker(listener_address: String, listener_port: u16) -> Resu
     let listener_address = format!("{listener_address}:{listener_port}").parse()?;
 
     // Start by listening on the TCP port. This is bundled with TPKT.
-    let tpkt_listener = TcpTpktServer::listen(listener_address).await?;
+    let tpkt_listener = TcpTpktServer::listen(listener_address, Default::default()).await?;
 
     // In a eal server, you would loop over this bit so the server socket is not closed.
     let tpkt_connection = tpkt_listener.accept().await?;

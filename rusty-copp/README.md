@@ -71,7 +71,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the server. It will start listening on the port.
-    let server = TcpTpktServer::listen(address.clone()).await?;
+    let server = TcpTpktServer::listen(address.clone(), Default::default()).await?;
 
     // Accept an incoming connection. This can be called in a loop to keep accepting connections.
     let tpkt_connection = server.accept().await?;

@@ -7,9 +7,7 @@ use tokio::{
 };
 
 use crate::{
-    ProtocolInformation, TpktConnection, TpktError, TpktReader, TpktWriter,
-    parser::{TpktParser, TpktParserResult},
-    serialiser::TpktSerialiser,
+    ProtocolInformation, ProtocolLogger, TpktConnection, TpktError, TpktReader, TpktWriter, parser::{TpktParser, TpktParserResult}, serialiser::TpktSerialiser,
 };
 
 /// Keeps track of tpkt connection information
@@ -23,19 +21,20 @@ impl ProtocolInformation for TcpTpktProtocolInformation {}
 /// A TPKT server implemented over a TCP connection.
 pub struct TcpTpktServer {
     listener: TcpListener,
+    protocol_logger: Option<Box<dyn ProtocolLogger>>,
 }
 
 impl TcpTpktServer {
     /// Start listening on the provided TCP port.
-    pub async fn listen(address: SocketAddr) -> Result<Self, TpktError> {
-        Ok(Self { listener: TcpListener::bind(address).await? })
+    pub async fn listen(address: SocketAddr, protocol_logger: Option<Box<dyn ProtocolLogger>>) -> Result<Self, TpktError> {
+        Ok(Self { protocol_logger, listener: TcpListener::bind(address).await? })
     }
 
     /// Accept an incoming connection. This may be called multiple times.
     pub async fn accept<'a>(&self) -> Result<TcpTpktConnection, TpktError> {
         let (stream, remote_host) = self.listener.accept().await?;
         let (reader, writer) = split(stream);
-        Ok(TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer), Box::new(TcpTpktProtocolInformation { remote_address: remote_host })))
+        Ok(TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer), Default::default(), Box::new(TcpTpktProtocolInformation { remote_address: remote_host })))
     }
 }
 
@@ -43,19 +42,20 @@ impl TcpTpktServer {
 pub struct TcpTpktConnection {
     reader: TcpTpktReader,
     writer: TcpTpktWriter,
+    protocol_logger: Option<Box<dyn ProtocolLogger>>,
     protocol_information_list: Vec<Box<dyn ProtocolInformation>>,
 }
 
 impl TcpTpktConnection {
     /// Initiates a client TPKT connection.
-    pub async fn connect<'a>(address: SocketAddr) -> Result<TcpTpktConnection, TpktError> {
+    pub async fn connect<'a>(address: SocketAddr, protocol_logger: Option<Box<dyn ProtocolLogger>>) -> Result<TcpTpktConnection, TpktError> {
         let stream = TcpStream::connect(address).await?;
         let (reader, writer) = split(stream);
-        return Ok(TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer), Box::new(TcpTpktProtocolInformation { remote_address: address })));
+        return Ok(TcpTpktConnection::new(TcpTpktReader::new(reader), TcpTpktWriter::new(writer), protocol_logger, Box::new(TcpTpktProtocolInformation { remote_address: address })));
     }
 
-    fn new(reader: TcpTpktReader, writer: TcpTpktWriter, protocol_information: Box<dyn ProtocolInformation>) -> Self {
-        TcpTpktConnection { reader, writer, protocol_information_list: vec![protocol_information] }
+    fn new(reader: TcpTpktReader, writer: TcpTpktWriter, protocol_logger: Option<Box<dyn ProtocolLogger>>, protocol_information: Box<dyn ProtocolInformation>) -> Self {
+        TcpTpktConnection { reader, writer, protocol_logger, protocol_information_list: vec![protocol_information] }
     }
 }
 
