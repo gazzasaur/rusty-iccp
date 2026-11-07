@@ -40,6 +40,7 @@ This allows most ISO protcols to be operated over this implementation, normally 
 Examples may be found in the [examples](https://github.com/gazzasaur/rusty-iccp/blob/main/rusty-cosp/examples) directory. Basic useage is shown below.
 
 ```
+use std::ops::Range;
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
@@ -50,7 +51,8 @@ use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let test_address = "127.0.0.1:18462".parse()?;
+    // The production port is likely to be 102 or 8102
+    let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
 
     // Start the server first so it can open the port. We are using spawn so it starts running immediately.
     let server_connect_task = tokio::task::spawn(example_server(test_address));

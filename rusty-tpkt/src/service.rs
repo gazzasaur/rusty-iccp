@@ -7,7 +7,9 @@ use tokio::{
 };
 
 use crate::{
-    ProtocolInformation, TpktConnection, TpktError, TpktReader, TpktWriter, parser::{TpktParser, TpktParserResult}, serialiser::TpktSerialiser,
+    ProtocolInformation, TpktConnection, TpktError, TpktReader, TpktWriter,
+    parser::{TpktParser, TpktParserResult},
+    serialiser::TpktSerialiser,
 };
 
 /// Keeps track of tpkt connection information

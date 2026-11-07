@@ -175,7 +175,7 @@ async fn iccp_server_loop(mut iccp_association: RustyIccpAssociation) -> Result<
 
                 rusty_iccp::IccpMessage::CreateDataSet(_) => todo!(),
 
-                rusty_iccp::IccpMessage::Read(x) => {},
+                rusty_iccp::IccpMessage::Read(x) => {}
                 rusty_iccp::IccpMessage::StartTransferSet(_) => todo!(),
                 rusty_iccp::IccpMessage::GetDataSetNames(_) => todo!(),
                 rusty_iccp::IccpMessage::GetNextDsTransferSet(_) => todo!(),

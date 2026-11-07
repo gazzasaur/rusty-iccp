@@ -18,7 +18,6 @@ pub enum AcseError {
     #[error("ACSE Error: {}", .0)]
     InternalError(String),
 
-
     /// Indicated a connection was aborted. The connection should be dropped.
     /// This may occur during any read operation.
     #[error("ACSE User Abort")]

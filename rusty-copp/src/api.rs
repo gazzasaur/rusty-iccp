@@ -217,7 +217,7 @@ impl From<&EventIdentifier> for Vec<u8> {
 }
 
 /// A context is used to indicate the protocols used and the supported encodings.
-/// 
+///
 /// Default contexts are not supported.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextType {
@@ -249,7 +249,7 @@ pub struct PresentationContext {
 }
 
 /// The result of a notification.
-/// 
+///
 /// Acceptance is the only successful outcome.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextResultCause {
@@ -311,7 +311,7 @@ impl From<&[u8]> for PresentationContextResultProviderReason {
 }
 
 /// The result of a negotiation indicating the accepted encodings for a protocol.
-/// 
+///
 /// This will typically only be required by a user when rejecting a request or receiving an error. Accepting the encodings is handled when the responder is created.
 #[derive(PartialEq, Clone, Debug)]
 pub struct PresentationContextResult {
@@ -339,7 +339,7 @@ impl Default for CoppConnectionInformation {
 }
 
 /// The result of an Initiate request.
-/// 
+///
 /// This protocol may encapsulate the data of the protocol above.
 #[derive(IntoStaticStr)]
 pub enum CoppInitResult<T: CoppConnection> {
@@ -348,7 +348,7 @@ pub enum CoppInitResult<T: CoppConnection> {
 }
 
 /// Data received from the remote host.
-/// 
+///
 /// The finish and disconnect phases may contain data for higher layer protocols.
 #[derive(IntoStaticStr)]
 pub enum CoppRecvResult {
@@ -368,7 +368,7 @@ pub enum CoppRecvResult {
 /// Initiates a COPP connection.
 pub trait CoppInitiator: Send {
     /// Starts signalling a COPP connection. An Refuse error may be received during this phase.
-    /// 
+    ///
     /// This will return a connection on success. A Rejected error will be returned if the negotiation failed.
     /// Higher layer negotiations may be inciuded.
     /// A provider abort will be returned if there was a protocol error on this layer or a user abort at a higher layer..
@@ -378,7 +378,7 @@ pub trait CoppInitiator: Send {
 /// Used to accept or reject an incoming request.
 pub trait CoppAcceptor: Send {
     /// Accept the incoming connection.
-    /// 
+    ///
     /// Higher layer protocol information may be returned.
     fn accept(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, PresentationContextType, Option<UserData>), CoppError>> + Send;
 

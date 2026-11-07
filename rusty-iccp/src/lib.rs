@@ -403,7 +403,6 @@ impl RustyIccpAssociation {
     pub fn new(mms_association: Box<dyn MmsServiceAssociation>) -> Self {
         RustyIccpAssociation { mms_client: mms_association }
     }
-
 }
 
 impl Clone for Box<dyn IccpAssociation> {

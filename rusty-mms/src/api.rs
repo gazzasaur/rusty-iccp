@@ -199,7 +199,6 @@ pub enum MmsRecvResult {
 pub enum MmsMessage {
     // InitiateRequest, Handled internally
     // InitiateResponse, Handled internally
-
     ConfirmedRequest { invocation_id: Vec<u8>, request: MmsConfirmedRequest },
     ConfirmedResponse { invocation_id: Vec<u8>, response: MmsConfirmedResponse },
     Unconfirmed { unconfirmed_service: MmsUnconfirmedService },

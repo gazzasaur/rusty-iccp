@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, net::SocketAddr, time::Duration};
+use std::{collections::VecDeque, net::SocketAddr, ops::Range, time::Duration};
 
 use anyhow::anyhow;
 use rusty_cotp::{CotpConnection, CotpConnectionParameters, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter, RustyCotpConnection, RustyCotpResponder};
@@ -6,12 +6,13 @@ use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let test_address: SocketAddr = "127.0.0.1:17352".parse()?;
+    // The production port is likely to be 102 or 8102
+    let test_address = format!("127.0.0.1:{}", rand::random_range::<u16, Range<u16>>(20000..30000)).parse()?;
 
     let client_connect_task = tokio::task::spawn(async move {
         // Give the server time to connect.
         tokio::time::sleep(Duration::from_secs(1)).await;
-        example_client(test_address.clone()).await
+        example_client(test_address).await
     });
     let server_connect_task = tokio::task::spawn(example_server(test_address));
 
