@@ -1,19 +1,15 @@
-use std::{collections::VecDeque, net::SocketAddr, time::Duration};
+use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
-use rusty_cotp::{CotpConnection, CotpConnectionParameters, CotpProtocolInformation, CotpReader, CotpResponder, CotpWriter, RustyCotpConnection, RustyCotpResponder};
-use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
+use rusty_tpkt::{TcpTpktConnection, TcpTpktServer, TpktConnection, TpktReader, TpktWriter};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let test_address: SocketAddr = "127.0.0.1:8103".parse()?;
+    let test_address = "127.0.0.1:12351".parse()?;
 
-    let client_connect_task = tokio::task::spawn(async move {
-        // Give the server time to connect.
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        example_client(test_address.clone()).await
-    });
+    // Start the server first so it can open the port. We are using spawn so it starts running immediately.
     let server_connect_task = tokio::task::spawn(example_server(test_address));
+    let client_connect_task = tokio::task::spawn(example_client(test_address));
 
     // Check for errors.
     client_connect_task.await??;
@@ -24,19 +20,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the server. It will start listening on the port.
-    let server = TcpTpktServer::listen(address.clone(), Default::default()).await?;
+    let server = TcpTpktServer::listen(address.clone()).await?;
 
     // Accept an incoming connection. This can be called in a loop to keep accepting connections.
-    let tpkt_connection = server.accept().await?;
-
-    // Upgrade the TPKT connection to a COTP connection.
-    let (cotp_acceptor, incoming_propertites) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
-
-    // If we are okay with the incoming connection attributes, like TSAP id, we will accept the connection.
-    let cotp_connection = cotp_acceptor.accept(incoming_propertites.responder()).await?;
+    let connection = server.accept().await?;
 
     // Split the connection into read and write halves. This is often done for easy multi-tasking.
-    let (mut reader, mut writer) = cotp_connection.split().await?;
+    let (mut reader, mut writer) = connection.split().await?;
 
     // Get data from the client.
     let data = reader.recv().await?.ok_or_else(|| anyhow!("Connection Closed"))?;
@@ -56,12 +46,10 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
 
 async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the client connection. This will start a connection.
-    let tpkt_connection = TcpTpktConnection::connect(address, Default::default()).await?;
-
-    let cotp_connection = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_connection, CotpProtocolInformation::initiator(Some(vec![1]), Some(vec![2])), CotpConnectionParameters { ..Default::default() }).await?;
+    let connection = TcpTpktConnection::connect(address).await?;
 
     // Split the connection into read and write halves. This is often done for easy multi-tasking.
-    let (mut reader, mut writer) = cotp_connection.split().await?;
+    let (mut reader, mut writer) = connection.split().await?;
 
     // Send data to the server. This uses a buffer to ensure the operation is cancel safe. Store this buffer on your object an reuse it.
     let mut data = VecDeque::new();

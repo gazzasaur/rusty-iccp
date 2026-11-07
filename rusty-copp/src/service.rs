@@ -244,11 +244,6 @@ impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
         Ok(())
     }
 
-    async fn user_abort(&mut self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
-        self.cosp_writer.abort(Some(AbortUserMessage::new(presentation_contexts, user_data).serialise()?)).await?;
-        Ok(())
-    }
-
     async fn finish(&mut self, user_data: Option<UserData>) -> Result<(), CoppError> {
         let user_data_bytes = match user_data {
             Some(x) => Some(x.to_ber().to_vec().map_err(|e| CoppError::ProtocolError(e.to_string()))?),
@@ -264,6 +259,16 @@ impl<W: CospWriter> CoppWriter for RustyCoppWriter<W> {
             None => None,
         };
         self.cosp_writer.disconnect(user_data_bytes).await?;
+        Ok(())
+    }
+
+    async fn user_abort(&mut self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> Result<(), CoppError> {
+        self.cosp_writer.abort(Some(AbortUserMessage::new(presentation_contexts, user_data).serialise()?)).await?;
+        Ok(())
+    }
+
+    async fn provider_abort(&mut self, provider_reason: Option<ProviderReason>, event_identifier: Option<EventIdentifier>) -> Result<(), CoppError> {
+        self.cosp_writer.abort(Some(AbortProviderMessage::new(provider_reason, event_identifier).serialise()?)).await?;
         Ok(())
     }
 }

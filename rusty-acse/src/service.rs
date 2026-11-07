@@ -49,15 +49,12 @@ impl<T: CoppInitiator, R: CoppReader, W: CoppWriter> OsiSingleValueAcseInitiator
                     presentation_data_values: PresentationDataValues::SingleAsn1Type(self.options.serialise(&Some(user_data))?),
                 }])),
             )
-            .await?;
+            .await;
         let (copp_connection, received_user_data) = match init_result {
-            rusty_copp::CoppInitResult::Success(x, user_data) => (x, user_data),
-            rusty_copp::CoppInitResult::AbortUser(_) => todo!(),
-            rusty_copp::CoppInitResult::AbortProvider(_) => todo!(),
-            x => {
-                let payload_type: &'static str = x.into();
-                return Err(AcseError::ProtocolError(format!("Unexpected payload during connect: {payload_type}")));
-            }
+            Ok(rusty_copp::CoppInitResult::Success(x, user_data)) => (x, user_data),
+            Err(rusty_copp::CoppError::UserAborted(..)) => todo!(),
+            Err(rusty_copp::CoppError::ProviderAborted(..)) => todo!(),
+            Err(x) => return Err(x.into()),
         };
 
         let (copp_reader, copp_writer) = copp_connection.split().await?;
@@ -183,10 +180,10 @@ impl<R: CoppReader> RustyOsiSingleValueAcseReader<R> {
 
 impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R> {
     async fn recv(&mut self) -> Result<AcseRecvResult, AcseError> {
-        let copp_recv_result = self.copp_reader.recv().await?;
+        let copp_recv_result = self.copp_reader.recv().await;
         match copp_recv_result {
-            rusty_copp::CoppRecvResult::Closed => return Ok(AcseRecvResult::Closed),
-            rusty_copp::CoppRecvResult::Data(user_data) => match user_data {
+            Ok(rusty_copp::CoppRecvResult::Closed) => return Ok(AcseRecvResult::Closed),
+            Ok(rusty_copp::CoppRecvResult::Data(user_data)) => match user_data {
                 UserData::FullyEncoded(presentation_data_value_lists) => {
                     if presentation_data_value_lists.len() > 1 {
                         return Err(AcseError::ProtocolError(format!("Expected one PDV value on ACSE read but found {}", presentation_data_value_lists.len())));
@@ -204,7 +201,7 @@ impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R
                     }
                 }
             },
-            rusty_copp::CoppRecvResult::Finish(user_data) => match user_data {
+            Ok(rusty_copp::CoppRecvResult::Finish(user_data)) => match user_data {
                 Some(UserData::FullyEncoded(presentation_data_value_lists)) => {
                     if presentation_data_value_lists.len() > 1 {
                         return Err(AcseError::ProtocolError(format!("Expected one PDV value on ACSE read but found {}", presentation_data_value_lists.len())));
@@ -223,7 +220,7 @@ impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R
                 }
                 None => return Ok(AcseRecvResult::ReleaseRequest(None)),
             },
-            rusty_copp::CoppRecvResult::Disconnect(user_data) => match user_data {
+            Ok(rusty_copp::CoppRecvResult::Disconnect(user_data)) => match user_data {
                 Some(UserData::FullyEncoded(presentation_data_value_lists)) => {
                     if presentation_data_value_lists.len() > 1 {
                         return Err(AcseError::ProtocolError(format!("Expected one PDV value on ACSE read but found {}", presentation_data_value_lists.len())));
@@ -242,8 +239,9 @@ impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R
                 }
                 None => return Ok(AcseRecvResult::ReleaseResponse(None)),
             },
-            rusty_copp::CoppRecvResult::AbortUser(_) => todo!(),
-            rusty_copp::CoppRecvResult::AbortProvider(_) => todo!(),
+            Err(rusty_copp::CoppError::UserAborted(..)) => todo!(),
+            Err(rusty_copp::CoppError::ProviderAborted(..)) => todo!(),
+            Err(x) => return Err(x.into()),
         }
     }
 }

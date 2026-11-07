@@ -50,7 +50,7 @@ use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let test_address = "127.0.0.1:12345".parse()?;
+    let test_address = "127.0.0.1:18462".parse()?;
 
     // Start the server first so it can open the port. We are using spawn so it starts running immediately.
     let server_connect_task = tokio::task::spawn(example_server(test_address));
@@ -65,7 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the server. It will start listening on the port.
-    let server = TcpTpktServer::listen(address.clone(), Default::default()).await?;
+    let server = TcpTpktServer::listen(address.clone()).await?;
 
     // Accept an incoming connection. This can be called in a loop to keep accepting connections.
     let tpkt_connection = server.accept().await?;
@@ -113,6 +113,8 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // In this case, the client will call finish, so we will call disconnect as per the standard.
     match reader.recv().await? {
         CospRecvResult::Finish(_) => (),
+
+        // Normally we would just log and drop the connection instead of fail.
         x => return Err(anyhow!("Expected finish but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
     };
     writer.disconnect(None).await?;
@@ -124,7 +126,7 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
 
 async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the client connection. This will start a connection.
-    let tpkt_connection = TcpTpktConnection::connect(address, Default::default()).await?;
+    let tpkt_connection = TcpTpktConnection::connect(address).await?;
 
     // Initiate the COTP connection. This will be established before the COSP connection uses it.
     let cotp_connection = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_connection, CotpProtocolInformation::initiator(Some(vec![1]), Some(vec![2])), Default::default()).await?;
@@ -157,6 +159,14 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
 
     // We will close the connection from this side in an orderly manner.
     writer.finish(None).await?;
+
+    // Wait for the final disconnect
+    match reader.recv().await? {
+        CospRecvResult::Disconnect(_) => (),
+
+        // Normally we would just log and drop the connection instead of fail.
+        x => return Err(anyhow!("Expected disconnect but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
+    }
 
     // The connection will be closed when it is dropped.
 

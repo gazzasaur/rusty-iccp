@@ -49,14 +49,18 @@ Examples may be found in the [examples](https://github.com/gazzasaur/rusty-iccp/
 use std::{collections::VecDeque, net::SocketAddr};
 
 use anyhow::anyhow;
-use rusty_cosp::CospReader;
-use rusty_cosp::{CospAcceptor, CospConnection, CospInitiator, CospProtocolInformation, CospRecvResult, CospResponder, CospWriter, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
+use der_parser::oid;
+use rusty_copp::{
+    CoppAcceptor, CoppConnection, CoppConnectionInformation, CoppInitResult, CoppInitiator, CoppReader, CoppRecvResult, CoppResponder, CoppWriter, PresentationContext, PresentationContextIdentifier, PresentationContextType,
+    PresentationDataValueList, PresentationDataValues, RustyCoppAcceptorIsoStack, RustyCoppInitiatorIsoStack, UserData,
+};
+use rusty_cosp::{CospProtocolInformation, RustyCospAcceptorIsoStack, RustyCospInitiatorIsoStack};
 use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpResponder};
 use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let test_address = "127.0.0.1:12345".parse()?;
+    let test_address = "127.0.0.1:15429".parse()?;
 
     // Start the server first so it can open the port. We are using spawn so it starts running immediately.
     let server_connect_task = tokio::task::spawn(example_server(test_address));
@@ -71,7 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the server. It will start listening on the port.
-    let server = TcpTpktServer::listen(address.clone(), Default::default()).await?;
+    let server = TcpTpktServer::listen(address.clone()).await?;
 
     // Accept an incoming connection. This can be called in a loop to keep accepting connections.
     let tpkt_connection = server.accept().await?;
@@ -89,39 +93,72 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     assert_eq!(cosp_protocol_information.called_session_selector(), Some(&vec![2]));
     assert_eq!(cosp_protocol_information.calling_session_selector(), Some(&vec![1]));
 
-    // We accept the COSP connection and receive any higher level protocol connection data.
-    // COSP has many PDUs that allow for higher level protocols to inject data.
-    let (cosp_responder, connect_data) = cosp_acceptor.accept().await?;
+    // Pass the COSP acceptor to the COPP layer.
+    let (copp_listener, copp_connection_information) = RustyCoppAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_acceptor).await?;
 
-    // For example purposes, we will ensure this matches.
-    assert_eq!(connect_data, Some(b"Initiator Higher Level Protocol Data".to_vec()));
+    // For the presentation layer, we will assert we know who the caller is and ensure it called us.
+    assert_eq!(copp_connection_information.called_presentation_selector, Some(vec![2]));
+    assert_eq!(copp_connection_information.calling_presentation_selector, Some(vec![1]));
 
-    // We will completed the connection, which also allows us to send higher level protocol data back.
-    let cosp_connection = cosp_responder.complete_connection(Some(b"Responder Higher Level Protocol Data".to_vec())).await?;
+    // Using the cosp responder, create a copp connection.
+    let (copp_responder, presentation_context, user_data) = copp_listener.accept().await?;
 
-    // Split the connection into read and write halves. This is often done for easy multi-tasking.
-    let (mut reader, mut writer) = cosp_connection.split().await?;
-
-    // Get data from the client.
-    let data = match reader.recv().await? {
-        CospRecvResult::Data(data) => data,
-        x => return Err(anyhow!("Expected data but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
-    };
-    assert_eq!(data, "Hello from the client!".as_bytes().to_vec());
-
-    // Send data to the client. This uses a buffer to ensure the operation is cancel safe. Store this buffer on your object an reuse it.
-    let mut data = VecDeque::new();
-    data.push_back("Hello from the server!".as_bytes().to_vec());
-    while data.len() > 0 {
-        writer.send(&mut data).await?;
+    // Verify the context. This only supports a subset of OSI encapsulated contexts that require a context list.
+    match presentation_context {
+        PresentationContextType::ContextDefinitionList(presentation_contexts) => {
+            assert_eq!(presentation_contexts.len(), 2);
+            assert_eq!(presentation_contexts.get(0), Some(&PresentationContext { identifier: vec![1], abstract_syntax_name: oid!(1.2.3.4), transfer_syntax_name_list: vec![oid!(0.3.2.1)] }));
+            assert_eq!(presentation_contexts.get(1), Some(&PresentationContext { identifier: vec![2], abstract_syntax_name: oid!(2.2.3.4), transfer_syntax_name_list: vec![oid!(1.3.2.1), oid!(2.3.2.1)] }));
+        }
+    }
+    match user_data {
+        Some(UserData::FullyEncoded(x)) => {
+            assert_eq!(x, vec![PresentationDataValueList { transfer_syntax_name: None, presentation_context_identifier: vec![4, 3, 2, 1], presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0, 2, 4, 6]) }])
+        }
+        _ => assert!(false, "Unexpected value"),
     }
 
-    // In this case, the client will call finish, so we will call disconnect as per the standard.
-    match reader.recv().await? {
-        CospRecvResult::Finish(_) => (),
-        x => return Err(anyhow!("Expected finish but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
+    let copp_connection = copp_responder
+        .complete_connection(Some(UserData::FullyEncoded(vec![PresentationDataValueList {
+            transfer_syntax_name: Some(oid!(0.4.3.2.1)),
+            presentation_context_identifier: vec![0x07],
+            presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x04, 0x05]),
+        }])))
+        .await?;
+
+    // Split the connection into read and write halves. This is often done for easy multi-tasking.
+    let (mut copp_reader, mut copp_writer) = copp_connection.split().await?;
+
+    // Get data from the client.
+    match copp_reader.recv().await? {
+        rusty_copp::CoppRecvResult::Data(user_data) => assert_eq!(
+            user_data,
+            UserData::FullyEncoded(vec![PresentationDataValueList {
+                transfer_syntax_name: Some(oid!(1.2.3.4)),
+                presentation_context_identifier: vec![0x01],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x06, 0x07]),
+            }])
+        ),
+        _ => assert!(false, "Unexpected value"),
     };
-    writer.disconnect(None).await?;
+
+    copp_writer
+        .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
+            transfer_syntax_name: Some(oid!(1.2.3.5)),
+            presentation_context_identifier: vec![0x02],
+            presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x07, 0x09]),
+        }])]))
+        .await?;
+
+    // In this case, the client will call finish, so we will call disconnect as per the standard.
+    match copp_reader.recv().await? {
+        CoppRecvResult::Finish(_) => (),
+
+        // Normally we would just log and drop the connection instead of fail.
+        x => return Err(anyhow!("Expected finish but got {}", <CoppRecvResult as Into<&'static str>>::into(x))),
+    };
+    // copp_writer.disconnect().await?;
+    copp_writer.user_abort(Some(vec![PresentationContextIdentifier { identifier: vec![1], transfer_syntax_name: oid!(1.2.3.4) }]), None).await?;
 
     // The connection will be closed when it is dropped.
 
@@ -138,31 +175,61 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Upgrade the connection to a COSP connection. Here will will signal our identity and the expected identity of the remote side.
     let cosp_initiator = RustyCospInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cotp_connection, CospProtocolInformation::new(Some(vec![1]), Some(vec![2])), Default::default()).await?;
 
-    // Initial the COSP connection. This performs the actual singalling. In this case we will get higher layer protcol data back.
-    let (cosp_connection, accept_data) = cosp_initiator.initiate(Some(b"Initiator Higher Level Protocol Data".to_vec())).await?;
+    let copp_initiator = RustyCoppInitiatorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_initiator, CoppConnectionInformation { calling_presentation_selector: Some(vec![1]), called_presentation_selector: Some(vec![2]) });
+    let copp_connection = copp_initiator
+        .initiate(
+            PresentationContextType::ContextDefinitionList(vec![
+                PresentationContext { identifier: vec![1], abstract_syntax_name: oid!(1.2.3.4), transfer_syntax_name_list: vec![oid!(0.3.2.1)] },
+                PresentationContext { identifier: vec![2], abstract_syntax_name: oid!(2.2.3.4), transfer_syntax_name_list: vec![oid!(1.3.2.1), oid!(2.3.2.1)] },
+            ]),
+            Some(UserData::FullyEncoded(vec![PresentationDataValueList { transfer_syntax_name: None, presentation_context_identifier: vec![4, 3, 2, 1], presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0, 2, 4, 6]) }])),
+        )
+        .await?;
 
-    // For example purposes, we will ensure this matches.
-    assert_eq!(accept_data, Some(b"Responder Higher Level Protocol Data".to_vec()));
-
-    // Split the connection into read and write halves. This is often done for easy multi-tasking.
-    let (mut reader, mut writer) = cosp_connection.split().await?;
-
-    // Send data to the server. This uses a buffer to ensure the operation is cancel safe. Store this buffer on your object an reuse it.
-    let mut data = VecDeque::new();
-    data.push_back("Hello from the client!".as_bytes().to_vec());
-    while data.len() > 0 {
-        writer.send(&mut data).await?;
-    }
-
-    // Get data from the server.
-    let data = match reader.recv().await? {
-        CospRecvResult::Data(data) => data,
-        x => return Err(anyhow!("Expected data but got {}", <CospRecvResult as Into<&'static str>>::into(x))),
+    let (copp_connection, user_data) = match copp_connection {
+        CoppInitResult::Success(copp_connection, user_data) => (copp_connection, user_data),
+        x => {
+            let x = <CoppInitResult<_> as Into<&'static str>>::into(x);
+            return Err(anyhow!("Unexpected payload: {x}"));
+        }
     };
-    assert_eq!(data, "Hello from the server!".as_bytes().to_vec());
+    assert_eq!(
+        user_data,
+        Some(UserData::FullyEncoded(vec![PresentationDataValueList { transfer_syntax_name: Some(oid!(0.4.3.2.1)), presentation_context_identifier: vec![7], presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![4, 5]) }]))
+    );
+
+    let (mut copp_reader, mut copp_writer) = copp_connection.split().await?;
+
+    copp_writer
+        .send(&mut VecDeque::from(vec![UserData::FullyEncoded(vec![PresentationDataValueList {
+            transfer_syntax_name: Some(oid!(1.2.3.4)),
+            presentation_context_identifier: vec![0x01],
+            presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x06, 0x07]),
+        }])]))
+        .await?;
+
+    match copp_reader.recv().await? {
+        rusty_copp::CoppRecvResult::Data(user_data) => assert_eq!(
+            user_data,
+            UserData::FullyEncoded(vec![PresentationDataValueList {
+                transfer_syntax_name: Some(oid!(1.2.3.5)),
+                presentation_context_identifier: vec![0x02],
+                presentation_data_values: PresentationDataValues::SingleAsn1Type(vec![0x07, 0x09]),
+            }])
+        ),
+        _ => assert!(false, "Unexpected value"),
+    };
 
     // We will close the connection from this side in an orderly manner.
-    writer.finish(None).await?;
+    copp_writer.finish(None).await?;
+
+    // Wait for the final disconnect
+    match copp_reader.recv().await? {
+        CoppRecvResult::Disconnect(_) => (),
+
+        // Normally we would just log and drop the connection instead of fail.
+        x => return Err(anyhow!("Expected disconnect but got {}", <CoppRecvResult as Into<&'static str>>::into(x))),
+    }
 
     // The connection will be closed when it is dropped.
 

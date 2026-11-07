@@ -18,7 +18,6 @@ pub type RustyCoppConnectionIsoStack<R, W> = RustyCoppConnection<RustyCospReader
 mod tests {
     use std::{collections::VecDeque, ops::Range, time::Duration, vec};
 
-    use anyhow::anyhow;
     use der_parser::oid;
     use rusty_cosp::{CospConnectionParameters, CospProtocolInformation, RustyCospAcceptor, RustyCospInitiator, RustyCospReader, RustyCospResponder, RustyCospWriter};
     use rusty_cotp::{CotpProtocolInformation, CotpResponder, RustyCotpConnection, RustyCotpReader, RustyCotpResponder, RustyCotpWriter};
@@ -95,7 +94,7 @@ mod tests {
 
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
-            let tpkt_client = TcpTpktConnection::connect(test_address, Default::default()).await?;
+            let tpkt_client = TcpTpktConnection::connect(test_address).await?;
             let cotp_client = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone(), Default::default()).await?;
             let cosp_client = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(None, None), Default::default()).await?;
             let copp_client = RustyCoppInitiator::<RustyCospInitiator<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(
@@ -122,7 +121,7 @@ mod tests {
             Ok(())
         };
         let server_path = async {
-            let tpkt_server = TcpTpktServer::listen(test_address, Default::default()).await?;
+            let tpkt_server = TcpTpktServer::listen(test_address).await?;
             let tpkt_connection = tpkt_server.accept().await?;
             let (cotp_server, protocol_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
             let cotp_connection = cotp_server.accept(protocol_info.responder()).await?;
@@ -217,7 +216,7 @@ mod tests {
 
         let client_path = async {
             tokio::time::sleep(Duration::from_millis(1)).await; // Give the server time to start
-            let tpkt_client = TcpTpktConnection::connect(test_address, Default::default()).await?;
+            let tpkt_client = TcpTpktConnection::connect(test_address).await?;
             let cotp_client = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_client, connect_information.clone(), Default::default()).await?;
             let cosp_client = RustyCospInitiator::<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>::new(cotp_client, CospProtocolInformation::new(None, None), Default::default()).await?;
             let copp_client = RustyCoppInitiator::<RustyCospInitiator<RustyCotpReader<TcpTpktReader>, RustyCotpWriter<TcpTpktWriter>>, RustyCospReader<RustyCotpReader<TcpTpktReader>>, RustyCospWriter<RustyCotpWriter<TcpTpktWriter>>>::new(
@@ -227,7 +226,7 @@ mod tests {
             Ok(copp_client.initiate(PresentationContextType::ContextDefinitionList(contexts), connect_data.clone()).await?)
         };
         let server_path = async {
-            let tpkt_server = TcpTpktServer::listen(test_address, Default::default()).await?;
+            let tpkt_server = TcpTpktServer::listen(test_address).await?;
             let tpkt_connection = tpkt_server.accept().await?;
             let (cotp_server, protocol_info) = RustyCotpResponder::<TcpTpktReader, TcpTpktWriter>::new(tpkt_connection, Default::default()).await?;
             let cotp_connection = cotp_server.accept(protocol_info.responder()).await?;
@@ -243,7 +242,6 @@ mod tests {
         let (copp_client, copp_server): (Result<_, anyhow::Error>, Result<_, anyhow::Error>) = join!(client_path, server_path);
         let (copp_client, accepted_data) = match copp_client? {
             CoppInitResult::Success(x, y) => (x, y),
-            _ => return Err(anyhow!("Test Failed")),
         };
         let (copp_server, connected_data) = copp_server?;
 

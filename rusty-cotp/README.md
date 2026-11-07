@@ -49,7 +49,7 @@ use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let test_address: SocketAddr = "127.0.0.1:12345".parse()?;
+    let test_address: SocketAddr = "127.0.0.1:17352".parse()?;
 
     let client_connect_task = tokio::task::spawn(async move {
         // Give the server time to connect.
@@ -67,7 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the server. It will start listening on the port.
-    let server = TcpTpktServer::listen(address.clone(), Default::default()).await?;
+    let server = TcpTpktServer::listen(address.clone()).await?;
 
     // Accept an incoming connection. This can be called in a loop to keep accepting connections.
     let tpkt_connection = server.accept().await?;
@@ -99,7 +99,7 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
 
 async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the client connection. This will start a connection.
-    let tpkt_connection = TcpTpktConnection::connect(address, Default::default()).await?;
+    let tpkt_connection = TcpTpktConnection::connect(address).await?;
 
     let cotp_connection = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_connection, CotpProtocolInformation::initiator(Some(vec![1]), Some(vec![2])), CotpConnectionParameters { ..Default::default() }).await?;
 

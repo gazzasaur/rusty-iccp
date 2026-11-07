@@ -12,7 +12,7 @@ use rusty_tpkt::{TcpTpktConnection, TcpTpktReader, TcpTpktServer, TcpTpktWriter}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let test_address = "127.0.0.1:12345".parse()?;
+    let test_address = "127.0.0.1:15429".parse()?;
 
     // Start the server first so it can open the port. We are using spawn so it starts running immediately.
     let server_connect_task = tokio::task::spawn(example_server(test_address));
@@ -27,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the server. It will start listening on the port.
-    let server = TcpTpktServer::listen(address.clone(), Default::default()).await?;
+    let server = TcpTpktServer::listen(address.clone()).await?;
 
     // Accept an incoming connection. This can be called in a loop to keep accepting connections.
     let tpkt_connection = server.accept().await?;
@@ -119,7 +119,7 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
 
 async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
     // Create the client connection. This will start a connection.
-    let tpkt_connection = TcpTpktConnection::connect(address, Default::default()).await?;
+    let tpkt_connection = TcpTpktConnection::connect(address).await?;
 
     // Initiate the COTP connection. This will be established before the COSP connection uses it.
     let cotp_connection = RustyCotpConnection::<TcpTpktReader, TcpTpktWriter>::initiate(tpkt_connection, CotpProtocolInformation::initiator(Some(vec![1]), Some(vec![2])), Default::default()).await?;
@@ -140,10 +140,6 @@ async fn example_client(address: SocketAddr) -> Result<(), anyhow::Error> {
 
     let (copp_connection, user_data) = match copp_connection {
         CoppInitResult::Success(copp_connection, user_data) => (copp_connection, user_data),
-        x => {
-            let x = <CoppInitResult<_> as Into<&'static str>>::into(x);
-            return Err(anyhow!("Unexpected payload: {x}"));
-        }
     };
     assert_eq!(
         user_data,

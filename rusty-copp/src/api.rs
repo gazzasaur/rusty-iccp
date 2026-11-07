@@ -38,6 +38,7 @@ pub enum CoppError {
     ProviderAborted(Option<ProviderReason>, Option<EventIdentifier>),
 }
 
+/// If an error occurs at this layer of the protocol the fllowing provider reasons may be received.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProviderReasonValue {
     ReasonNotSpecified = 0,
@@ -50,6 +51,7 @@ pub enum ProviderReasonValue {
     NoPsapAvailable = 7,
 }
 
+/// A container to support unknown provider reasons.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProviderReason {
     Value(ProviderReasonValue),
@@ -125,6 +127,7 @@ pub enum EventIdentifierValue {
     SessionActivityEndConfirm = 32,
 }
 
+/// Used in provider abort to indicate where issues may reside.
 #[derive(Debug)]
 pub enum EventIdentifier {
     Value(EventIdentifierValue),
@@ -213,6 +216,8 @@ impl From<&EventIdentifier> for Vec<u8> {
     }
 }
 
+/// A context is used to indicate the protocols used and the supported encodings.
+/// 
 /// Default contexts are not supported.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextType {
@@ -220,6 +225,7 @@ pub enum PresentationContextType {
     ContextDefinitionList(Vec<PresentationContext>),
 }
 
+/// Indicates which subset of encodings, if any, requested by the caller, are supported by the callee.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextResultType {
     // DefaultContextAccept,
@@ -227,12 +233,14 @@ pub enum PresentationContextResultType {
     ContextDefinitionList(Vec<PresentationContextResult>),
 }
 
+/// Identifies the previously negotiated protocol and the encoding that is being used in a PPDU.
 #[derive(PartialEq, Clone, Debug)]
 pub struct PresentationContextIdentifier {
     pub identifier: Vec<u8>, // ASN1 Integer
     pub transfer_syntax_name: Oid<'static>,
 }
 
+/// Indicates the supported encodings for a protocol.
 #[derive(PartialEq, Clone, Debug)]
 pub struct PresentationContext {
     pub identifier: Vec<u8>, // ASN1 Integer
@@ -240,6 +248,9 @@ pub struct PresentationContext {
     pub transfer_syntax_name_list: Vec<Oid<'static>>,
 }
 
+/// The result of a notification.
+/// 
+/// Acceptance is the only successful outcome.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextResultCause {
     Acceptance,
@@ -259,6 +270,7 @@ impl From<PresentationContextResultCause> for &[u8] {
     }
 }
 
+/// The possible reasons a negotiation was not accepted.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextResultProviderReasonValue {
     ReasonNotSpecified,
@@ -267,6 +279,7 @@ pub enum PresentationContextResultProviderReasonValue {
     LocalLimitOnDcsExceeded,
 }
 
+/// A container used to support unknown abort reasons.
 #[derive(PartialEq, Clone, Debug)]
 pub enum PresentationContextResultProviderReason {
     Value(PresentationContextResultProviderReasonValue),
@@ -297,13 +310,22 @@ impl From<&[u8]> for PresentationContextResultProviderReason {
     }
 }
 
+/// The result of a negotiation indicating the accepted encodings for a protocol.
+/// 
+/// This will typically only be required by a user when rejecting a request or receiving an error. Accepting the encodings is handled when the responder is created.
 #[derive(PartialEq, Clone, Debug)]
 pub struct PresentationContextResult {
+    /// The result of the negotiation for this protocol.
     pub result: PresentationContextResultCause,
+
+    /// The protocol oid.
     pub transfer_syntax_name: Option<Oid<'static>>,
+
+    /// The reason the negotiation was rejected (or accepted).
     pub provider_reason: Option<PresentationContextResultProviderReason>,
 }
 
+/// The addressing used to identify the caller and callee endpoints.
 #[derive(PartialEq, Clone, Debug)]
 pub struct CoppConnectionInformation {
     pub calling_presentation_selector: Option<Vec<u8>>,
@@ -316,62 +338,101 @@ impl Default for CoppConnectionInformation {
     }
 }
 
+/// The result of an Initiate request.
+/// 
+/// This protocol may encapsulate the data of the protocol above.
 #[derive(IntoStaticStr)]
 pub enum CoppInitResult<T: CoppConnection> {
+    /// The remote host accepted our proposal.
     Success(T, Option<UserData>),
-    AbortUser(Vec<u8>),
-    AbortProvider(Vec<u8>),
-    Finish(Option<UserData>),
-    Disconnect(Option<UserData>),
 }
 
+/// Data received from the remote host.
+/// 
+/// The finish and disconnect phases may contain data for higher layer protocols.
 #[derive(IntoStaticStr)]
 pub enum CoppRecvResult {
+    /// The underlying connection is closed. Close out side too.
     Closed,
+
+    /// Data was received. Pass this on to the higher layer.
     Data(UserData),
-    AbortUser(Vec<u8>),
-    AbortProvider(Vec<u8>),
+
+    /// The remote host is proposing the close the connection. This may be initiated by a higher layer protocol. Pass the user data on.
     Finish(Option<UserData>),
+
+    /// The remote host accepted our proposal to close the connection. This may be initiated by a higher layer protocol. Pass the user data on.
     Disconnect(Option<UserData>),
 }
 
+/// Initiates a COPP connection.
 pub trait CoppInitiator: Send {
+    /// Starts signalling a COPP connection. An Refuse error may be received during this phase.
+    /// 
+    /// This will return a connection on success. A Rejected error will be returned if the negotiation failed.
+    /// Higher layer negotiations may be inciuded.
+    /// A provider abort will be returned if there was a protocol error on this layer or a user abort at a higher layer..
     fn initiate(self, presentation_contexts: PresentationContextType, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<CoppInitResult<impl CoppConnection>, CoppError>> + Send;
 }
 
+/// Used to accept or reject an incoming request.
 pub trait CoppAcceptor: Send {
+    /// Accept the incoming connection.
+    /// 
+    /// Higher layer protocol information may be returned.
     fn accept(self) -> impl std::future::Future<Output = Result<(impl CoppResponder, PresentationContextType, Option<UserData>), CoppError>> + Send;
 
+    /// Reject the incoming connection.
     fn reject(self, context_definition_result_list: PresentationContextResultType, provider_reason: Option<ProviderReason>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
+    /// Indicate a failure at a higher layer.
     fn user_abort(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
+    /// Indicate a failure at a this layer.
     fn provider_abort(self, provider_reason: Option<ProviderReason>, event_identifier: Option<EventIdentifier>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }
 
+/// Used to complete negoitations
 pub trait CoppResponder: Send {
+    /// Accept the negotiation and respond to the remote host.
     fn complete_connection(self, accept_data: Option<UserData>) -> impl std::future::Future<Output = Result<impl CoppConnection, CoppError>> + Send;
 
+    /// Reject the incoming connection.
     fn reject(self, context_definition_result_list: PresentationContextResultType, provider_reason: Option<ProviderReason>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
+    /// Indicate a failure at a higher layer.
     fn user_abort(self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
+    /// Indicate a failure at a this layer.
     fn provider_abort(self, provider_reason: Option<ProviderReason>, event_identifier: Option<EventIdentifier>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }
 
+/// A trait representing a connection.
 pub trait CoppConnection: Send {
+    /// Splits a connection into reader and writer components. This must be done before the connection is used.
     fn split(self) -> impl std::future::Future<Output = Result<(impl CoppReader, impl CoppWriter), CoppError>> + Send;
 }
 
+/// A trait representing the read half of a connection.
 pub trait CoppReader: Send {
+    /// Receives data. An Abort error may also be received.
     fn recv(&mut self) -> impl std::future::Future<Output = Result<CoppRecvResult, CoppError>> + Send;
 }
 
+/// A trait representing the write half of a connection.
 pub trait CoppWriter: Send {
+    /// Send data to the remote host.
     fn send(&mut self, user_data: &mut VecDeque<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
+    /// Signals the intent to close a connection. A disconnect should be received before dropping the reader and writer.
+    fn finish(&mut self, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+
+    /// Confirms that a finish was received and this side is okay to close the connection.
+    fn disconnect(&mut self, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+
+    /// Abort the connection. The reader and writer should be dropped after this is sent.
     fn user_abort(&mut self, presentation_contexts: Option<Vec<PresentationContextIdentifier>>, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 
-    fn finish(&mut self, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
-    fn disconnect(&mut self, user_data: Option<UserData>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
+    /// If a protocol error is received. Use this to close the connection.
+    fn provider_abort(&mut self, provider_reason: Option<ProviderReason>, event_identifier: Option<EventIdentifier>) -> impl std::future::Future<Output = Result<(), CoppError>> + Send;
 }

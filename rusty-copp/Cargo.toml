@@ -1,11 +1,11 @@
 [package]
 name = "rusty-copp"
+version = "1.3.0"
 description = "Implements the Kernel Function of Connection Oriented Presentation Protocol/ISO 8823-1/IEC 8823-1/ITU-T X.226 standard."
 
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
-version = { workspace = true }
 homepage = { workspace = true }
 repository = { workspace = true }
 
