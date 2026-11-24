@@ -1,7 +1,7 @@
 # Rusty COPP
 A pure rust implementation of COPP over COSP.
 
-This implementation is used as a glue glue protocol between the ISO standard protocols and byte streams (TCP/Serial links).
+This implementation is used as a glue protocol between the ISO standard protocols and byte streams (TCP/Serial links).
 This implementation covers kernel functionality of COPP with some restrictions targeted towards ISO standards:
 * Only fully-encoded user-data is supported.
 * Default contexts are not supported.

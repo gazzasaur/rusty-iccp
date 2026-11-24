@@ -239,8 +239,26 @@ impl<R: CoppReader> OsiSingleValueAcseReader for RustyOsiSingleValueAcseReader<R
                 }
                 None => return Ok(AcseRecvResult::ReleaseResponse(None)),
             },
-            Err(rusty_copp::CoppError::UserAborted(..)) => todo!(),
-            Err(rusty_copp::CoppError::ProviderAborted(..)) => todo!(),
+            Err(rusty_copp::CoppError::UserAborted(identifier, user_data)) => match user_data {
+                Some(UserData::FullyEncoded(presentation_data_value_lists)) => {
+                    if presentation_data_value_lists.len() > 1 {
+                        return Err(AcseError::ProtocolError(format!("Expected one PDV value on ACSE read but found {}", presentation_data_value_lists.len())));
+                    }
+                    match presentation_data_value_lists.first() {
+                        Some(x) => {
+                            if x.presentation_context_identifier != vec![1] {
+                                return Err(AcseError::ProtocolError(format!("Expected a context id of 3 on ACSE read but was {:?}", x.presentation_context_identifier)));
+                            }
+                            match &x.presentation_data_values {
+                                PresentationDataValues::SingleAsn1Type(data) => return Ok(AcseRecvResult::ReleaseResponse(Some(data.to_vec()))),
+                            }
+                        }
+                        None => return Err(AcseError::ProtocolError("Expected one PDV value on ACSE read but did not find any".into())),
+                    }
+                }
+                None => return Ok(AcseRecvResult::ReleaseResponse(None)),
+            },
+            Err(rusty_copp::CoppError::ProviderAborted(reason, identifier)) => Err(AcseError::ProviderAborted(reason, identifier)),
             Err(x) => return Err(x.into()),
         }
     }

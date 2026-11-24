@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use der_parser::Oid;
-use rusty_copp::CoppError;
+use rusty_copp::{CoppError, EventIdentifier, ProviderReason};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -26,7 +26,7 @@ pub enum AcseError {
     /// Indicated a connection was aborted. The connection should be dropped.
     /// This may occur during any read operation.
     #[error("ACSE Provider Abort")]
-    ProviderAborted(),
+    ProviderAborted(Option<ProviderReason>, Option<EventIdentifier>),
 }
 
 // Only BER encoding is supported.

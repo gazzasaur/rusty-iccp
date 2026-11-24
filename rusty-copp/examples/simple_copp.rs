@@ -47,14 +47,14 @@ async fn example_server(address: SocketAddr) -> Result<(), anyhow::Error> {
     assert_eq!(cosp_protocol_information.calling_session_selector(), Some(&vec![1]));
 
     // Pass the COSP acceptor to the COPP layer.
-    let (copp_listener, copp_connection_information) = RustyCoppAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_acceptor).await?;
+    let (copp_acceptor, copp_connection_information) = RustyCoppAcceptorIsoStack::<TcpTpktReader, TcpTpktWriter>::new(cosp_acceptor).await?;
 
     // For the presentation layer, we will assert we know who the caller is and ensure it called us.
     assert_eq!(copp_connection_information.called_presentation_selector, Some(vec![2]));
     assert_eq!(copp_connection_information.calling_presentation_selector, Some(vec![1]));
 
     // Using the cosp responder, create a copp connection.
-    let (copp_responder, presentation_context, user_data) = copp_listener.accept().await?;
+    let (copp_responder, presentation_context, user_data) = copp_acceptor.accept().await?;
 
     // Verify the context. This only supports a subset of OSI encapsulated contexts that require a context list.
     match presentation_context {
